@@ -1,5 +1,17 @@
 # 短期记忆 / Latest Handoff
 
+## 最近记录：P2A-R6 隔离 GUI CI 与规格提交（2026-10-25）
+
+- 规格分支 `docs/issue-3-p2a-ui-spec` 基于 P1 `11b0b9444cd94f0026b855abe3849a06106426f2`；已提交源码级规格首版 `367efce8dcdecb487595507ff7e9f275bedd96bc`，仍待更新最终 CI 记录和创建独立 Draft PR。
+- 测试分支 `test/issue-3-isolated-gui` 的 R6 验证源码 SHA `1cb7b77246275962f092fa0c0ccc27fbf982ce8b`。PR #4 为 OPEN / Draft，base P1 分支；PR #2 为 OPEN / Draft。没有改 main、P1 功能或生产 UI。
+- 保留原 9 个 Zamak 测试函数，新增 3 项紧凑几何/双语测试；Zamak 0.2.0 `check/test/build` PASS，12/12 probe tests PASS。探针 SHA `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。
+- X11 修正：`xdotool windowclose` 的上游实现是 `XDestroyWindow`，不发 WM_DELETE，不能用于正常 GTK 关闭验收；调用它导致异常销毁和 GTK critical。隔离 Xvfb 下启动 Openbox 后，实际通过 XTEST Alt+F4 验证 WM close：`WM_PROTOCOLS` 含 `WM_DELETE_WINDOW`，日志顺序包含 `CI_WINDOW_CLOSE`、`CI_APP_RETURNED`，退出码 0 且 X 窗口消失。Openbox 运行后 `xdotool windowquit` 尝试仍未触发回调，未将其标为通过。hover-only 与 held-press ROI、pressed 与 release ROI 像素差各为 8004。
+- R6 Push/PR CI：GUI runs [40191087455](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191087455) / [40191091618](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191091618) PASS；build runs [40191087528](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191087528) / [40191091733](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191091733) PASS。Artifacts 附有截图、ROI 差异、源码/二进制 hash、协议状态和日志。
+- Weston 13 Headless/Pixman：Wayland socket、Canvas 312×324 绘制、事件循环返回、退出码 0 PASS；没有广告 `wl_seat`，每次记录到一次 `gdk_seat_get_keyboard` critical。缺失输入 seat 是相符解释但非已证因果；没有屏蔽 GTK 诊断。
+- 文档尺寸硬约束已明示：Mem Reduct 3.5.2 主窗 224×214 DLU；五个设置页模板各 260×168 DLU。生产 GUI 必须维持原版官方紧凑尺寸，禁止放大；CI 336×348 仅为探针估值。真实 Windows 截图、DLU→物理像素实测、Hyprland 输入、HiDPI 和 2px overlay 均 BLOCKED / NOT RUN。
+- 本机非 GUI 检查：`verify_project.py` 29 项、C 测试 3 项、4 个 shell 脚本语法、Zamak 0.2.0 check、5 项项目 tests/build、Arch helper build、`git diff --check` 均 PASS。未操作本机 GUI/Hyprland IPC，未执行 Polkit、drop_caches、Swap/ZRAM 操作。
+- 下一步：更新规格分支记忆/文档，推送并创建独立 Issue #3 Draft PR；保留 PR #4 Draft，等待 ChatGPT 复审；不合并 PR #2/#4，不进入 P2B。
+
 ## 最近记录：P2A-R5 尺寸修正与隔离 GUI CI（2026-10-25）
 
 - 工作分支 `test/issue-3-isolated-gui`，P1 基线 `11b0b9444cd94f0026b855abe3849a06106426f2`；PR #2 仍 OPEN / Draft、未合并。PR #4 仍 OPEN / Draft，base 为 `fix/issue-1-zamak-build`。

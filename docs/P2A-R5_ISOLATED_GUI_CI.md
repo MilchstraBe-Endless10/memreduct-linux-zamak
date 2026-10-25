@@ -1,4 +1,4 @@
-# P2A-R5 — isolated GUI CI implementation
+# P2A-R5/R6 — isolated GUI CI implementation
 
 ## Scope and safety
 
@@ -57,3 +57,18 @@ The report and memory changes may create a later documentation-only commit; the 
 - No Weston, Xvfb, GUI, or active Hyprland session was run or manipulated on the user's workstation.
 - No Windows v3.5.2 capture or image-difference comparison is included; pixel acceptance remains BLOCKED / NOT RUN.
 - The Wayland lane is a headless socket/window lifecycle test, not Hyprland compositor parity.
+
+## R6 follow-up: close semantics, hover baseline, and geometry (2026-10-25)
+
+R6 keeps the original nine probe test functions unchanged and adds three compact-geometry/locale tests. The Xvfb job compares hover-only and held-press screenshots at the same pointer position inside the button ROI, then verifies release; each recorded comparison changed 8004 pixels. The 336×348 X11 top-level size and 312×324 GTK Canvas remain test-probe geometry only, not a measured Windows size.
+
+For the close test, `xdotool windowclose` was rejected as the wrong mechanism: upstream xdotool implements it with `XDestroyWindow`, which destroys the X window instead of delivering the GTK delete event. Initial runs consequently had no `CI_WINDOW_CLOSE` and GTK reported unexpected GdkWindow destruction. With an isolated Openbox started in Xvfb, the probe advertises `WM_DELETE_WINDOW`; the test now sends the real XTEST Alt+F4 close binding. It observes `CI_WINDOW_CLOSE`, `CI_APP_RETURNED`, process exit 0, and window disappearance, with no close-teardown GTK criticals. The separate EWMH `xdotool windowquit` attempt did not trigger the callback and is not reported as passing.
+
+R6 final verified test-source SHA: `1cb7b77246275962f092fa0c0ccc27fbf982ce8b`. GitHub-hosted Ubuntu 24.04 results:
+
+- GUI push run [40191087455](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191087455) and GUI PR run [40191091618](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191091618): both jobs PASS; 12/12 probe tests, XTEST/geometry/close, and Weston lifecycle pass.
+- Build push run [40191087528](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191087528) and build PR run [40191091733](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191091733): PASS.
+- Artifacts include raw client logs, window/WM protocol state, source/binary hashes, ROI screenshots/diff counts, versions, test output, and Weston diagnostics; retention is 14 days.
+- Weston Headless did not advertise a `wl_seat`; `gdk_seat_get_keyboard` was logged once per run before surface creation. The client still connected, drew 312×324, returned from `app.run`, and exited 0. The relation to the missing seat is consistent but not proven. No GTK diagnostics were suppressed.
+
+No production UI or privileged action changed. Windows-native 3.5.2 screenshots, authentic DLU-to-pixel measurements, Hyprland input, HiDPI, and 2 px screenshot comparison remain BLOCKED / NOT RUN.

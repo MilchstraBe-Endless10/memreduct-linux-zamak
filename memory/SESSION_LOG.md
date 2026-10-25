@@ -24,3 +24,12 @@
 - 创建 Draft PR #2 [https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/2](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/2)，PR 正文引用 Issue #1。`build-and-test` 两个事件均通过：push run `40170617141`、pull_request run `40170634633`，均针对该代码 SHA。
 - 文档验收记录提交 `9b5177e992eb1c86b72643a0ae2c0cda9a570555` 的 Actions 也通过：push run `40170749833`、pull_request run `40170752581`；当时 PR head 与远端 SHA 一致。
 - PR 保持 Draft，未合并；等待 ChatGPT 复审和用户批准。未进入 P2。
+
+## 2026-10-25 — P2A-R6 isolated GUI CI follow-up
+- PR #4 test branch final recorded validation source SHA `1cb7b77246275962f092fa0c0ccc27fbf982ce8b`; base remains P1 `11b0b9444cd94f0026b855abe3849a06106426f2`. PR #2/#4 remain OPEN / Draft; no merge.
+- Fixed ROI test now compares same-pointer hover-only vs held-press and pressed vs release (8004 changed pixels each). Preserved all nine original pure Zamak tests; added three compact geometry/locale tests for 12 total.
+- Corrected close-test semantics after reading upstream xdotool implementation: `windowclose` calls `XDestroyWindow`, so it does not test WM_DELETE/GTK close and caused expected GDK teardown warnings. Under isolated Xvfb + Openbox, XTEST Alt+F4 exercised the WM close path and emitted `CI_WINDOW_CLOSE`, `CI_APP_RETURNED`; process exited 0 and the window disappeared without close teardown criticals. A separate `windowquit` attempt did not invoke the callback and is not claimed as passing.
+- GUI Actions push/PR `40191087455` / `40191091618` passed both Xvfb and Weston jobs; build push/PR `40191087528` / `40191091733` passed. Artifacts were uploaded. Source file SHA `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`.
+- Weston 13 Headless/Pixman logged one `gdk_seat_get_keyboard` critical per run; `wl_seat` was not advertised. Client still connected, drew the Canvas, returned from `app.run` and exited 0. Cause is consistent with headless missing input seat but not proven; GTK diagnostics remain visible.
+- Official UI size contract is now explicit: `IDD_MAIN` 224×214 DLU; five settings templates 260×168 DLU. Production must follow the official compact resources, no enlargement. The 336×348 / 312×324 values are CI probe-only and do not establish a Windows pixel target.
+- The independent P2A spec branch has local first commit `367efce8dcdecb487595507ff7e9f275bedd96bc`; Windows-native screenshots, measured DLU conversion, paired overlays/2px acceptance remain BLOCKED / NOT RUN. No production UI, host GUI, compositor IPC, memory cleanup, Polkit, Swap, or ZRAM operation.

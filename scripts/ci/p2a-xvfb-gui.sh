@@ -408,5 +408,5 @@ if xdotool getwindowname "$close_window_id" >"$artifact_dir/window-after-close.t
 fi
 grep -Fq 'CI_WINDOW_CLOSE' "$close_log"
 grep -Fq 'CI_APP_RETURNED' "$close_log"
-printf 'X11 GUI input/lifecycle test: actual XTEST hover/pressed/release ROI diffs, split menu, bilingual layout, resize and geometry, focus/Enter/Escape/F12, plus independent WM windowclose; both app exits=0.\n' \
+printf 'X11 GUI input/lifecycle test: actual XTEST hover/pressed/release ROI diffs, split menu, bilingual layout, resize and geometry, focus/Enter/Escape/F12, plus Alt+F4 WM close; both app exits=0.\n' \
   | tee "$artifact_dir/result.txt"
