@@ -265,7 +265,7 @@ xdotool key --clearmodifiers Down
 xdotool key --clearmodifiers Down
 xdotool key --clearmodifiers Return
 wait_for_marker 'CI_THEME dark=true'
-marker='CI_MENU root=2 open=true'
+marker='CI_FOCUS item=201.0'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool key --clearmodifiers Down
 wait_for_new_marker "$marker" "$previous_count"
