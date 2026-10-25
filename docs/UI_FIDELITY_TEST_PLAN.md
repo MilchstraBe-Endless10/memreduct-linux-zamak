@@ -1,12 +1,13 @@
 # UI 高保真与交互回归计划（P2A-R1）
 
-状态：源码规格与截图清单固定到官方 Mem Reduct v.3.5.2 tag；真实 Windows 源图采集 BLOCKED，Windows/Linux 对照与像素差异 NOT RUN。该缺口阻止像素验收，但不阻止本源码规格 Draft PR 接受复审；本 PR 不包含 P2B UI 实现。
+状态：源码规格与截图清单固定到官方 Mem Reduct v.3.5.2 tag；真实 Windows 源图采集 BLOCKED，Windows/Linux 对照与像素差异 NOT RUN。该缺口阻止像素验收，但不阻止源码规格审查或实现明确标注为未校准的紧凑生产窗口候选；任何候选界面都不能因此声称 1:1 或完成 2 px 验收。
 
 ## 1. 冻结基准与不变量
 
 - 唯一行为/资源基准：Henry++ Mem Reduct v.3.5.2，commit 2f5c55d15f69a2c88859e036b16c6f4c971e1968。
 - commit 04402de8b6a8ff9d1c5517c675d87c346655323c 是 tag 后 46 个提交的开发快照，不是发布版依据；其行为差异单列于 UPSTREAM_VERSION_DRIFT_3.5.2_vs_04402de8.md。
-- 主窗口和设置页资源尺寸为 DLU；先记录字体、DPI 与窗口客户区，再做同尺寸比较。Linux 主窗与设置窗口须分别遵循官方资源模板的紧凑尺寸，不得因为跨平台实现而扩大为大窗口；336×348 CI 探针尺寸不用于产品 GUI。
+- 主窗口和设置页资源尺寸为 DLU；先记录字体、DPI 与窗口客户区，再做同尺寸比较。`IDD_MAIN=224×214 DLU` 是主窗口资源模板。五个 `IDD_SETTINGS_*` 各 `260×168 DLU` 是**单个设置子页面模板**，不是包含导航、底部按钮及边框的完整设置窗口尺寸。Linux 主窗和设置窗口须保持原版紧凑比例；336×348 CI 探针尺寸不用于产品 GUI。
+- P2B 可以先实现待校准的正式生产窗口候选，DLU 转换参数集中管理，待取得 Windows 原生字体/DPI 实测后校准。该工程候选不等同于已量取 Windows 像素尺寸，也不解除最终截图对照和 2 px 验收门槛。
 - P2 目标界面需完整支持 English 和简体中文。逐项核实翻译键；3.5.2 未翻译的 hard-coded strings 要在 Linux 项目双语资源里补齐，且标注为项目补译。
 - 每个原版动作必须映射成真实、可解释且安全的 Linux 动作，或明确禁用。不允许用 drop_caches 假扮工作集、修改页列表、待机列表或 Registry cache。
 - 只有源图和目标图均为对应版本的真实截图、环境匹配且做过叠加/差异计算，才能报告像素验收。2 px 是目标阈值，不是当前结果。
@@ -69,10 +70,10 @@ CI 探针不读取 `/proc`、不调用 helper/Polkit、不执行清理、不修�
 | WAYLAND-POC-CHECK | Canvas probe zam check | PASS | CHECK OK p2a_canvas_probe |
 | WAYLAND-POC-BUILD | Canvas probe zam build | PASS | 输出 SHA 2030151c58b6cdb1ccc9ef35e9f931f2831822a8fc4b8cba6cc6086881d495e8 |
 | WAYLAND-POC-RENDER | Canvas app 在 Hyprland/Wayland显示 | PASS（仅绘制） | xwayland=false，截图已保存；compositor 平铺为941×1030 |
-| CI-X11-INPUT | 隔离 Xvfb/XTEST hover、按下/释放 ROI、按钮/箭头命中、菜单、Tab/Enter/Escape、双语与 resize | PASS（探针级） | PR run `40191456330` 和 push run `40191454446` 均通过；hover-only→held-press ROI 改变 8004 像素，pressed→release 也为 8004；不代表产品 UI 或 Wayland 输入 |
+| CI-X11-INPUT | 隔离 Xvfb/XTEST hover、按下/释放 ROI、按钮/箭头命中、菜单、Tab/Enter/Escape、双语与 resize | PASS（探针级） | 最终 PR run `40192531809`（head `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1`）及 push run `40192528601` 均通过；hover-only→held-press ROI 改变 8004 像素，pressed→release 也为 8004；不代表产品 UI 或 Wayland 输入 |
 | CI-X11-CLOSE | 独立 GTK 窗口收到真实 WM close，回调与进程退出 | PASS（X11 探针级） | 隔离 Xvfb + Openbox 下 XTEST Alt+F4；出现 `CI_WINDOW_CLOSE`、`CI_APP_RETURNED`、退出码 0、窗口消失。`xdotool windowclose` 走 `XDestroyWindow`，不适合作为 GTK WM_DELETE 验收 |
 | CI-X11-GEOMETRY | 336×348 top-level、312×324 Canvas、命中区域/弹出菜单、双语布局及 resize | PASS（探针级） | 固定 GTK 测试夹具的逻辑尺寸，不是 Windows 3.5.2 像素尺寸；生产窗口仍按 224×214 DLU 和 260×168 DLU 模板换算 |
-| CI-WAYLAND-LIFECYCLE | Weston Headless/Pixman socket、GTK Canvas 创建绘制、事件循环退出 | PASS（生命周期） | PR run `40191456330` 与 push run `40191454446` 均通过；一次 `gdk_seat_get_keyboard` critical，Weston 未公告 `wl_seat`。关系符合 headless 输入 seat 缺失的可能解释，但因果未证实；未屏蔽诊断 |
+| CI-WAYLAND-LIFECYCLE | Weston Headless/Pixman socket、GTK Canvas 创建绘制、事件循环退出 | PASS（生命周期） | 最终 PR run `40192531809` 与 push run `40192528601` 均通过；一次 `gdk_seat_get_keyboard` critical，Weston 未公告 `wl_seat`。关系符合 headless 输入 seat 缺失的可能解释，但因果未证实；未屏蔽诊断 |
 | WAYLAND-POC-INPUT | 在 Wayland/Hyprland 中对生产窗口注入并验证真实鼠标/键盘事件 | NOT RUN | Weston Headless 没有输入 seat；X11/XTEST 结果不能替代 Wayland/Hyprland 实测 |
 | GTK-SNI | Tray 注册、菜单、中键、通知 | NOT RUN | Ayatana 库安装版本已读；当前 session D-Bus 无法从 shell 验证 |
 | PIXEL-OVERLAY | Windows/Linus overlay/diff、2 px 几何 | NOT RUN | 没有可信 Windows 源图，也没有实现后的目标窗口 |
@@ -90,5 +91,5 @@ CI 探针不读取 `/proc`、不调用 helper/Polkit、不执行清理、不修�
 - R6 在 GitHub-hosted Ubuntu 24.04、Zamak 0.2.0 下保留原 9 项事件路由测试并新增 3 项紧凑探针测试，12/12 通过。Xvfb/XTEST 真实经过图形服务器发送鼠标和键盘事件，验证 hover-only 与 held-press 的同坐标按钮 ROI 差异、释放、按钮/下拉命中、菜单、双语、resize 和 WM close。
 - WM close 使用隔离 Xvfb 中启动的 Openbox 与 XTEST Alt+F4；日志记录 `CI_WINDOW_CLOSE`、`CI_APP_RETURNED`，退出码为 0 且窗口消失。源码核查显示 `xdotool windowclose` 实际执行 `XDestroyWindow`，属于直接销毁 X 窗口，不是正常 WM_DELETE 请求，因此不用于通过验收。
 - Weston Headless/Pixman 通过唯一私有 Wayland socket 建立 GTK Canvas 并绘制 312×324，测试退出路径返回且进程退出码 0。每次日志有一次 `gdk_seat_get_keyboard` critical，Weston 未公告 `wl_seat`。两者相符但不证明根因；没有隐藏 GTK diagnostics。该 lane 不测试鼠标/键盘输入。
-- R6 证据：PR run [40191456330](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191456330)、push run [40191454446](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191454446) 均成功并上传 artifacts；build-and-test PR/push runs [40191456339](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191456339) / [40191454361](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191454361) 均成功。探针源码 SHA-256 为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。Artifact 保留期限 14 天；其中的 PNG 是模拟探针截图，不是原版或产品截图。
-- CI 窗口 336×348（Canvas 312×324）仅是测试夹具；生产 GUI 必须保持官方紧凑资源尺寸按真实字体/DPI转换，不得放大。真实 Windows release 图、Linux 产品目标图、overlay/diff 和 2 px 几何验收仍 BLOCKED / NOT RUN。
+- R6 最终 PR 证据：GUI [PR run 40192531809](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192531809)、push run [40192528601](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192528601)；build-and-test [PR run 40192531948](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192531948)、push run [40192528611](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192528611) 均成功。GUI 源 head 为 `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1`；探针源码 SHA-256 为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。PR artifacts 保留期限 14 天；PNG 是模拟探针截图，不是原版或产品截图。
+- CI 窗口 336×348（Canvas 312×324）仅是测试夹具；生产 GUI 须保持官方紧凑尺寸并用可校准的集中几何参数，从真实字体/DPI 换算。真实 Windows release 图、Linux 产品目标图、overlay/diff 和 2 px 几何验收仍 BLOCKED / NOT RUN。源码规格审查可允许 P2B 待校准生产窗口开发，但不能宣称像素通过。

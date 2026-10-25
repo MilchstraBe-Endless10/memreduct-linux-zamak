@@ -130,7 +130,7 @@
 | ID | 图片与尺寸 | SHA-256 | 证据内容 | 可作像素基准 |
 |---|---|---|---|---|
 | W-REF-01 | 官方源码 `images/memreduct.png`，338×400，RGBA；固定 tag URL | d165c86f8398161be6abdfac8557829f5d45bfbcbee12a87a71e13a38f78ce38 | 俄文暗色主窗口示意，数值区域被遮挡；没有 Windows、DPI、缩放、语言或采集方法元数据 | 否。仅为上游仓库配图，不是真实运行截图 |
-| CI-PROBE-R6 | 独立 Canvas 探针截图，见 [PR Actions run 40191456330](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191456330) 与 [push run 40191454446](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191454446) 的 artifacts（14 天保留） | artifact SHA 清单：探针源码 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`；图像和二进制另有逐文件散列 | 仅显示模拟占位 UI；X11/XTEST 验证 hover→pressed ROI 差异 8004 像素、released 状态、菜单、双语、几何/resize 与 WM close；Wayland artifact 验证 Weston Headless/Pixman socket、Canvas draw 和正常退出。不是 Mem Reduct Linux 产品窗口 | 否 |
+| CI-PROBE-R6 | 独立 Canvas 探针截图，最终 PR artifacts 见 [GUI run 40192531809](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192531809)；同 SHA 的 push run `40192528601` | PR 最终 head `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1`；artifact SHA 清单：探针源码 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`；图像和二进制另有逐文件散列 | 仅显示模拟占位 UI；X11/XTEST 验证 hover→pressed ROI 差异 8004 像素、released 状态、菜单、双语、几何/resize 与 WM close；Wayland artifact 验证 Weston Headless/Pixman socket、Canvas draw 和正常退出。不是 Mem Reduct Linux 产品窗口 | 否 |
 
 两张用户提供的参考图未复制到此仓库。它们缺少权威版本和采集环境元数据，因此不能用作发布版源图或像素验收证据。R6 CI 截图也只是隔离探针图；其 336×348 top-level 与 312×324 Canvas 几何是输入测试夹具，不能作为生产窗口尺寸或 Windows DLU 换算。
 
@@ -154,12 +154,12 @@ GitHub 官方 release 确实公开了 memreduct-3.5.2-setup.exe、portable 7z、
 
 - 主窗口 IDD_MAIN=100：224×214 DLU；标题 Mem Reduct；8 pt Ms Shell Dlg；IDC_LISTVIEW=102 位于 (8,8,208,174)，无边框报告列表；IDC_CLEAN=103 位于 (8,192,208,14)，BS_SPLITBUTTON。
 - 主列表是 3 组×3 行：Physical memory、Pagefile、System working set；每组显示 Usage、Available、Total available。3.5.2 的第三组界面名为 System working set，但数据来源是 system_cache；Linux 不能按文字名伪造同名指标。
-- 五个页资源 IDD_SETTINGS_GENERAL/MEMORY/APPEARANCE/TRAY/ADVANCED = 101–105，各 260×168 DLU，8 pt Ms Shell Dlg。设置壳导航/底部按钮由共用设置窗口框架组织。
+- 五个页资源 IDD_SETTINGS_GENERAL/MEMORY/APPEARANCE/TRAY/ADVANCED = 101–105，各 260×168 DLU，8 pt Ms Shell Dlg。**这是每个子页面模板的尺寸，不是含左侧导航、重置/关闭按钮和窗口边框的完整设置外框尺寸。**设置壳尺寸须依据完整窗口资源/布局测量，不能将 260×168 DLU 直接套到外框并裁切内容。
 - 3.5.2 resource.h 明确分配 IDC_NAV=104、IDC_RESET=105、IDC_CLOSE=106。按钮未写在各页面 resource.rc 模板中，是 settings shell 控件；这不表示没有控件 ID。
 - 根菜单资源 IDM_MAIN=100，四个根项由 IDS_FILE、IDS_VIEW、IDS_SETTINGS、IDS_HELP 文案定位；File 为 Settings、Exit；View 为置顶、暗色主题、清理前确认、Language；Settings 为开机启动、最小化启动、Skip UAC、定期更新；Help 为 Website、Check for updates、About。
 - 3.5.2 加速资源 IDA_MAIN=1：F1→About、F2→Settings、Alt+F4→显示/隐藏。源资源中没有 Alt+字母 mnemonic；列出的源文件也没有明确 Enter/Escape 加速映射，必须以真实程序验证后才能承诺。
 - 菜单与设置中的八个清理区域不是一个动作；顺序在设置列表、主窗口下拉、托盘子菜单间有差异，见交互矩阵。
-- 224×214 DLU 主窗口与 260×168 DLU 设置页是原版官方资源模板尺寸，不是像素；P2B 必须按各自模板保持原版紧凑窗口比例，禁止把整套 GUI 擅自扩大。R5/R6 CI 中 336×348（GTK Canvas 312×324）是用 96-DPI base-unit 估算的独立探针窗口，只用于测试输入、绘制和生命周期，不是 Windows 实测尺寸或生产 UI 目标。正式像素目标须按 v.3.5.2 字体与 DPI 实测换算。
+- 224×214 DLU 主窗口与 260×168 DLU 设置页模板是原版官方资源尺寸，不是像素；P2B 可先实现一个**待校准的紧凑候选界面**，用集中、可替换的 DLU→逻辑像素转换参数管理整体几何，并按原版比例约束，不得把估算值散落硬编码到控件或放大为大窗口。这只允许进行工程验证，不代表 Windows 原生像素验收。设置页面 260×168 DLU 是单页模板，完整设置外框需另行测量。R5/R6 CI 中 336×348（GTK Canvas 312×324）是独立探针窗口，只用于测试输入、绘制和生命周期，不是 Windows 实测尺寸或生产 UI 目标。正式像素目标须按 v.3.5.2 字体与 DPI 实测换算。
 
 ## 5. 五页设置字段与默认行为
 

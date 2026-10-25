@@ -46,3 +46,13 @@
 - PR #5 创建时 head `b94731b9a9bc52a4834358f9f71fcf86a2033925`；创建后继续提交了记忆与会话日志同步，因此最终 head 另有推进，以当前远端 `docs/issue-3-p2a-ui-spec` SHA 为准。Push 与 pull_request build-and-test 已触发。
 - 源码规格 head `90d62100e840aa408e4ea99cbbd866ef2025e99e` 的 PR `40191901022` 与 push `40191896559` build-and-test 均 PASS；验证治理文件、shell syntax、C safety tests、Zamak 0.2.0 check/test/build。随后本次记忆同步提交只变更 Markdown；提交后需要再核对 PR head 与其新 Actions。
 - 真实 Windows 3.5.2 截图、实际 DLU 像素换算、双边截图 overlay/diff 和 2 px 验收仍 BLOCKED / NOT RUN。该 PR 是源码级规格审阅交付，不是 P2A 像素验收或 P2B 实现批准。
+# P2A-R7 规格修正与 P2B-1 生产主窗口候选（2026-10-25）
+
+## 开工状态
+- PR #2、#4、#5 均 OPEN / Draft；PR #5 head `6b3862b0e6d105f42dbf8d2d6c679cdfb182ad16`，PR #4 head `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1`；未合并任何 PR。
+- 以 PR #5 最新复审为依据：刷新 R6 最终 GUI/build PR Actions 为 `40192531809` / `40192531948`，对应 push runs `40192528601` / `40192528611`；明确 `IDD_MAIN=224×214 DLU` 是主窗模板，每个 `IDD_SETTINGS_* =260×168 DLU` 是子页模板而非完整外框。
+- 允许在截图仍缺失时实现未校准的紧凑生产候选，但需把几何换算集中参数化；真实 Windows 源图、字体/DPI 像素校准、overlay 与 2 px 验收仍 BLOCKED / NOT RUN。
+
+## 本轮结果
+- （本轮结束后补记：PR #5 修正提交、P2B-1 生产代码、验证、CI、截图 artifacts 与实际 SHA。）
+- 用户主桌面和 Hyprland 未操作；未执行内存清理、Polkit、Swap/ZRAM 写入。PR #2/#4/#5 不合并。
