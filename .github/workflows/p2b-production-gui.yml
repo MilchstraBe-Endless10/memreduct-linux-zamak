@@ -1,0 +1,81 @@
+name: P2B production main window
+
+on:
+  push:
+    branches:
+      - feat/issue-3-p2b-main-window
+  pull_request:
+    branches:
+      - docs/issue-3-p2a-ui-spec
+
+permissions:
+  contents: read
+
+jobs:
+  production-x11:
+    name: Production UI (Xvfb / XTEST)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 commit used by R6 CI
+        with:
+          node-version: '22'
+      - name: Install runner-only GUI and build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox fonts-noto-cjk fonts-dejavu
+      - name: Install pinned Zamak 0.2.0
+        run: npm install --global @veyralux/zamak@0.2.0
+      - name: Build and verify production executable
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2b-x11
+        run: bash scripts/ci/build-production-gui.sh
+      - name: Re-run the project native build entrypoint
+        run: bash scripts/build-arch.sh
+      - name: Exercise production UI with isolated real X11 input
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2b-x11
+        run: bash scripts/ci/p2b-production-xvfb.sh "$RUNNER_TEMP/p2b-x11/memreduct-zamak-production"
+      - name: Upload X11 screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 commit used by R6 CI
+        with:
+          name: p2b-production-x11
+          path: ${{ runner.temp }}/p2b-x11
+          if-no-files-found: warn
+          retention-days: 14
+
+  production-wayland:
+    name: Production UI lifecycle (Weston Headless / Pixman)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 commit used by R6 CI
+        with:
+          node-version: '22'
+      - name: Install runner-only Wayland and build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libgtk-3-dev pkg-config python3 weston wayland-utils fonts-noto-cjk fonts-dejavu
+      - name: Install pinned Zamak 0.2.0
+        run: npm install --global @veyralux/zamak@0.2.0
+      - name: Build and verify production executable
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2b-wayland
+        run: bash scripts/ci/build-production-gui.sh
+      - name: Re-run the project native build entrypoint
+        run: bash scripts/build-arch.sh
+      - name: Run production UI on a private Weston socket
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2b-wayland
+        run: bash scripts/ci/p2b-production-wayland.sh "$RUNNER_TEMP/p2b-wayland/memreduct-zamak-production"
+      - name: Upload Weston and client logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 commit used by R6 CI
+        with:
+          name: p2b-production-wayland
+          path: ${{ runner.temp }}/p2b-wayland
+          if-no-files-found: warn
+          retention-days: 14

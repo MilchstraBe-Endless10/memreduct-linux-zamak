@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Central provisional conversion for the official Windows 3.5.2 DLU template.
+# Approximate 8 pt dialog base units are X=5.6 px, Y=12 px at 96 DPI.
+# Values are calibration parameters, not authenticated Windows pixel measurements.
+pub fn x_dlu_to_logical_px(value: i64) -> i64:
+    (value * 56) // 40
+
+pub fn y_dlu_to_logical_px(value: i64) -> i64:
+    (value * 12) // 8
+
+pub fn main_client_width_px() -> i64:
+    x_dlu_to_logical_px(224)
+
+pub fn main_client_height_px() -> i64:
+    y_dlu_to_logical_px(214)
+
+pub fn menu_height_px() -> i64:
+    24
+
+pub fn gtk_content_inset_px() -> i64:
+    24
+
+pub fn main_window_width_px() -> i64:
+    main_client_width_px() + gtk_content_inset_px()
+
+pub fn main_window_height_px() -> i64:
+    main_client_height_px() + menu_height_px() + gtk_content_inset_px()
+
+fn test_official_main_template_uses_central_dlu_conversion():
+    assert(x_dlu_to_logical_px(224) == 313)
+    assert(y_dlu_to_logical_px(214) == 321)
+    assert(main_client_width_px() == 313)
+    assert(main_client_height_px() == 321)
+
+fn test_production_window_is_not_ci_probe_default():
+    assert(main_window_width_px() == 337)
+    assert(main_window_height_px() == 369)
+    assert(main_window_width_px() != 336)
+    assert(main_window_height_px() != 348)
