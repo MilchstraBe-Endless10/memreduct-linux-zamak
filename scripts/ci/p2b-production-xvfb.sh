@@ -171,29 +171,29 @@ capture 'production-main-en.png'
 # Open each production root menu through XTEST and assert its final popup bounds.
 marker='CI_MENU root=1 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 20 12 click 1
+xdotool mousemove --sync --window "$window_id" 20 22 click 1
 wait_for_marker 'CI_POPUP kind=root'
 wait_for_new_marker "$marker" "$previous_count"
 xdotool key --clearmodifiers Escape
 wait_for_marker 'CI_MENU closed reason=Escape'
 marker='CI_MENU root=2 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 70 12 click 1
+xdotool mousemove --sync --window "$window_id" 70 22 click 1
 wait_for_new_marker "$marker" "$previous_count"
 xdotool key --clearmodifiers Escape
 marker='CI_MENU root=3 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 120 12 click 1
+xdotool mousemove --sync --window "$window_id" 120 22 click 1
 wait_for_new_marker "$marker" "$previous_count"
 xdotool key --clearmodifiers Escape
 marker='CI_MENU root=4 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 174 12 click 1
+xdotool mousemove --sync --window "$window_id" 174 22 click 1
 wait_for_new_marker "$marker" "$previous_count"
 xdotool key --clearmodifiers Escape
 marker='CI_MENU root=2 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 70 12 click 1
+xdotool mousemove --sync --window "$window_id" 70 22 click 1
 wait_for_new_marker "$marker" "$previous_count"
 capture 'production-view-menu-en.png'
 marker='CI_LANGUAGE_MENU open=true'
@@ -222,7 +222,7 @@ capture 'production-language-menu-zh.png'
 xdotool key --clearmodifiers Escape
 menu_index=1
 for menu_x in 20 70 120 174; do
-  xdotool mousemove --sync --window "$window_id" "$menu_x" 12 click 1
+  xdotool mousemove --sync --window "$window_id" "$menu_x" 22 click 1
   wait_for_marker "CI_POPUP kind=root menu=$menu_index locale=zh-CN"
   xdotool key --clearmodifiers Escape
   menu_index=$((menu_index + 1))
