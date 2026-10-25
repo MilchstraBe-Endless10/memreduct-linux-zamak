@@ -203,7 +203,7 @@ Allow Standby/Modified cleanup on autoreduct 和 Log cleaning results。两条�
 
 ## 7. P2B 主窗口开发拆分
 
-1. 用真实 Windows 3.5.2 截图和冻结字体/DPI 将主窗口 DLU 转换为客户区像素；记录窗口装饰与内容区的区别。
+1. 初版可按官方 DLU 资源坐标和集中、可替换的临时字体/DPI 换算参数建立紧凑候选，并明确标记为未校准；取得真实 Windows 3.5.2 截图后再校准客户区像素并记录窗口装饰。真实截图缺失阻止最终像素验收，不阻止源码规格审查和初版工程实现。
 2. 按 IDC_LISTVIEW 和 IDC_CLEAN 资源矩形建立单一绘制/命中区域模型，保持紧凑比例与原版间距。
 3. 实现原版三组统计排布；Physical memory 与 Swap 使用有来源说明的 Linux 指标，System working set 不等价时显示明确限制。
 4. 实现四个根菜单、Split Button 主区/下拉区、清理区域菜单和中英文独立切换；每项事件对应矩阵中的原版资源 ID/处理函数。
