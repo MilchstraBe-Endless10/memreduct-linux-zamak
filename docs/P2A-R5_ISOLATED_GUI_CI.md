@@ -41,7 +41,16 @@ Each lane uploads environment and version information, source/binary checksums, 
 
 ## Hosted CI status
 
-**Pending.** This report is committed before the first push-triggered run. Wayland and X11 runtime statuses must be updated from actual Actions logs and uploaded artifacts. Do not treat the local logic tests as GUI input acceptance.
+**PASS on tested source SHA `6e0a4a79d56633603a298e5e0ef6520028c71b80`.**
+
+- Push run [40187178574](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40187178574): Wayland Headless/Pixman and Xvfb/XTEST jobs both passed.
+- Pull request run [40187181722](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40187181722): both jobs passed on the same source SHA.
+- Xvfb recorded a 336×348 top-level window and 312×324 Canvas viewport; screenshots are 336×348. Mouse press/release, split menu selection, both locales, Tab focus, Enter, Escape, and explicit F12 quit all emitted their expected markers; process exit was 0.
+- Weston Headless connected through its isolated socket; Canvas drew at 312×324, `ui.quit()` returned from `app.run`, and the process exited 0. This is Wayland lifecycle evidence, not Hyprland input acceptance.
+- The first compact-size Xvfb run failed only because GTK reports Enter as `"\n"`; after adding that alias, the next two runs passed. The failure and fix are visible in the branch history.
+- Uploaded runner evidence: [push-run artifacts](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40187178574). The screenshots are clearly labeled probe-only; they are not production UI or Windows reference captures.
+
+The report and memory changes may create a later documentation-only commit; the results above are tied to the tested source SHA and the follow-up run on the same code.
 
 ## Remaining limits
 

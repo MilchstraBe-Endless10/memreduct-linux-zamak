@@ -1,5 +1,16 @@
 # 短期记忆 / Latest Handoff
 
+## 最近记录：P2A-R5 尺寸修正与隔离 GUI CI（2026-10-25）
+
+- 工作分支 `test/issue-3-isolated-gui`，P1 基线 `11b0b9444cd94f0026b855abe3849a06106426f2`；PR #2 仍 OPEN / Draft、未合并。PR #4 仍 OPEN / Draft，base 为 `fix/issue-1-zamak-build`。
+- 用户要求 GUI 按官方紧凑尺寸，不要放大。核对 Mem Reduct v.3.5.2 tag 源码 `2f5c55d15f69a2c88859e036b16c6f4c971e1968`：`IDD_MAIN` 为 224×214 Dialog Units，字体 `8 pt Ms Shell Dlg`。以 96 DPI 常见 6×13 px base-unit 估算，测试窗口请求 336×348；GTK Canvas 实测 312×324。该换算尚未在真实 Windows 上测量，也不是像素级基准。
+- 仅收紧无特权 Canvas 探针窗口、修正 GTK Tab/Enter 字符事件名称并缩短占位文案；没有改生产 UI、P1 构建链路或特权功能。9 项已有路由测试函数体保持不变。
+- 本机：`python3 scripts/verify_project.py` PASS（29 项）；C unittest PASS（3 项）；7 个 shell 脚本 `bash -n` PASS；Zamak 0.2.0 probe check/test/build PASS；9/9 probe 测试 PASS；源哈希验证和 `git diff --check` PASS。没有在本机启动 GUI、触碰活动桌面、安装依赖或执行内存/Swap/ZRAM操作。
+- GitHub：测试源 SHA `6e0a4a79d56633603a298e5e0ef6520028c71b80` 的 push run [40187178574](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40187178574) 与 PR run [40187181722](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40187181722) 均 PASS；Wayland Headless/Pixman 与 Xvfb/XTEST 两个 job 均通过，截图、版本、日志和测试记录已作为 artifact 上传。
+- 仍未完成：真实 Windows 3.5.2 截图与像素对照、Hyprland 实机输入验收、正式生产 UI 复刻。P2A 尚不可宣称正式验收；等待 ChatGPT 复审 PR #4，不进入 P2B、不合并任何 PR。
+
+---
+
 日期：2026-10-25；任务：P1 Zamak 0.2.0 编译与原生构建验收。
 
 ## 执行范围
