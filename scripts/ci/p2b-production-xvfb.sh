@@ -154,13 +154,14 @@ window_geometry "$artifact_dir/geometry-zh.txt"
 capture 'production-main-zh.png'
 assert_changed 'production-main-en.png' 'production-main-zh.png' 'locale-pixel-diff.txt'
 
-# The split arrow is operable; the primary clean command remains disabled.
-xdotool mousemove --sync --window "$window_id" 300 334 click 1
+# The split arrow and primary button use the center of their Canvas hit regions.
+xdotool mousemove --sync --window "$window_id" 300 322 click 1
 wait_for_marker 'CI_CLEAN_MENU open=true'
+# The first popup row center is y=151 in the 313x345 Canvas.
 capture 'production-clean-menu-zh.png'
-xdotool mousemove --sync --window "$window_id" 95 164 click 1
+xdotool mousemove --sync --window "$window_id" 95 151 click 1
 wait_for_marker 'CI_CLEAN_REGION_DISABLED index=0 action=none'
-xdotool mousemove --sync --window "$window_id" 112 334 click 1
+xdotool mousemove --sync --window "$window_id" 112 322 click 1
 wait_for_marker 'CI_CLEAN_DISABLED action=none'
 
 # Keyboard focus, menu navigation, Enter and Escape run in the same production Canvas.
