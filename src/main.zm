@@ -64,7 +64,7 @@ fn clean_popup_rect(s: &MainWindow) -> ui.Rect:
 fn log_popup(s: &MainWindow, kind: string, r: &ui.Rect):
     if not s.test_mode: return
     let fits = r.x >= 2.0 and r.y >= 2.0 and r.right() <= s.width - 2.0 and r.bottom() <= s.height - 2.0
-    let locale = label(s.zh, "zh-CN", "en")
+    let locale = label(s.zh, "en", "zh-CN")
     println(f"CI_POPUP kind={kind} menu={s.menu} locale={locale} x={r.x} y={r.y} w={r.w} h={r.h} canvas={s.width}x{s.height} fits={fits}")
 
 fn menu_item_at(s: &MainWindow, x: f64, y: f64) -> f64:
@@ -171,10 +171,10 @@ fn draw_stats_group(s: &mut MainWindow, p: &ui.Painter, group: i64, title: strin
     p.text(label_x, row2, label(s.zh, "Total available", "总计"), secondary, size=9.0)
     p.text(value_x, row2, total, fg, size=9.0)
     if s.test_mode:
-        let locale = label(s.zh, "zh-CN", "en")
-        let row0_label = label(s.zh, "已用", "Usage")
-        let row1_label = label(s.zh, "空闲", "Available")
-        let row2_label = label(s.zh, "总计", "Total available")
+        let locale = label(s.zh, "en", "zh-CN")
+        let row0_label = label(s.zh, "Usage", "已用")
+        let row1_label = label(s.zh, "Available", "空闲")
+        let row2_label = label(s.zh, "Total available", "总计")
         println(f"CI_LAYOUT_GROUP index={group} locale={locale} title={title} title_y={title_y} row0={row0_label}@{row0} row1={row1_label}@{row1} row2={row2_label}@{row2}")
     if group < 2:
         let rule_y = ui_geometry.group_separator_y(group, s.height)

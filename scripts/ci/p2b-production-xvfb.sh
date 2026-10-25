@@ -110,6 +110,18 @@ wait_for_marker_long() {
   cat "$artifact_dir/client.log" >&2
   return 1
 }
+wait_for_new_marker() {
+  local marker="$1" previous_count="$2" count
+  for _ in {1..100}; do
+    count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
+    if (( count > previous_count )); then return 0; fi
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  printf 'Missing new production UI event marker: %s\n' "$marker" >&2
+  cat "$artifact_dir/client.log" >&2
+  return 1
+}
 window_geometry() {
   local output="$1" width height canvas
   xwininfo -id "$window_id" >"$output"
@@ -157,26 +169,38 @@ window_geometry "$artifact_dir/geometry-en.txt"
 capture 'production-main-en.png'
 
 # Open each production root menu through XTEST and assert its final popup bounds.
+marker='CI_MENU root=1 open=true'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 20 12 click 1
 wait_for_marker 'CI_POPUP kind=root'
-wait_for_marker 'CI_MENU root=1 open=true'
+wait_for_new_marker "$marker" "$previous_count"
 xdotool key --clearmodifiers Escape
 wait_for_marker 'CI_MENU closed reason=Escape'
+marker='CI_MENU root=2 open=true'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 70 12 click 1
-wait_for_marker 'CI_MENU root=2 open=true'
+wait_for_new_marker "$marker" "$previous_count"
 xdotool key --clearmodifiers Escape
+marker='CI_MENU root=3 open=true'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 120 12 click 1
-wait_for_marker 'CI_MENU root=3 open=true'
+wait_for_new_marker "$marker" "$previous_count"
 xdotool key --clearmodifiers Escape
+marker='CI_MENU root=4 open=true'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 174 12 click 1
-wait_for_marker 'CI_MENU root=4 open=true'
+wait_for_new_marker "$marker" "$previous_count"
 xdotool key --clearmodifiers Escape
+marker='CI_MENU root=2 open=true'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 70 12 click 1
-wait_for_marker 'CI_MENU root=2 open=true'
+wait_for_new_marker "$marker" "$previous_count"
 capture 'production-view-menu-en.png'
+marker='CI_LANGUAGE_MENU open=true'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 82 91 click 1
-wait_for_marker 'CI_LANGUAGE_MENU open=true'
-wait_for_marker 'CI_POPUP kind=language'
+wait_for_new_marker "$marker" "$previous_count"
+wait_for_marker 'CI_POPUP kind=language menu=2 locale=en'
 capture 'production-language-menu-en.png'
 # The Canvas is inset 12 px inside the 337x369 top-level window; row 2 center is Canvas y=103.
 xdotool mousemove --sync --window "$window_id" 238 115 click 1
@@ -239,8 +263,13 @@ convert "$artifact_dir/production-sample-failure-zh.png" -crop 290x245+15+40 +re
 assert_changed 'memory-before-failure.png' 'memory-after-failure.png' 'memory-failure-pixel-diff.txt'
 
 grep -Eq 'CI_MEMORY source=/proc/meminfo MemTotal=[1-9][0-9]* MemAvailable=[0-9]+' "$artifact_dir/client.log"
-if grep -Fq 'CI_MEMORY_ERROR' "$artifact_dir/client.log"; then
-  printf 'The production UI did not read live /proc/meminfo successfully.\n' >&2
+memory_errors="$(grep '^CI_MEMORY_ERROR ' "$artifact_dir/client.log" || true)"
+[[ -n "$memory_errors" ]] || {
+  printf 'The injected sampling failure was not observed.\n' >&2
+  exit 1
+}
+if printf '%s\n' "$memory_errors" | grep -Fvxq 'CI_MEMORY_ERROR injected non-privileged CI sample failure'; then
+  printf 'Unexpected production memory sampling error:\n%s\n' "$memory_errors" >&2
   exit 1
 fi
 grep -Fq 'CI_CLEAN_DISABLED action=none' "$artifact_dir/client.log"
