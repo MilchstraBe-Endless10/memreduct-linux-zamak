@@ -146,7 +146,8 @@ capture 'production-view-menu-en.png'
 xdotool mousemove --sync --window "$window_id" 82 91 click 1
 wait_for_marker 'CI_LANGUAGE_MENU open=true'
 capture 'production-language-menu-en.png'
-xdotool mousemove --sync --window "$window_id" 238 91 click 1
+# language_rect starts at y=68; its second (简体中文) row center is y=103.
+xdotool mousemove --sync --window "$window_id" 238 103 click 1
 wait_for_marker 'CI_LOCALE locale=zh-CN'
 sleep 0.2
 window_geometry "$artifact_dir/geometry-zh.txt"
