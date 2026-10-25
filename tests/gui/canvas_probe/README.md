@@ -10,7 +10,7 @@ The probe requests a compact 336×348 logical-pixel top-level window. The offici
 
 - `zam check`, all nine pure event-routing tests, and `zam build` under pinned Zamak 0.2.0.
 - Weston Headless/Pixman Wayland socket connection, GTK Canvas draw, timer-requested `ui.quit()`, event-loop return, process exit status, and protocol log checks.
-- Independent Xvfb/XTEST GTK input: hover-only and held-press captures at the same pointer location, non-zero pixel deltas limited to the button ROI, release event/state, split-button and menu selection, English/简体中文 layout and restoration, Tab focus, Enter, Escape, resize geometry, F12 quit, and a separate `xdotool windowclose` run.
+- Independent Xvfb/XTEST GTK input: hover-only and held-press captures at the same pointer location, non-zero pixel deltas limited to the button ROI, release event/state, split-button and menu selection, English/简体中文 layout and restoration, Tab focus, Enter, Escape, resize geometry, F12 test quit, and a separate WM-close run using XTEST Alt+F4 under the Xvfb-owned Openbox process. `xdotool windowclose` is intentionally not used because it calls `XDestroyWindow` instead of requesting a graceful GTK close.
 - Three additional geometry/locale tests verify the 336×348 top-level to 312×324 Canvas contract, the split-button and popup bounds, and the resized Canvas geometry. The original nine routing test functions remain unchanged.
 
 The Wayland lane does not inject pointer or keyboard events. The X11 lane is reported separately and is not a Wayland or Hyprland acceptance test.

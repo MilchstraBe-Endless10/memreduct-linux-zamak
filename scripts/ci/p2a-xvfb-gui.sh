@@ -355,7 +355,7 @@ for _ in {1..50}; do
   sleep 0.1
 done
 [[ "$close_seen" == true ]] || {
-  printf 'xdotool windowclose did not invoke CI_WINDOW_CLOSE; inspect window-close-protocols.txt to distinguish missing WM_DELETE_WINDOW from a client close-handler issue.\n' >&2
+  printf 'The WM close request did not invoke CI_WINDOW_CLOSE; inspect window-close-protocols.txt and the Openbox/client logs.\n' >&2
   cat "$close_log" >&2 || true
   exit 1
 }
@@ -392,7 +392,7 @@ for _ in {1..50}; do
   sleep 0.1
 done
 [[ "$app_exited" == true ]] || {
-  printf 'The app process did not exit within 5 seconds of windowclose.\n' >&2
+  printf 'The app process did not exit within 5 seconds of the WM close request.\n' >&2
   exit 1
 }
 set +e

@@ -11,6 +11,7 @@
 - 文档尺寸硬约束已明示：Mem Reduct 3.5.2 主窗 224×214 DLU；五个设置页模板各 260×168 DLU。生产 GUI 必须维持原版官方紧凑尺寸，禁止放大；CI 336×348 仅为探针估值。真实 Windows 截图、DLU→物理像素实测、Hyprland 输入、HiDPI 和 2px overlay 均 BLOCKED / NOT RUN。
 - 本机非 GUI 检查：`verify_project.py` 29 项、C 测试 3 项、4 个 shell 脚本语法、Zamak 0.2.0 check、5 项项目 tests/build、Arch helper build、`git diff --check` 均 PASS。未操作本机 GUI/Hyprland IPC，未执行 Polkit、drop_caches、Swap/ZRAM 操作。
 - 下一步：更新规格分支记忆/文档，推送并创建独立 Issue #3 Draft PR；保留 PR #4 Draft，等待 ChatGPT 复审；不合并 PR #2/#4，不进入 P2B。
+- R6 当前 PR #4 head `e2d3c5e4481e9494472913f41636580369038cd8` 的 GUI push/PR `40191454446` / `40191456330` 与 build push/PR `40191454361` / `40191456339` 均 PASS。最终全量差异复核发现 README/provenance 仍误称 `xdotool windowclose` 是通过路径；已改为准确描述隔离 Openbox 下的 XTEST Alt+F4，并说明 `windowclose` 调用 `XDestroyWindow`。只更正文档与错误提示，探针源码 SHA 不变；新 head 待 Actions 复验。
 
 ## 最近记录：P2A-R5 尺寸修正与隔离 GUI CI（2026-10-25）
 
