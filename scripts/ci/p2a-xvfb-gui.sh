@@ -334,14 +334,17 @@ done
 }
 xprop -id "$close_window_id" WM_PROTOCOLS WM_STATE \
   | tee "$artifact_dir/window-close-protocols.txt"
+xprop -root _NET_SUPPORTING_WM_CHECK _NET_SUPPORTED \
+  | tee "$artifact_dir/window-manager-protocols.txt"
 grep -q 'WM_DELETE_WINDOW' "$artifact_dir/window-close-protocols.txt" || {
   printf 'The GTK window does not advertise WM_DELETE_WINDOW; a graceful close cannot be tested.\n' >&2
   exit 1
 }
-# xdotool windowclose destroys only the X window. windowquit sends the graceful WM close request.
-printf 'xdotool windowquit: graceful WM_DELETE_WINDOW request; xdotool windowclose would destroy the X window.\n' \
+# xdotool windowclose uses XDestroyWindow; Alt+F4 exercises the actual WM close binding.
+printf 'XTEST Alt+F4 to focused GTK window; WM should send WM_DELETE_WINDOW. xdotool windowclose is destructive.\n' \
   | tee "$artifact_dir/window-close-request.txt"
-xdotool windowquit "$close_window_id"
+xdotool windowfocus --sync "$close_window_id"
+xdotool key --clearmodifiers Alt+F4
 close_seen=false
 for _ in {1..50}; do
   if grep -Fq 'CI_WINDOW_CLOSE' "$close_log"; then
