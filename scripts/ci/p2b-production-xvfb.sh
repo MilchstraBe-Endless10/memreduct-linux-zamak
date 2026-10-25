@@ -160,6 +160,7 @@ wait_for_marker 'CI_PRODUCTION_START'
 wait_for_marker 'CI_MEMORY source=/proc/meminfo'
 wait_for_marker 'CI_DRAW width='
 for group in 0 1 2; do
+  wait_for_marker "CI_LAYOUT_GROUP index=$group locale=en "
   grep -Fq "CI_LAYOUT_GROUP index=$group locale=en " "$artifact_dir/client.log"
   grep -Fq "row0=Usage@" "$artifact_dir/client.log"
   grep -Fq "row1=Available@" "$artifact_dir/client.log"
@@ -210,6 +211,7 @@ window_geometry "$artifact_dir/geometry-zh.txt"
 capture 'production-main-zh.png'
 assert_changed 'production-main-en.png' 'production-main-zh.png' 'locale-pixel-diff.txt'
 for group in 0 1 2; do
+  wait_for_marker "CI_LAYOUT_GROUP index=$group locale=zh-CN "
   grep -Fq "CI_LAYOUT_GROUP index=$group locale=zh-CN " "$artifact_dir/client.log"
   grep -Fq "row0=已用@" "$artifact_dir/client.log"
   grep -Fq "row1=空闲@" "$artifact_dir/client.log"
