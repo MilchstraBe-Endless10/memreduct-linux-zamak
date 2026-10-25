@@ -217,9 +217,18 @@ for group in 0 1 2; do
   grep -Fq "row1=空闲@" "$artifact_dir/client.log"
   grep -Fq "row2=总计@" "$artifact_dir/client.log"
 done
-xdotool mousemove --sync --window "$window_id" 70 12 click 1
+marker='CI_MENU root=2 open=true'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
+xdotool mousemove --sync --window "$window_id" 70 22 click 1
+wait_for_new_marker "$marker" "$previous_count"
+marker='CI_LANGUAGE_MENU open=true'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
+popup_marker='CI_POPUP kind=language menu=2 locale=zh-CN'
+popup_previous_count="$(grep -Fc -- "$popup_marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 82 91 click 1
-wait_for_marker 'CI_LANGUAGE_MENU open=true'
+wait_for_new_marker "$marker" "$previous_count"
+wait_for_new_marker "$popup_marker" "$popup_previous_count"
+sleep 0.2
 capture 'production-language-menu-zh.png'
 xdotool key --clearmodifiers Escape
 menu_index=1
