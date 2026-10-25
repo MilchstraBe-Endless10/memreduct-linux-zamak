@@ -1,24 +1,26 @@
 # 短期记忆 / Latest Handoff
 
-日期：2026-10-25；任务：P2A-R6 规格入库及隔离 UI CI 补强（进行中）。
+## 最近记录：P2A-R6 规格入库与隔离 GUI CI（2026-10-25）
 
-## 本轮基线与已核对状态
-- 文档分支 `docs/issue-3-p2a-ui-spec` 基于 P1 `11b0b9444cd94f0026b855abe3849a06106426f2`；本轮开始时文档未提交。
-- PR #2 仍 OPEN / Draft，head `11b0b9444cd94f0026b855abe3849a06106426f2`；PR #4 仍 OPEN / Draft，R6 head `a522e5629fc89969533527b4d806e71e58fb9be7`。
-- PR #4 R6 push run `40189616016`、PR run `40189619021`：Wayland Headless job 均 PASS，Xvfb job 均 FAIL 于窗口关闭场景；两类 artifact 均已上传。Build run `40189616005` 与 `40189619010` 均 PASS。完整失败原因：CI 启动 Xvfb 但未启动窗口管理器，`xdotool windowclose` 导致 GdkWindow unexpected destroy，未触发 `CI_WINDOW_CLOSE`；GTK 随后打印对象/帧时钟 critical。Pressed vs hover ROI 与 release pixel diff 均记录为 8004，前序 X11 交互和几何断言通过。计划仅在隔离 Xvfb 上启动 runner 自有 WM 后重测，不操作宿主桌面。
+## 本轮基线与结果
+- 文档分支 `docs/issue-3-p2a-ui-spec` 独立基于 P1 `11b0b9444cd94f0026b855abe3849a06106426f2`，不包含 PR #4 测试代码；源码规格已在该分支，正在推送并创建独立 Draft PR。
+- PR #2 仍 OPEN / Draft，head `11b0b9444cd94f0026b855abe3849a06106426f2`；PR #4 仍 OPEN / Draft，base `fix/issue-1-zamak-build`，最终本轮 head `e2d3c5e4481e9494472913f41636580369038cd8`，远端 SHA 已核对一致。
+- R6 GUI Actions push [40191454446](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191454446) 与 PR [40191456330](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191456330) 均 PASS；build-and-test push [40191454361](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191454361) 与 PR [40191456339](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191456339) 均 PASS。Artifacts 已下载核验；含 X11/Wayland 日志、PNG、协议/几何状态和 SHA 清单。
+- 9 项既有 Zamak 事件路由测试函数原样保留，新增 3 项紧凑几何/双语用例；Zamak 0.2.0 共 12/12 PASS。探针源码 SHA-256：`d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。
+- Xvfb + Openbox 下实际 XTEST 验证 hover/pressed/release、按钮及箭头命中、菜单、Tab/Enter/Escape、双语和 resize；同按钮 ROI hover→pressed、pressed→release 差异均为 8004 像素。WM close 通过 Alt+F4 传递 WM_DELETE，记录 `CI_WINDOW_CLOSE`、`CI_APP_RETURNED`、退出码 0 且窗口消失。`xdotool windowclose` 实际用 `XDestroyWindow` 销毁 X 窗口，不作为 WM close 证据。
+- Weston Headless/Pixman Wayland socket、312×324 Canvas 绘制、受控退出及进程退出码 0 均 PASS。每个运行记录一次 `gdk_seat_get_keyboard` critical，未公告 `wl_seat`；两者相符但因果未证实，未隐藏 GTK 诊断。
 
 ## 文档与尺寸约束
 - 已整理 P2A 源码规格、互动矩阵、Linux 能力映射、版本差异、可行性及真实 Windows 截图采集清单；官方基准固定 `v.3.5.2` / `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。
 - 新增明确尺寸规则：主对话框 224×214 DLU、五个设置页模板各 260×168 DLU；生产 GUI 必须保持官方紧凑比例，不得放大。R5/R6 336×348 顶层、312×324 Canvas 仅为 96-DPI 估算的 CI 探针尺寸，不是 Windows 测量或产品目标。
-- 官方 Windows 原生截图及真实 DLU→物理像素换算仍 BLOCKED；overlay/diff/2px 结果 NOT RUN。没有新增或公开私人截图/路径。
+- 官方 Windows 原生截图及真实 DLU→物理像素换算仍 BLOCKED；overlay/diff/2px 结果 NOT RUN。336×348 top-level / 312×324 Canvas 仅为 CI 探针尺寸。没有新增或公开私人截图/路径。
 
 ## 本机只读/非 GUI 验证
-- `python3 scripts/verify_project.py` PASS（29 项）。
-- `python3 -m unittest discover -s tests -v` PASS（3 项 C 安全测试）。
-- 4 个 `scripts/*.sh` `bash -n` PASS。
-- Zamak `0.2.0`、`zam check .`、`zam test .`（5 passed）、`zam build .`、`bash scripts/build-arch.sh`、`git diff --check` PASS。
+- `python3 scripts/verify_project.py` PASS（29 项）；`python3 -m unittest discover -s tests -v` PASS（3 项 C 安全测试）。
+- 所有 `scripts/*.sh` 语法检查 PASS；Zamak `0.2.0`、`zam check .`、`zam test .`（5 passed）、`zam build .`、`bash scripts/build-arch.sh`、`git diff --check` PASS。
 - 未启动 GUI/Compositor，未使用 Hyprland IPC、鼠标键盘注入或特权清理接口；未触碰 Swap/ZRAM/Polkit。
-- 后续：在隔离 Xvfb 中加窗口管理器复测 close；R6 全部 CI 通过后完成最终记忆、P2A Draft PR 和 Issue #3 进度。PR #2/#4 均不合并，P2B 未开始。
+- 规格分支更新官方 3.5.2 源码规格、资源/交互矩阵、Linux 语义、安全边界、真实 Windows 截图缺口、Zamak 技术结论及紧凑尺寸约束；长期规则写入 AGENTS/PRD/ARCHITECTURE/LONG_TERM。Windows release 截图和真实像素比较仍 BLOCKED。
+- 未启动本机 GUI 或 compositor，未访问 Hyprland IPC，未执行 Polkit、内存清理、Swap/ZRAM 操作。PR #2/#4 不合并；P2B 不开始。下一步完成规格分支提交、独立 Issue #3 Draft PR 与各分支最终 SHA/CI 核验。
 
 日期：2026-10-25；任务：P1 Zamak 0.2.0 编译与原生构建验收。
 

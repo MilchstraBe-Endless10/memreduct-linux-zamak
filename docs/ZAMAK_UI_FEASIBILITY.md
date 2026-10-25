@@ -1,12 +1,12 @@
 # Zamak 0.2.0 UI 精确绘制可行性记录（P2A-R1）
 
-状态：Canvas 绘制和 Zamak 0.2.0 构建已验证；R5 隔离 Xvfb/XTEST 证明探针内鼠标、菜单、键盘与中英文路由；R6 正在验证 pressed ROI、resize 和 window-close。生产 UI、Windows 2 px 对照、真实 Hyprland 输入、托盘/SNI 与 HiDPI 仍未通过验收。测试探针不改生产主程序，不连接内存读取、helper、Polkit、drop_caches、Swap 或 ZRAM。
+状态：Canvas 绘制和 Zamak 0.2.0 构建已验证；R6 隔离 Xvfb/XTEST 对探针完成 hover/pressed/release ROI、鼠标命中、菜单、键盘、双语、resize 与 WM close；Weston Headless/Pixman 验证 Wayland socket、GTK Canvas 绘制和正常退出。生产 UI、Windows 2 px 对照、真实 Hyprland 输入、托盘/SNI 与 HiDPI 仍未通过验收。测试探针不改生产主程序，不连接内存读取、helper、Polkit、drop_caches、Swap 或 ZRAM。
 
 ## 1. 核验环境和可复现材料
 
 - Toolchain: Zamak 0.2.0。
 - R1 曾在本地 Wayland/GTK 环境验证 Canvas 绘制，但旧探针尺寸被平铺，不作为窗口几何或产品截图证据。其本机截图和绝对路径不纳入此 PUBLIC 规格 PR。
-- 当前隔离 CI 探针源码由 [PR #4](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/4) 跟踪；R6 fixture SHA-256 为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。CI 当前实测的紧凑 GTK probe 为顶层 336×348、Canvas 312×324；这是 DLU/base-unit 估算，不是 Windows 实测尺寸。
+- 当前隔离 CI 探针源码由 [Draft PR #4](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/4) 跟踪；fixture SHA-256 为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。CI 实测的探针是 top-level 336×348、Canvas 312×324；仅为独立测试夹具，不是 DLU 实测换算或生产窗口尺寸。R6 PR/push GUI runs `40191456330`/`40191454446` 的 X11 与 Wayland jobs 均 PASS。
 
 ## 2. 技术路径比较
 
@@ -25,7 +25,7 @@
 
 早期 R1 探针请求 338×395，绘制菜单文字、双语统计占位文案、分隔线和 split button；数值使用破折号，未连接系统操作。它只证明绘制路径可用。该尺寸来自用户参考图猜测且被 compositor 平铺，已被后续 3.5.2 DLU 基准纠正。
 
-R5 的 GitHub-hosted Xvfb/XTEST 测试以 336×348 顶层、312×324 GTK Canvas 实际注入鼠标/键盘并验证菜单、状态和 locale。Weston Headless/Pixman 只证明 Wayland socket、window/draw 和事件循环退出；它没有输入 seat，所以不代表 Wayland 鼠标/键盘验收。R6 新断言结果以 PR #4 最终 CI artifact 为准。
+R6 的 GitHub-hosted Xvfb/XTEST 测试以 336×348 顶层、312×324 GTK Canvas 实际注入鼠标/键盘并验证菜单、状态、locale、窗口 resize 与关闭。按钮 ROI 的 hover-only→held-press 和 pressed→release 像素差分别为 8004。WM close 使用隔离 Openbox + XTEST Alt+F4，日志包含 `CI_WINDOW_CLOSE` 与 `CI_APP_RETURNED`，进程退出码 0 且窗口消失。Weston Headless/Pixman 验证 Wayland socket、window/draw 和事件循环退出，但没有 `wl_seat`；因此不代表 Wayland 鼠标/键盘验收。每次客户端日志可见一次 `gdk_seat_get_keyboard` critical；与缺少输入 seat 的相关性尚未证明因果。
 
 ## 4. 对 P2 实施的技术门槛
 

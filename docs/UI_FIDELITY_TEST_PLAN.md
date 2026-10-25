@@ -69,7 +69,11 @@ CI 探针不读取 `/proc`、不调用 helper/Polkit、不执行清理、不修�
 | WAYLAND-POC-CHECK | Canvas probe zam check | PASS | CHECK OK p2a_canvas_probe |
 | WAYLAND-POC-BUILD | Canvas probe zam build | PASS | 输出 SHA 2030151c58b6cdb1ccc9ef35e9f931f2831822a8fc4b8cba6cc6086881d495e8 |
 | WAYLAND-POC-RENDER | Canvas app 在 Hyprland/Wayland显示 | PASS（仅绘制） | xwayland=false，截图已保存；compositor 平铺为941×1030 |
-| WAYLAND-POC-INPUT | 点击 split 主区/箭头、Escape/Enter 实际事件 | NOT RUN | 回调编译；未通过鼠标/键盘事件工具运行 |
+| CI-X11-INPUT | 隔离 Xvfb/XTEST hover、按下/释放 ROI、按钮/箭头命中、菜单、Tab/Enter/Escape、双语与 resize | PASS（探针级） | PR run `40191456330` 和 push run `40191454446` 均通过；hover-only→held-press ROI 改变 8004 像素，pressed→release 也为 8004；不代表产品 UI 或 Wayland 输入 |
+| CI-X11-CLOSE | 独立 GTK 窗口收到真实 WM close，回调与进程退出 | PASS（X11 探针级） | 隔离 Xvfb + Openbox 下 XTEST Alt+F4；出现 `CI_WINDOW_CLOSE`、`CI_APP_RETURNED`、退出码 0、窗口消失。`xdotool windowclose` 走 `XDestroyWindow`，不适合作为 GTK WM_DELETE 验收 |
+| CI-X11-GEOMETRY | 336×348 top-level、312×324 Canvas、命中区域/弹出菜单、双语布局及 resize | PASS（探针级） | 固定 GTK 测试夹具的逻辑尺寸，不是 Windows 3.5.2 像素尺寸；生产窗口仍按 224×214 DLU 和 260×168 DLU 模板换算 |
+| CI-WAYLAND-LIFECYCLE | Weston Headless/Pixman socket、GTK Canvas 创建绘制、事件循环退出 | PASS（生命周期） | PR run `40191456330` 与 push run `40191454446` 均通过；一次 `gdk_seat_get_keyboard` critical，Weston 未公告 `wl_seat`。关系符合 headless 输入 seat 缺失的可能解释，但因果未证实；未屏蔽诊断 |
+| WAYLAND-POC-INPUT | 在 Wayland/Hyprland 中对生产窗口注入并验证真实鼠标/键盘事件 | NOT RUN | Weston Headless 没有输入 seat；X11/XTEST 结果不能替代 Wayland/Hyprland 实测 |
 | GTK-SNI | Tray 注册、菜单、中键、通知 | NOT RUN | Ayatana 库安装版本已读；当前 session D-Bus 无法从 shell 验证 |
 | PIXEL-OVERLAY | Windows/Linus overlay/diff、2 px 几何 | NOT RUN | 没有可信 Windows 源图，也没有实现后的目标窗口 |
 | DPI-2X | 高 scale/HiDPI 复测 | NOT RUN | 本轮只记录scale 1 |
@@ -83,7 +87,8 @@ CI 探针不读取 `/proc`、不调用 helper/Polkit、不执行清理、不修�
 
 ## 7. P2A CI 证据边界
 
-- R5 在 GitHub-hosted Ubuntu 24.04、Zamak 0.2.0 下通过 9 项事件路由测试；Xvfb/XTEST 实际发送了鼠标与键盘事件并采集探针截图。它不是生产 UI 验收。
-- Weston Headless/Pixman 通过私有 Wayland socket 创建 GTK Canvas，运行 `ui.quit()` 并正常返回。Headless 不提供用于真实输入验收的 `wl_seat`；原始客户端日志记录到一次 `gdk_seat_get_keyboard` GDK critical，随后 draw 与退出正常。该现象与缺少输入 seat 相符，但相关性不等于已证实根因。
-- CI artifact 有时限；测试断言、源码 hash、环境、方法和状态应保存在仓库。artifact 截图不得标为 Mem Reduct 3.5.2 golden。
-- 本计划在取得真实 Windows release 图及对应 Linux 目标截图之前，将 `PIXEL-OVERLAY` 和 2 px 控件误差保持为 `NOT RUN`，截图采集保持 `BLOCKED`。
+- R6 在 GitHub-hosted Ubuntu 24.04、Zamak 0.2.0 下保留原 9 项事件路由测试并新增 3 项紧凑探针测试，12/12 通过。Xvfb/XTEST 真实经过图形服务器发送鼠标和键盘事件，验证 hover-only 与 held-press 的同坐标按钮 ROI 差异、释放、按钮/下拉命中、菜单、双语、resize 和 WM close。
+- WM close 使用隔离 Xvfb 中启动的 Openbox 与 XTEST Alt+F4；日志记录 `CI_WINDOW_CLOSE`、`CI_APP_RETURNED`，退出码为 0 且窗口消失。源码核查显示 `xdotool windowclose` 实际执行 `XDestroyWindow`，属于直接销毁 X 窗口，不是正常 WM_DELETE 请求，因此不用于通过验收。
+- Weston Headless/Pixman 通过唯一私有 Wayland socket 建立 GTK Canvas 并绘制 312×324，测试退出路径返回且进程退出码 0。每次日志有一次 `gdk_seat_get_keyboard` critical，Weston 未公告 `wl_seat`。两者相符但不证明根因；没有隐藏 GTK diagnostics。该 lane 不测试鼠标/键盘输入。
+- R6 证据：PR run [40191456330](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191456330)、push run [40191454446](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191454446) 均成功并上传 artifacts；build-and-test PR/push runs [40191456339](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191456339) / [40191454361](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191454361) 均成功。探针源码 SHA-256 为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。Artifact 保留期限 14 天；其中的 PNG 是模拟探针截图，不是原版或产品截图。
+- CI 窗口 336×348（Canvas 312×324）仅是测试夹具；生产 GUI 必须保持官方紧凑资源尺寸按真实字体/DPI转换，不得放大。真实 Windows release 图、Linux 产品目标图、overlay/diff 和 2 px 几何验收仍 BLOCKED / NOT RUN。
