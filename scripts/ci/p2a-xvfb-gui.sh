@@ -109,13 +109,19 @@ wait_for_marker() {
 }
 check_geometry() {
   local output="$1"
-  local width height
+  local width height canvas_size
   xwininfo -id "$window_id" >"$output"
   width="$(awk '$1 == "Width:" {print $2; exit}' "$output")"
   height="$(awk '$1 == "Height:" {print $2; exit}' "$output")"
-  printf 'Observed X11 client geometry: %sx%s\n' "$width" "$height"
+  canvas_size="$(grep -m 1 '^CI_DRAW width=' "$artifact_dir/client.log" | sed -E 's/^CI_DRAW width=([^ ]+) height=([^ ]+).*$/\1x\2/')"
+  printf 'Observed X11 top-level geometry: %sx%s; GTK Canvas viewport: %s\n' "$width" "$height" "$canvas_size"
+  printf 'GTK Canvas viewport: %s\n' "$canvas_size" >>"$output"
   [[ "$width" == "338" && "$height" == "395" ]] || {
-    printf 'Expected 338x395 Canvas client area.\n' >&2
+    printf 'Expected compact 338x395 top-level window.\n' >&2
+    return 1
+  }
+  [[ "$canvas_size" == "314.0x371.0" ]] || {
+    printf 'Expected compact 314x371 GTK Canvas viewport.\n' >&2
     return 1
   }
 }
@@ -152,7 +158,7 @@ xdotool mousemove --sync --window "$window_id" 170 310 click 1
 wait_for_marker 'CI_MOUSE_ACTION action=6'
 wait_for_marker 'CI_STATE option=B'
 
-xdotool mousemove --sync --window "$window_id" 278 10 click 1
+xdotool mousemove --sync --window "$window_id" 278 22 click 1
 wait_for_marker 'CI_STATE locale=zh'
 import -window "$window_id" "$artifact_dir/04-probe-zh.png"
 xdotool windowfocus --sync "$window_id"
