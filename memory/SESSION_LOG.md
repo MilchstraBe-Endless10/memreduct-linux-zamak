@@ -46,6 +46,16 @@
 - PR #5 创建时 head `b94731b9a9bc52a4834358f9f71fcf86a2033925`；创建后继续提交了记忆与会话日志同步，因此最终 head 另有推进，以当前远端 `docs/issue-3-p2a-ui-spec` SHA 为准。Push 与 pull_request build-and-test 已触发。
 - 源码规格 head `90d62100e840aa408e4ea99cbbd866ef2025e99e` 的 PR `40191901022` 与 push `40191896559` build-and-test 均 PASS；验证治理文件、shell syntax、C safety tests、Zamak 0.2.0 check/test/build。随后本次记忆同步提交只变更 Markdown；提交后需要再核对 PR head 与其新 Actions。
 - 真实 Windows 3.5.2 截图、实际 DLU 像素换算、双边截图 overlay/diff 和 2 px 验收仍 BLOCKED / NOT RUN。该 PR 是源码级规格审阅交付，不是 P2A 像素验收或 P2B 实现批准。
+
+## 2026-10-25 — P2A-R7 规格门槛核对与 P2B-1 生产主窗口
+
+- 复核 PR #5 已修正 head `d89d74fde433da1863b4de0223f974c824fb590e`、base P1 `11b0b9444cd94f0026b855abe3849a06106426f2`；PR #5 仍 OPEN / Draft，CI 2/2 PASS。`IDD_MAIN=224×214 DLU` 是主窗模板，每个 `IDD_SETTINGS_* =260×168 DLU` 是单页模板；真实 Windows 像素验收仍阻塞。
+- P2B 分支从 `docs/issue-3-p2a-ui-spec` 创建，未从 PR #4 探针分支派生；Draft PR #6 base 为修正规格分支。生产代码经提交 `a6df90389a69fc9cad12272c2daa2f273c834385` 测试通过；期间修复 XTEST 语言子菜单、分割按钮和清理弹窗坐标，依据实际 GTK Canvas 12 px inset 的 CI 事件日志校准。
+- 正式生产窗口 Xvfb/XTEST PR run `40199653180` 与 push run `40199649320` PASS；生产生命周期 Weston/Pixman 使用同一 PR run PASS；build-and-test PR run `40199653440` 与 push run `40199649284` PASS。X11 截图/日志 artifact `12601156413`，Wayland/client artifact `12601781592`。
+- Xvfb 实测 top-level client 337×369、Canvas 313×345、scale 1；英文/简中主窗、View/Language 菜单及清理下拉有截图和 SHA-256。菜单、split-button 命中、双语切换、键盘与 Alt+F4 close 的测试来自生产程序，不是 Canvas 探针。
+- Weston Headless 13.0.0 使用私有 Wayland socket、Pixman、XDG_RUNTIME_DIR mode 0700；应用读真实 meminfo 并正常返回，退出码 0。日志含一条 GTK seat critical、未公告 `wl_seat`，以及 Weston SIGTERM 清理时 `BUG: finalizing a layer with views still on it.`。异常被如实保留；没有证据将其归为生产应用故障，也没有操作活动 Hyprland。
+- 本机 `python3 scripts/verify_project.py`（29 项）、C 安全测试（3 项）、shell syntax、Zamak 0.2.0 check/test/build（7/7）、Arch build（含 helper）、`git diff --check` 均 PASS。没有启动本机 GUI、Hyprland IPC、内存清理、Polkit、Swap 或 ZRAM 写操作。
+- 生产控件状态与截图证据见 `docs/P2B-1_PRODUCTION_UI_REPORT.md`；测试矩阵和交互表已更新。真实 Windows v3.5.2 截图、真实字体/DPI DLU 校准、overlay/2 px、Hyprland 输入、HiDPI、设置页和托盘仍 BLOCKED / NOT RUN。PR #2/#4/#5/#6 均未合并。
 # P2A-R7 规格修正与 P2B-1 生产主窗口候选（2026-10-25）
 
 ## 开工状态

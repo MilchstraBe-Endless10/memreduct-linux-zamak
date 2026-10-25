@@ -93,3 +93,16 @@ CI 探针不读取 `/proc`、不调用 helper/Polkit、不执行清理、不修�
 - Weston Headless/Pixman 通过唯一私有 Wayland socket 建立 GTK Canvas 并绘制 312×324，测试退出路径返回且进程退出码 0。每次日志有一次 `gdk_seat_get_keyboard` critical，Weston 未公告 `wl_seat`。两者相符但不证明根因；没有隐藏 GTK diagnostics。该 lane 不测试鼠标/键盘输入。
 - R6 最终 PR 证据：GUI [PR run 40192531809](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192531809)、push run [40192528601](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192528601)；build-and-test [PR run 40192531948](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192531948)、push run [40192528611](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192528611) 均成功。GUI 源 head 为 `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1`；探针源码 SHA-256 为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。PR artifacts 保留期限 14 天；PNG 是模拟探针截图，不是原版或产品截图。
 - CI 窗口 336×348（Canvas 312×324）仅是测试夹具；生产 GUI 须保持官方紧凑尺寸并用可校准的集中几何参数，从真实字体/DPI 换算。真实 Windows release 图、Linux 产品目标图、overlay/diff 和 2 px 几何验收仍 BLOCKED / NOT RUN。源码规格审查可允许 P2B 待校准生产窗口开发，但不能宣称像素通过。
+
+## 8. P2B-1 production window candidate evidence
+
+| Test ID | 内容 | 结果 | 证据 / 限制 |
+|---|---|---|---|
+| P2B-PROD-X11 | 在 Ubuntu 24.04.5 / Xvfb 中构建并运行正式 `src/main.zm`；生产窗口双语、菜单、split button、真实 `/proc/meminfo`、键盘和 WM close | PASS | PR GUI run `40199653180`，head `a6df90389a69fc9cad12272c2daa2f273c834385`；artifact `12601156413`。Xvfb 1024×768×24、scale 1、337×369 top-level client、313×345 Canvas。XTEST 传递真实 X11 鼠标/键盘事件；应用退出码 0，关闭后窗口消失。 |
+| P2B-PROD-WAYLAND | 在独立 Weston Headless/Pixman 上运行正式窗口并结束应用事件循环 | PASS (diagnostics recorded) | 同一 PR GUI run，artifact `12601781592`。Weston 13.0.0，私有 socket，临时 XDG_RUNTIME_DIR mode 0700，DISPLAY unset；客户端连接、绘制、采样 `/proc/meminfo`、`app.run` 返回、退出码 0。未测试输入。GTK 记录一条 `gdk_seat_get_keyboard` critical，`wl_seat` 未公告；Weston 收到 SIGTERM 清理时记录 `BUG: finalizing a layer with views still on it.`，均保留原始日志。 |
+| P2B-PROD-MEMORY | 主窗口展示真实 RAM 和 Swap 字段 | PASS | 客户端日志记录 `CI_MEMORY source=/proc/meminfo` 与 MemTotal/MemAvailable/SwapTotal/SwapFree 原始 KiB；周期刷新由 GUI 定时器触发。System working set 始终显示不可用，不以 Cached 代替。 |
+| P2B-PROD-CLEAN-SAFETY | 主按钮与 Windows 八个清理选项 | PASS | 主区和下拉菜单真实 XTEST 命中；显示禁用状态，事件记录 `action=none`；无 Polkit、drop_caches、Swap 或 ZRAM 操作。 |
+| P2B-WIN-PIXEL | 与 Windows v3.5.2 原生图进行 paired overlay / 2 px 对照 | BLOCKED / NOT RUN | 缺少有元数据的 Windows 正版截图和实测字体/DPI 转换。CI 图仅是 Linux 生产候选截图。 |
+| P2B-HYPRLAND / DPI-2X | Hyprland 输入与高 DPI | NOT RUN | 没有访问活动用户桌面；CI 只使用 scale 1。 |
+
+完整主窗口控件状态表、截图 SHA-256、二进制/源码 SHA-256 和 artifact 链接见 [P2B-1 生产窗口报告](P2B-1_PRODUCTION_UI_REPORT.md)。R5/R6 的独立 Canvas 探针和 12 项测试仍由 PR #4 单独维护；不以探针通过替代生产程序验收。

@@ -1,16 +1,14 @@
 # 短期记忆 / Latest Handoff
 
-## 最近记录：P2A-R7 规格修正及 P2B-1 开发（2026-10-25）
+## 最近记录：P2B-1 生产主窗口候选与 CI 复测（2026-10-25）
 
-### 开工核验与纠正
-- PR #2、PR #4、PR #5 均为 OPEN / Draft；PR #5 head `6b3862b0e6d105f42dbf8d2d6c679cdfb182ad16`，base `11b0b9444cd94f0026b855abe3849a06106426f2`；PR #4 最终 head `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1`。没有合并任何 PR，未修改 main、P1 或 PR #4。
-- PR #4 最终 GUI PR Actions `40192531809`、build PR Actions `40192531948` 已在规格文档中刷新；同 SHA push runs 为 `40192528601`、`40192528611`。
-- 尺寸约束更正：`IDD_MAIN=224×214 DLU` 是主窗模板；每个 `IDD_SETTINGS_* =260×168 DLU` 是设置子页面模板，不能当作含导航、底部按钮和边框的完整设置窗口尺寸。P2B 可开发参数集中、明确未校准的紧凑候选，真实 Windows 像素验收独立保持 BLOCKED。
-
-### 本轮开发状态
-- 在规格 PR 分支更新了最终 CI 证据、DLU 页面/外框说明及 P2B 候选与最终像素验收的门槛区分。
-- P2B-1 将从修正规格分支新建独立功能分支，实现生产 `src/main.zm` UI；PR #4 的 12 项探针测试保持原样。最终构建、隔离生产 GUI CI、截图哈希和各控件状态待实施后记录。
-- 不在主机启动 GUI，不连接活动 Hyprland IPC，不执行清理、Polkit、Swap 或 ZRAM 操作。Windows 原版真实截图、DLU 实测换算及 2 px 对照仍 BLOCKED / NOT RUN。
+- PR #5 的 R7 规格修正 head `d89d74fde433da1863b4de0223f974c824fb590e` 已核对，仍 OPEN / Draft，CI 2/2 PASS；正式 `IDD_MAIN=224×214 DLU` 为主窗口模板，每个 `IDD_SETTINGS_* =260×168 DLU` 是子页模板。R6 Actions `40192531809` / `40192531948` 与对应 push runs `40192528601` / `40192528611` 已记录。没有合并 PR #2/#4/#5。
+- P2B 独立分支 `feat/issue-3-p2b-main-window` 从 PR #5 修正规格分支派生；PR #6 OPEN / Draft，base 为 `docs/issue-3-p2a-ui-spec`。生产代码 head `a6df90389a69fc9cad12272c2daa2f273c834385` 通过 PR GUI run `40199653180`、build-and-test run `40199653440`；push GUI/build runs `40199649320` / `40199649284` 也通过。远端分支 SHA 已核对。
+- 生产 `src/main.zm` 以真实 `/proc/meminfo` 显示 RAM/Swap，System working set 显示不可用；英文/简中独立切换；清理按钮和八项 Windows 清理选择全部禁用，不触发 Polkit 或内核写操作。DLU 转换参数集中在 `src/ui_geometry.zm`，仍为未校准估算。
+- Xvfb/XTEST 实测正式窗口：top-level 337×369、Canvas 313×345，scale 1；点击语言菜单、split button、禁用区域、Tab/方向键/Enter/Escape 与 Alt+F4 close 均通过，退出码 0。实际截图及 SHA-256 在 `docs/P2B-1_PRODUCTION_UI_REPORT.md` 和 artifact `12601156413`。
+- Weston 13.0.0 Headless/Pixman 私有 Wayland socket 下正式客户端连接、绘制、读 meminfo、退出码 0；不测试 Wayland 输入。诊断保留：一次 `gdk_seat_get_keyboard` critical、`wl_seat` 未公告；Weston SIGTERM 清理日志含 `BUG: finalizing a layer with views still on it.`，尚未确认为应用故障，不隐藏日志。
+- 本机 `verify_project.py` 29 项、C 安全单测 3 项、shell syntax、Zamak 0.2.0 check/test/build（7/7）、`scripts/build-arch.sh`、`git diff --check` 均 PASS。没有在主机启动 GUI、访问活动 Hyprland IPC、操作用户桌面或执行特权清理。
+- Windows 原生 v3.5.2 截图、真实字体/DPI DLU 校准、配对 overlay/2 px 验收仍 BLOCKED / NOT RUN；Hyprland 鼠标/键盘、HiDPI、设置页与托盘未实现。PR #4 保留独立 12/12 探针测试，未并入 PR #6。
 
 ## 历史记录：P2A-R6 规格入库与隔离 GUI CI（2026-10-25）
 
