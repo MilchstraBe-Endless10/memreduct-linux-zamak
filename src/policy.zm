@@ -1,0 +1,20 @@
+# Thresholds are based on MemAvailable, not MemFree. The Linux kernel
+# already opportunistically uses spare RAM for recoverable cache.
+use memory
+
+pub fn may_reclaim(s: &memory.Snapshot, threshold: i64, now: f64, last: f64) -> bool:
+    if threshold < 75 or threshold > 98: return false
+    if s.percent() < threshold: return false
+    if s.cached < 256 * 1024: return false
+    if last > 0.0 and now - last < 1800.0: return false
+    true
+
+fn test_automatic_policy() -> !string:
+    let s = memory.parse("MemTotal: 8192000 kB\nMemAvailable: 409600 kB\nCached: 1024000 kB\n")?
+    assert may_reclaim(&s, 90, 1900.0, 0.0)
+    assert not may_reclaim(&s, 90, 1900.0, 1800.0)
+    assert not may_reclaim(&s, 99, 1900.0, 0.0)
+
+fn test_no_cache_does_not_trigger() -> !string:
+    let s = memory.parse("MemTotal: 8192000 kB\nMemAvailable: 409600 kB\nCached: 128 kB\n")?
+    assert not may_reclaim(&s, 90, 1900.0, 0.0)

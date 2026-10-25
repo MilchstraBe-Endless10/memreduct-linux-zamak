@@ -1,0 +1,9 @@
+[project]
+name = "memreduct-zamak"
+version = "0.2.0"
+description = "Unofficial Linux-native memory cache manager built with Zamak"
+entry = "src/main.zm"
+modules = "src"
+
+[native]
+sources = ["native/async_privileged.c"]

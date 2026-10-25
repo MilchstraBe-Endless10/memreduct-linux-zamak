@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Mem Reduct Linux (Zamak)
+Name[zh_CN]=Mem Reduct Linux 原生内存优化
+Comment=Reclaim clean Linux caches without stopping applications
+Comment[zh_CN]=按需回收 Linux 内存缓存
+Exec=/usr/bin/memreduct-zamak
+Icon=utilities-system-monitor
+Terminal=false
+Type=Application
+Categories=System;Utility;
+StartupNotify=true

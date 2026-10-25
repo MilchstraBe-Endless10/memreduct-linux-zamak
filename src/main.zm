@@ -1,0 +1,129 @@
+# Mem Reduct Linux — independent, unofficial Zamak-native implementation.
+# Only native/async_privileged.c may launch the fixed privileged helper.
+use std/ui
+use std/time
+use memory
+use policy
+
+extern fn mr_start_reclaim(mode: i64) -> i64
+extern fn mr_poll_reclaim() -> i64
+
+struct Desktop:
+    ram: ui.Label
+    caches: ui.Label
+    swap: ui.Label
+    state: ui.Label
+    bar: ui.Progress
+    mode: ui.Choice
+    auto_enabled: ui.Checkbox
+    threshold: ui.Spinbox
+    clean_button: ui.Button
+    last_attempt: f64
+    before_available: i64
+    busy: bool
+
+fn refresh(d: &mut Desktop):
+    let s = memory.sample() catch e:
+        d.state.set_text(f"无法读取内存数据：{e}")
+        return
+    d.ram.set_text(f"已用 {memory.mib(s.used())} / 总计 {memory.mib(s.total)} MiB    ·    可用 {memory.mib(s.available)} MiB")
+    d.caches.set_text(f"可回收缓存估计：{memory.mib(s.cached)} MiB")
+    d.swap.set_text(f"Swap 已用：{memory.mib(s.swap_used())} / {memory.mib(s.swap_total)} MiB")
+    d.bar.set_value(s.percent())
+
+fn begin_reclaim(d: &mut Desktop):
+    if d.busy: return
+    let s = memory.sample() catch e:
+        d.state.set_text(f"无法读取 RAM：{e}")
+        return
+    let rc = mr_start_reclaim(d.mode.selected())
+    if rc != 0:
+        d.state.set_text(f"清理程序启动失败：错误 {rc}；请检查安装和 pkexec")
+        return
+    d.busy = true
+    d.before_available = s.available
+    d.last_attempt = time.monotonic()
+    ui.set_enabled(d.clean_button, false)
+    d.state.set_text("正在请求授权并回收缓存…（不会关闭应用程序）")
+
+fn clean_clicked(d: &mut Desktop):
+    begin_reclaim(d)
+
+fn tick(d: &mut Desktop):
+    if d.busy:
+        let result = mr_poll_reclaim()
+        if result >= 0:
+            d.busy = false
+            ui.set_enabled(d.clean_button, true)
+            let s = memory.sample() catch e:
+                d.state.set_text(f"操作已结束，但刷新失败：{e}")
+                return
+            if result == 0:
+                let delta = memory.mib(s.available - d.before_available)
+                d.state.set_text(f"回收请求已执行。可用 RAM 变化：{delta} MiB（并非准确回收量）")
+            else:
+                d.state.set_text(f"操作未成功或已取消授权，退出码：{result}")
+    refresh(d)
+    if d.busy or not d.auto_enabled.checked(): return
+    let s = memory.sample() catch e: return
+    if policy.may_reclaim(&s, d.threshold.value(), time.monotonic(), d.last_attempt):
+        begin_reclaim(d)
+
+fn main():
+    let window = ui.window("Mem Reduct Linux · Zamak 社区版", 560, 340)
+    let ram = ui.label("正在读取内存信息…")
+    let caches = ui.label("")
+    let swap = ui.label("")
+    let bar = ui.progress()
+    let info = ui.group("物理内存与 Swap")
+    let info_col = ui.column()
+    info_col.add(ram)
+    info_col.add(bar)
+    info_col.add(caches)
+    info_col.add(swap)
+    info.set_child(info_col)
+
+    let mode = ui.choice(["文件页缓存", "目录及 inode 缓存", "所有可回收缓存"])
+    let button = ui.button("立即清理")
+    let actions = ui.row()
+    actions.add(mode, stretchy=true)
+    actions.add(button)
+
+    let auto_enabled = ui.checkbox("自动清理（默认关闭）")
+    let threshold = ui.spinbox(75, 98)
+    threshold.set_value(90)
+    let options = ui.row()
+    options.add(auto_enabled)
+    options.add(ui.label("使用率阈值 %"))
+    options.add(threshold)
+
+    let state = ui.label("按需回收文件缓存；不关闭程序，但可能降低后续文件读取速度。")
+    let layout = ui.column()
+    layout.add(ui.label("MEM REDUCT  /  LINUX NATIVE"))
+    layout.add(ui.label("Zamak · 原生编译 · GTK3 · 最小权限操作"))
+    layout.add(ui.separator())
+    layout.add(info)
+    layout.add(actions)
+    layout.add(options)
+    layout.add(state)
+    window.set_child(layout)
+
+    let app: ui.App[Desktop] = ui.app()
+    app.on_click(button, clean_clicked)
+    app.every(3000, tick)
+    let mut desktop = Desktop(
+        ram: ram,
+        caches: caches,
+        swap: swap,
+        state: state,
+        bar: bar,
+        mode: mode,
+        auto_enabled: auto_enabled,
+        threshold: threshold,
+        clean_button: button,
+        last_attempt: 0.0,
+        before_available: 0,
+        busy: false
+    )
+    refresh(&mut desktop)
+    app.run(window, desktop)

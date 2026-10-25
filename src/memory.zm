@@ -1,0 +1,68 @@
+# /proc/meminfo comes from the kernel. All values are KiB.
+use std/fs
+use std/string
+
+pub struct Snapshot:
+    total: i64
+    available: i64
+    cached: i64
+    swap_total: i64
+    swap_free: i64
+
+    pub fn used(&self) -> i64:
+        max(0, self.total - self.available)
+
+    pub fn percent(&self) -> i64:
+        if self.total <= 0: return 0
+        (self.used() * 100) // self.total
+
+    pub fn swap_used(&self) -> i64:
+        max(0, self.swap_total - self.swap_free)
+
+pub fn read_key(text: &string, key: &string) -> i64:
+    for line in text.lines():
+        let parts = line.split(":")
+        if len(parts) < 2: continue
+        if parts[0] != key: continue
+        let fields = parts[1].trim().split()
+        if len(fields) == 0: return 0
+        return string.parse_i64(fields[0]) catch e: 0
+    return 0
+
+pub fn parse(text: &string) -> Snapshot!string:
+    let total = read_key(text, "MemTotal")
+    let available = read_key(text, "MemAvailable")
+    if total <= 0 or available < 0 or available > total:
+        fail "无效或不完整的 /proc/meminfo"
+    Snapshot(
+        total: total,
+        available: available,
+        cached: read_key(text, "Cached") + read_key(text, "SReclaimable"),
+        swap_total: read_key(text, "SwapTotal"),
+        swap_free: read_key(text, "SwapFree")
+    )
+
+pub fn sample() -> Snapshot!string:
+    let text = fs.read("/proc/meminfo")?
+    parse(text)
+
+pub fn mib(kib: i64) -> i64:
+    kib // 1024
+
+fn test_read_key():
+    let sample = "MemTotal:      4096000 kB\nMemAvailable: 2048000 kB\nCached: 12345 kB\n"
+    assert read_key(sample, "Cached") == 12345
+    assert read_key(sample, "Missing") == 0
+
+fn test_parse_and_used() -> !string:
+    let input = "MemTotal: 8192000 kB\nMemAvailable: 4096000 kB\nCached: 1024000 kB\nSReclaimable: 256000 kB\nSwapTotal: 2097152 kB\nSwapFree: 1048576 kB\n"
+    let snapshot = parse(input)?
+    assert snapshot.percent() == 50
+    assert snapshot.cached == 1280000
+    assert snapshot.swap_used() == 1048576
+
+fn test_rejects_invalid():
+    let mut rejected = false
+    parse("Cached: 1 kB\n") catch e:
+        rejected = true
+    assert rejected
