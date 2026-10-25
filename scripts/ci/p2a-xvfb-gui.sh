@@ -6,7 +6,7 @@ artifact_dir="${ARTIFACT_DIR:-$root/artifacts/x11}"
 probe="${1:-$root/artifacts/probe/p2a_r4_canvas_probe}"
 mkdir -p "$artifact_dir"
 
-for cmd in Xvfb xdotool xwininfo import identify compare convert stdbuf grep awk xdpyinfo sed; do
+for cmd in Xvfb openbox xdotool xwininfo xprop import identify compare convert stdbuf grep awk xdpyinfo sed; do
   command -v "$cmd" >/dev/null || {
     printf 'Missing required X11 test command: %s\n' "$cmd" >&2
     exit 2
@@ -17,6 +17,7 @@ done
 runtime_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/p2a-r4-x11.XXXXXX")"
 chmod 0700 "$runtime_dir"
 xvfb_pid=""
+wm_pid=""
 app_pid=""
 stop_pid() {
   local pid="$1"
@@ -37,6 +38,7 @@ cleanup() {
   local status="$?"
   trap - EXIT INT TERM
   stop_pid "$app_pid"
+  stop_pid "$wm_pid"
   stop_pid "$xvfb_pid"
   rm -rf -- "$runtime_dir"
   exit "$status"
@@ -76,6 +78,28 @@ printf 'Xvfb display=%s screen=800x600x24; GDK_BACKEND=x11; XDG_RUNTIME_DIR mode
   "$DISPLAY" "$(stat -c '%a' "$runtime_dir")" | tee "$artifact_dir/environment.txt"
 xdpyinfo -queryExtensions | grep -E '(^|[[:space:]])XTEST([[:space:]]|$)' \
   | tee "$artifact_dir/xtest-extension.txt"
+
+mkdir -m 0700 "$runtime_dir/home" "$runtime_dir/config"
+HOME="$runtime_dir/home" XDG_CONFIG_HOME="$runtime_dir/config" \
+  openbox --sm-disable >"$artifact_dir/openbox.log" 2>&1 &
+wm_pid="$!"
+wm_ready=false
+for _ in {1..50}; do
+  if xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id'; then
+    wm_ready=true
+    break
+  fi
+  if ! kill -0 "$wm_pid" 2>/dev/null; then
+    break
+  fi
+  sleep 0.1
+done
+[[ "$wm_ready" == true ]] || {
+  printf 'Openbox did not register as the isolated X11 window manager.\n' >&2
+  cat "$artifact_dir/openbox.log" >&2 || true
+  exit 1
+}
+printf 'Window manager: Openbox (test child pid=%s)\n' "$wm_pid" | tee -a "$artifact_dir/environment.txt"
 
 stdbuf -oL "$probe" >"$artifact_dir/client.log" 2>&1 &
 app_pid="$!"
@@ -323,6 +347,11 @@ done
   cat "$close_log" >&2 || true
   exit 1
 }
+if grep -Eiq 'unexpectedly destroyed|invalid \(NULL\) pointer|g_signal_handler_disconnect: assertion|gdk_frame_clock_end_updating: assertion' "$close_log"; then
+  printf 'GTK reported an unexpected window/resource teardown during WM close.\n' >&2
+  cat "$close_log" >&2
+  exit 1
+fi
 returned_seen=false
 for _ in {1..50}; do
   if grep -Fq 'CI_APP_RETURNED' "$close_log"; then

@@ -56,14 +56,14 @@ jobs:
       - name: Install runner-only dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libgtk-3-dev pkg-config xvfb xdotool x11-utils imagemagick
+          sudo apt-get install -y build-essential libgtk-3-dev pkg-config xvfb xdotool x11-utils imagemagick openbox
       - name: Install pinned Zamak
         run: npm install --global @veyralux/zamak@0.2.0
       - name: Build probe and run 12 tests (nine preserved)
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/p2a-r4-x11
         run: bash scripts/ci/build-canvas-probe.sh
-      - name: Exercise GTK input, bilingual state, geometry, and close
+      - name: Exercise GTK input, bilingual state, geometry, and WM close
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/p2a-r4-x11
         run: bash scripts/ci/p2a-xvfb-gui.sh "$RUNNER_TEMP/p2a-r4-x11/probe/p2a_r4_canvas_probe"
