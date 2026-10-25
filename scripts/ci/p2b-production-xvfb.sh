@@ -172,6 +172,7 @@ for group in 0 1 2; do
   grep -Fq "row1=Available@" "$artifact_dir/client.log"
   grep -Fq "row2=Total available@" "$artifact_dir/client.log"
 done
+grep -Fq 'CI_LAYOUT_GROUP index=1 locale=en title=Pagefile / Swap ' "$artifact_dir/client.log"
 window_geometry "$artifact_dir/geometry-en.txt"
 capture 'production-main-en.png'
 
@@ -222,6 +223,7 @@ for group in 0 1 2; do
   grep -Fq "row1=空闲@" "$artifact_dir/client.log"
   grep -Fq "row2=总计@" "$artifact_dir/client.log"
 done
+grep -Fq 'CI_LAYOUT_GROUP index=1 locale=zh-CN title=交换空间 ' "$artifact_dir/client.log"
 marker='CI_MENU root=2 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 70 22 click 1
@@ -329,6 +331,12 @@ printf 'Production GUI WM-close exit status: %s\n' "$app_status" | tee "$artifac
 [[ "$app_status" == 0 ]] || exit "$app_status"
 if xdotool getwindowname "$window_id" >"$artifact_dir/window-after-close.txt" 2>&1; then
   printf 'Production X11 window still exists after process exit.\n' >&2
+  exit 1
+elif grep -Fq 'BadWindow' "$artifact_dir/window-after-close.txt"; then
+  printf 'PASS: X11 window was destroyed with the application.\n' | tee -a "$artifact_dir/window-after-close.txt"
+else
+  printf 'Could not verify that the production X11 window was destroyed.\n' >&2
+  cat "$artifact_dir/window-after-close.txt" >&2
   exit 1
 fi
 

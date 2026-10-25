@@ -232,7 +232,7 @@ fn draw(s: &mut MainWindow, p: &ui.Painter):
         if s.focus == f64(index - 1): draw_outline(p, &ui_geometry.menu_bar_item_rect(index), &border)
 
     draw_stats_group(s, p, 0, label(s.zh, "Physical memory", "物理内存"), value(s.mem_total - s.mem_available, s.sample_ok), value(s.mem_available, s.sample_ok), value(s.mem_total, s.sample_ok), &fg, &secondary, &rule)
-    draw_stats_group(s, p, 1, label(s.zh, "Pagefile / Swap", "分页文件 / Swap"), value(s.swap_total - s.swap_free, s.sample_ok), value(s.swap_free, s.sample_ok), value(s.swap_total, s.sample_ok), &fg, &secondary, &rule)
+    draw_stats_group(s, p, 1, label(s.zh, "Pagefile / Swap", "交换空间"), value(s.swap_total - s.swap_free, s.sample_ok), value(s.swap_free, s.sample_ok), value(s.swap_total, s.sample_ok), &fg, &secondary, &rule)
     draw_stats_group(s, p, 2, label(s.zh, "System working set", "系统工作集"), "—", "—", "—", &fg, &secondary, &rule)
     if s.test_mode and not s.sample_ok and not s.sample_failure_draw_logged:
         s.sample_failure_draw_logged = true
