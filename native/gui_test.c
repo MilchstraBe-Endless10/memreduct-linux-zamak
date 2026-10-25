@@ -27,3 +27,20 @@ long long mr_gui_test_timeout_ms(void)
     }
     return (long long)parsed;
 }
+
+long long mr_gui_test_fail_sample_after(long long elapsed_ms)
+{
+    const char *value = getenv("MEMREDUCT_CI_FAIL_SAMPLE_AFTER_MS");
+    char *end = NULL;
+    long long parsed;
+
+    if (mr_gui_test_mode() == 0 || value == NULL || value[0] == '\0') {
+        return 0;
+    }
+    errno = 0;
+    parsed = strtoll(value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0' || parsed < 3000 || parsed > 120000) {
+        return 0;
+    }
+    return elapsed_ms >= parsed ? 1 : 0;
+}

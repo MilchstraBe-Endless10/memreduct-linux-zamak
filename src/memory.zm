@@ -19,27 +19,49 @@ pub struct Snapshot:
     pub fn swap_used(&self) -> i64:
         max(0, self.swap_total - self.swap_free)
 
-pub fn read_key(text: &string, key: &string) -> i64:
+pub fn read_key(text: &string, key: &string) -> i64!string:
     for line in text.lines():
         let parts = line.split(":")
         if len(parts) < 2: continue
         if parts[0] != key: continue
         let fields = parts[1].words()
-        if len(fields) == 0: return 0
-        return string.parse_i64(fields[0]) catch e: 0
-    return 0
+        if len(fields) == 0: fail f"missing value for {key}"
+        let value = string.parse_i64(fields[0]) catch e:
+            fail f"invalid value for {key}"
+        if value < 0: fail f"negative value for {key}"
+        return value
+    fail f"missing field {key}"
+
+fn read_optional_key(text: &string, key: &string) -> i64!string:
+    for line in text.lines():
+        let parts = line.split(":")
+        if len(parts) < 2: continue
+        if parts[0] != key: continue
+        let fields = parts[1].words()
+        if len(fields) == 0: fail f"missing value for {key}"
+        let value = string.parse_i64(fields[0]) catch e:
+            fail f"invalid value for {key}"
+        if value < 0: fail f"negative value for {key}"
+        return value
+    0
 
 pub fn parse(text: &string) -> Snapshot!string:
-    let total = read_key(text, "MemTotal")
-    let available = read_key(text, "MemAvailable")
-    if total <= 0 or available < 0 or available > total:
+    let total = read_key(text, "MemTotal")?
+    let available = read_key(text, "MemAvailable")?
+    let swap_total = read_key(text, "SwapTotal")?
+    let swap_free = read_key(text, "SwapFree")?
+    let cached = read_optional_key(text, "Cached")?
+    let reclaimable = read_optional_key(text, "SReclaimable")?
+    if total <= 0 or available > total:
         fail "无效或不完整的 /proc/meminfo"
+    if swap_free > swap_total:
+        fail "SwapFree exceeds SwapTotal"
     Snapshot(
         total: total,
         available: available,
-        cached: read_key(text, "Cached") + read_key(text, "SReclaimable"),
-        swap_total: read_key(text, "SwapTotal"),
-        swap_free: read_key(text, "SwapFree")
+        cached: cached + reclaimable,
+        swap_total: swap_total,
+        swap_free: swap_free
     )
 
 pub fn sample() -> Snapshot!string:
@@ -49,10 +71,13 @@ pub fn sample() -> Snapshot!string:
 pub fn mib(kib: i64) -> i64:
     kib // 1024
 
-fn test_read_key():
+fn test_read_key() -> !string:
     let sample = "MemTotal:      4096000 kB\nMemAvailable: 2048000 kB\nCached: 12345 kB\n"
-    assert read_key(sample, "Cached") == 12345
-    assert read_key(sample, "Missing") == 0
+    assert read_key(sample, "Cached")? == 12345
+    let mut missing_rejected = false
+    read_key(sample, "Missing") catch e:
+        missing_rejected = true
+    assert missing_rejected
 
 fn test_parse_and_used() -> !string:
     let input = "MemTotal: 8192000 kB\nMemAvailable: 4096000 kB\nCached: 1024000 kB\nSReclaimable: 256000 kB\nSwapTotal: 2097152 kB\nSwapFree: 1048576 kB\n"
@@ -66,3 +91,53 @@ fn test_rejects_invalid():
     parse("Cached: 1 kB\n") catch e:
         rejected = true
     assert rejected
+
+fn test_zero_swap_is_valid_but_missing_swap_is_not() -> !string:
+    let no_swap = "MemTotal: 1024 kB\nMemAvailable: 512 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n"
+    let snapshot = parse(no_swap)?
+    assert snapshot.swap_total == 0
+    assert snapshot.swap_free == 0
+    let mut missing_rejected = false
+    parse("MemTotal: 1024 kB\nMemAvailable: 512 kB\nSwapTotal: 0 kB\n") catch e:
+        missing_rejected = true
+    assert missing_rejected
+
+fn test_rejects_missing_required_fields():
+    let mut missing_total_rejected = false
+    parse("MemAvailable: 512 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n") catch e:
+        missing_total_rejected = true
+    assert missing_total_rejected
+    let mut missing_available_rejected = false
+    parse("MemTotal: 1024 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n") catch e:
+        missing_available_rejected = true
+    assert missing_available_rejected
+    let mut missing_swap_total_rejected = false
+    parse("MemTotal: 1024 kB\nMemAvailable: 512 kB\nSwapFree: 0 kB\n") catch e:
+        missing_swap_total_rejected = true
+    assert missing_swap_total_rejected
+
+fn test_rejects_malformed_negative_and_inconsistent_values():
+    let mut malformed = false
+    parse("MemTotal: invalid kB\nMemAvailable: 512 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n") catch e:
+        malformed = true
+    assert malformed
+    let mut negative = false
+    parse("MemTotal: 1024 kB\nMemAvailable: -1 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n") catch e:
+        negative = true
+    assert negative
+    let mut available_exceeds_total = false
+    parse("MemTotal: 1024 kB\nMemAvailable: 1025 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n") catch e:
+        available_exceeds_total = true
+    assert available_exceeds_total
+    let mut negative_swap_total = false
+    parse("MemTotal: 1024 kB\nMemAvailable: 512 kB\nSwapTotal: -1 kB\nSwapFree: 0 kB\n") catch e:
+        negative_swap_total = true
+    assert negative_swap_total
+    let mut negative_swap_free = false
+    parse("MemTotal: 1024 kB\nMemAvailable: 512 kB\nSwapTotal: 0 kB\nSwapFree: -1 kB\n") catch e:
+        negative_swap_free = true
+    assert negative_swap_free
+    let mut inconsistent_swap = false
+    parse("MemTotal: 1024 kB\nMemAvailable: 512 kB\nSwapTotal: 0 kB\nSwapFree: 1 kB\n") catch e:
+        inconsistent_swap = true
+    assert inconsistent_swap

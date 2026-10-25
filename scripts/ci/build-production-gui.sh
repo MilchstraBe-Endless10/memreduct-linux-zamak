@@ -37,7 +37,8 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
   printf 'GTK3=%s\n' "$(pkg-config --modversion gtk+-3.0)"
   printf 'Kernel=%s\n' "$(uname -srmo)"
   printf 'Layout source=Mem Reduct v3.5.2 IDD_MAIN 224x214 DLU\n'
-  printf 'Provisional conversion=5.6x12 px dialog base units at 96 DPI; actual Xvfb geometry is recorded by the GUI lane\n'
+  printf 'Provisional conversion=X 1.4 logical px/DLU, Y 1.5 logical px/DLU at nominal 96 DPI; controls scale from this centralized model\n'
+  printf 'Windows font/DPI calibration=NOT RUN; Linux X11 and Wayland surface geometries are recorded separately\n'
   printf 'The 336x348 CI canvas probe is not used as the production window default\n'
 } | tee "$artifact_dir/environment.txt"
 

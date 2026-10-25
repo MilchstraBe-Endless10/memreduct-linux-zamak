@@ -76,7 +76,7 @@ for _ in {1..50}; do
 done
 [[ "$wm_ready" == true ]] || { cat "$artifact_dir/openbox.log" >&2; exit 1; }
 
-MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 stdbuf -oL "$app" \
+MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 MEMREDUCT_CI_FAIL_SAMPLE_AFTER_MS=15000 stdbuf -oL "$app" \
   >"$artifact_dir/client.log" 2>&1 &
 app_pid="$!"
 window_id=""
@@ -96,6 +96,17 @@ wait_for_marker() {
     sleep 0.1
   done
   printf 'Missing production UI event marker: %s\n' "$marker" >&2
+  cat "$artifact_dir/client.log" >&2
+  return 1
+}
+wait_for_marker_long() {
+  local marker="$1"
+  for _ in {1..200}; do
+    grep -Fq -- "$marker" "$artifact_dir/client.log" && return 0
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  printf 'Missing delayed production UI event marker: %s\n' "$marker" >&2
   cat "$artifact_dir/client.log" >&2
   return 1
 }
@@ -136,15 +147,36 @@ assert_changed() {
 wait_for_marker 'CI_PRODUCTION_START'
 wait_for_marker 'CI_MEMORY source=/proc/meminfo'
 wait_for_marker 'CI_DRAW width='
+for group in 0 1 2; do
+  grep -Fq "CI_LAYOUT_GROUP index=$group locale=en " "$artifact_dir/client.log"
+  grep -Fq "row0=Usage@" "$artifact_dir/client.log"
+  grep -Fq "row1=Available@" "$artifact_dir/client.log"
+  grep -Fq "row2=Total available@" "$artifact_dir/client.log"
+done
 window_geometry "$artifact_dir/geometry-en.txt"
 capture 'production-main-en.png'
 
-# Open the real View menu and its Language submenu through XTEST mouse input.
+# Open each production root menu through XTEST and assert its final popup bounds.
+xdotool mousemove --sync --window "$window_id" 20 12 click 1
+wait_for_marker 'CI_POPUP kind=root'
+wait_for_marker 'CI_MENU root=1 open=true'
+xdotool key --clearmodifiers Escape
+wait_for_marker 'CI_MENU closed reason=Escape'
+xdotool mousemove --sync --window "$window_id" 70 12 click 1
+wait_for_marker 'CI_MENU root=2 open=true'
+xdotool key --clearmodifiers Escape
+xdotool mousemove --sync --window "$window_id" 120 12 click 1
+wait_for_marker 'CI_MENU root=3 open=true'
+xdotool key --clearmodifiers Escape
+xdotool mousemove --sync --window "$window_id" 174 12 click 1
+wait_for_marker 'CI_MENU root=4 open=true'
+xdotool key --clearmodifiers Escape
 xdotool mousemove --sync --window "$window_id" 70 12 click 1
 wait_for_marker 'CI_MENU root=2 open=true'
 capture 'production-view-menu-en.png'
 xdotool mousemove --sync --window "$window_id" 82 91 click 1
 wait_for_marker 'CI_LANGUAGE_MENU open=true'
+wait_for_marker 'CI_POPUP kind=language'
 capture 'production-language-menu-en.png'
 # The Canvas is inset 12 px inside the 337x369 top-level window; row 2 center is Canvas y=103.
 xdotool mousemove --sync --window "$window_id" 238 115 click 1
@@ -153,10 +185,29 @@ sleep 0.2
 window_geometry "$artifact_dir/geometry-zh.txt"
 capture 'production-main-zh.png'
 assert_changed 'production-main-en.png' 'production-main-zh.png' 'locale-pixel-diff.txt'
+for group in 0 1 2; do
+  grep -Fq "CI_LAYOUT_GROUP index=$group locale=zh-CN " "$artifact_dir/client.log"
+  grep -Fq "row0=已用@" "$artifact_dir/client.log"
+  grep -Fq "row1=空闲@" "$artifact_dir/client.log"
+  grep -Fq "row2=总计@" "$artifact_dir/client.log"
+done
+xdotool mousemove --sync --window "$window_id" 70 12 click 1
+xdotool mousemove --sync --window "$window_id" 82 91 click 1
+wait_for_marker 'CI_LANGUAGE_MENU open=true'
+capture 'production-language-menu-zh.png'
+xdotool key --clearmodifiers Escape
+menu_index=1
+for menu_x in 20 70 120 174; do
+  xdotool mousemove --sync --window "$window_id" "$menu_x" 12 click 1
+  wait_for_marker "CI_POPUP kind=root menu=$menu_index locale=zh-CN"
+  xdotool key --clearmodifiers Escape
+  menu_index=$((menu_index + 1))
+done
 
 # XTEST coordinates are top-level-relative; add the Canvas's measured 12 px top inset.
 xdotool mousemove --sync --window "$window_id" 300 334 click 1
 wait_for_marker 'CI_CLEAN_MENU open=true'
+wait_for_marker 'CI_POPUP kind=clean'
 # The first popup row center is Canvas y=151, or top-level y=163.
 capture 'production-clean-menu-zh.png'
 xdotool mousemove --sync --window "$window_id" 95 163 click 1
@@ -177,6 +228,16 @@ wait_for_marker 'CI_MENU root=2 open=true'
 xdotool key --clearmodifiers Escape
 wait_for_marker 'CI_MENU closed reason=Escape'
 
+# The CI-only fixture fails a later sample after earlier live samples succeeded.
+# The production failure path must clear data and request a redraw immediately.
+capture 'production-memory-before-failure-zh.png'
+wait_for_marker_long 'CI_MEMORY_INVALIDATED redraw_requested=true'
+wait_for_marker_long 'CI_DRAW_SAMPLE state=unavailable values=em-dash'
+capture 'production-sample-failure-zh.png'
+convert "$artifact_dir/production-memory-before-failure-zh.png" -crop 290x245+15+40 +repage "$artifact_dir/memory-before-failure.png"
+convert "$artifact_dir/production-sample-failure-zh.png" -crop 290x245+15+40 +repage "$artifact_dir/memory-after-failure.png"
+assert_changed 'memory-before-failure.png' 'memory-after-failure.png' 'memory-failure-pixel-diff.txt'
+
 grep -Eq 'CI_MEMORY source=/proc/meminfo MemTotal=[1-9][0-9]* MemAvailable=[0-9]+' "$artifact_dir/client.log"
 if grep -Fq 'CI_MEMORY_ERROR' "$artifact_dir/client.log"; then
   printf 'The production UI did not read live /proc/meminfo successfully.\n' >&2
@@ -188,6 +249,16 @@ if grep -Eiq 'drop_caches|pkexec|polkit|swapoff' "$artifact_dir/client.log"; the
   printf 'Unexpected privileged-operation marker in production UI log.\n' >&2
   exit 1
 fi
+if grep -Fq 'CI_POPUP ' "$artifact_dir/client.log" && grep -Fq 'fits=false' "$artifact_dir/client.log"; then
+  printf 'A production popup exceeded the Canvas safe area.\n' >&2
+  exit 1
+fi
+for kind in root language clean; do
+  grep -Fq "CI_POPUP kind=$kind " "$artifact_dir/client.log"
+done
+grep -Fq 'CI_MEMORY_ERROR injected non-privileged CI sample failure' "$artifact_dir/client.log"
+grep -Fq 'CI_MEMORY_INVALIDATED redraw_requested=true' "$artifact_dir/client.log"
+grep -Fq 'CI_DRAW_SAMPLE state=unavailable values=em-dash' "$artifact_dir/client.log"
 
 xprop -id "$window_id" WM_PROTOCOLS | tee "$artifact_dir/window-protocols.txt"
 grep -q 'WM_DELETE_WINDOW' "$artifact_dir/window-protocols.txt"

@@ -8,6 +8,7 @@ use ui_geometry
 
 extern fn mr_gui_test_mode() -> i64
 extern fn mr_gui_test_timeout_ms() -> i64
+extern fn mr_gui_test_fail_sample_after(elapsed_ms: i64) -> i64
 
 struct MainWindow:
     canvas: ui.Canvas
@@ -32,22 +33,11 @@ struct MainWindow:
     test_mode: bool
     test_timeout_ms: i64
     elapsed_ms: i64
+    sample_failure_draw_logged: bool
 
 fn label(zh: bool, en: string, cn: string) -> string:
     if zh: return cn
     return en
-
-fn menu_width(menu: i64) -> f64:
-    if menu == 1: return 128.0
-    if menu == 2: return 164.0
-    if menu == 3: return 190.0
-    return 156.0
-
-fn menu_x(menu: i64) -> f64:
-    if menu == 1: return 8.0
-    if menu == 2: return 44.0
-    if menu == 3: return 88.0
-    return 154.0
 
 fn menu_rows(menu: i64) -> i64:
     if menu == 1: return 2
@@ -56,51 +46,48 @@ fn menu_rows(menu: i64) -> i64:
     return 3
 
 fn menu_rect(s: &MainWindow) -> ui.Rect:
-    ui.rect(menu_x(s.menu), 24.0, menu_width(s.menu), f64(menu_rows(s.menu)) * 22.0 + 4.0)
+    ui_geometry.menu_root_rect(s.width, s.height, s.menu)
 
 fn language_rect(s: &MainWindow) -> ui.Rect:
-    ui.rect(menu_x(2) + menu_width(2) - 2.0, 24.0 + 2.0 * 22.0, 110.0, 48.0)
+    ui_geometry.language_popup_rect(s.width, s.height)
 
 fn button_rect(s: &MainWindow) -> ui.Rect:
-    let sx = s.width / 224.0
-    let sy = (s.height - 24.0) / 214.0
-    ui.rect(8.0 * sx, 24.0 + 192.0 * sy, 208.0 * sx, 14.0 * sy)
+    ui_geometry.clean_button_rect(s.width, s.height)
 
 fn list_y(s: &MainWindow, dlu: f64) -> f64:
-    24.0 + dlu * ((s.height - 24.0) / 214.0)
+    ui_geometry.y_at_dlu(dlu, s.height)
 
 fn clean_popup_rect(s: &MainWindow) -> ui.Rect:
     let b = button_rect(s)
-    let w = 248.0
-    ui.rect(s.width - w - 6.0, b.y - 8.0 * 21.0 - 6.0, w, 8.0 * 21.0 + 4.0)
+    ui_geometry.clean_popup_rect(s.width, s.height, &b)
+
+fn log_popup(s: &MainWindow, kind: string, r: &ui.Rect):
+    if not s.test_mode: return
+    let fits = r.x >= 2.0 and r.y >= 2.0 and r.right() <= s.width - 2.0 and r.bottom() <= s.height - 2.0
+    let locale = label(s.zh, "zh-CN", "en")
+    println(f"CI_POPUP kind={kind} menu={s.menu} locale={locale} x={r.x} y={r.y} w={r.w} h={r.h} canvas={s.width}x{s.height} fits={fits}")
 
 fn menu_item_at(s: &MainWindow, x: f64, y: f64) -> f64:
     if s.popup == 2:
         let r = clean_popup_rect(s)
-        if r.contains(x, y):
-            let row = i64((y - r.y - 2.0) // 21.0)
-            if row >= 0 and row < 8: return 500.0 + f64(row)
+        for row in 0..8:
+            if ui_geometry.clean_menu_item_rect(&r, row).contains(x, y): return 500.0 + f64(row)
         return 0.0
     if s.popup == 3:
         let r = language_rect(s)
-        if r.contains(x, y):
-            if y < r.y + 24.0: return 601.0
-            return 602.0
+        for row in 0..2:
+            if ui_geometry.language_menu_item_rect(&r, row).contains(x, y): return 601.0 + f64(row)
         return 0.0
     if s.popup == 1 and s.menu > 0:
         let r = menu_rect(s)
-        if r.contains(x, y):
-            let row = i64((y - r.y - 2.0) // 22.0)
-            if row >= 0 and row < menu_rows(s.menu):
-                return f64(s.menu * 100 + row + 1)
+        for row in 0..menu_rows(s.menu):
+            if ui_geometry.root_menu_item_rect(&r, row).contains(x, y): return f64(s.menu * 100 + row + 1)
     return 0.0
 
 fn hit(s: &MainWindow, x: f64, y: f64) -> f64:
     if y >= 0.0 and y < 24.0:
-        if x >= 154.0 and x < 210.0: return 4.0
-        if x >= 88.0 and x < 154.0: return 3.0
-        if x >= 44.0 and x < 88.0: return 2.0
-        if x >= 8.0 and x < 44.0: return 1.0
+        for index in 1..5:
+            if ui_geometry.menu_bar_item_rect(index).contains(x, y): return f64(index)
     let item = menu_item_at(s, x, y)
     if item != 0.0: return item
     if s.popup == 1 or s.popup == 2 or s.popup == 3:
@@ -109,7 +96,7 @@ fn hit(s: &MainWindow, x: f64, y: f64) -> f64:
         if s.popup == 3 and language_rect(s).contains(x, y): return 0.0
     let b = button_rect(s)
     if b.contains(x, y):
-        if x >= b.right() - 34.0: return 20.0
+        if x >= b.right() - ui_geometry.clean_arrow_width_px(): return 20.0
         return 19.0
     return 0.0
 
@@ -119,7 +106,7 @@ fn draw_outline(p: &ui.Painter, r: &ui.Rect, color: &ui.Color):
     p.stroke(color, 1.0)
 
 fn draw_menu_item(s: &MainWindow, p: &ui.Painter, r: &ui.Rect, target: f64, text: string, enabled: bool, fg: &ui.Color, disabled: &ui.Color, hot: &ui.Color):
-    if s.hover == target or s.menu_focus == target:
+    if enabled and (s.hover == target or s.menu_focus == target):
         p.fill_rect(r, hot)
     if enabled:
         p.text(r.x + 8.0, r.y + 5.0, text, fg, size=10.0)
@@ -130,45 +117,68 @@ fn draw_root_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, disabled: &ui.C
     let r = menu_rect(s)
     p.fill_rect(&r, surface)
     draw_outline(p, &r, border)
-    let row_h = 22.0
-    let row1 = ui.rect(r.x + 2.0, r.y + 2.0, r.w - 4.0, row_h)
+    let row1 = ui_geometry.root_menu_item_rect(&r, 0)
     if s.menu == 1:
         draw_menu_item(s, p, &row1, 101.0, label(s.zh, "Settings...", "设置..."), false, fg, disabled, hot)
-        let row2 = ui.rect(r.x + 2.0, r.y + 24.0, r.w - 4.0, row_h)
+        let row2 = ui_geometry.root_menu_item_rect(&r, 1)
         draw_menu_item(s, p, &row2, 102.0, label(s.zh, "Exit", "退出"), true, fg, disabled, hot)
     elif s.menu == 2:
         draw_menu_item(s, p, &row1, 201.0, label(s.zh, "Always on top", "窗口始终置顶"), false, fg, disabled, hot)
-        let row2 = ui.rect(r.x + 2.0, r.y + 24.0, r.w - 4.0, row_h)
+        let row2 = ui_geometry.root_menu_item_rect(&r, 1)
         let dark_text = label(s.zh, "Use dark theme", "使用深色主题")
         draw_menu_item(s, p, &row2, 202.0, dark_text, true, fg, disabled, hot)
         if s.dark: p.text(r.x + r.w - 18.0, row2.y + 5.0, "✓", fg, size=10.0)
-        let row3 = ui.rect(r.x + 2.0, r.y + 46.0, r.w - 4.0, row_h)
+        let row3 = ui_geometry.root_menu_item_rect(&r, 2)
         draw_menu_item(s, p, &row3, 203.0, label(s.zh, "Language  ›", "语言  ›"), true, fg, disabled, hot)
-        let row4 = ui.rect(r.x + 2.0, r.y + 68.0, r.w - 4.0, row_h)
+        let row4 = ui_geometry.root_menu_item_rect(&r, 3)
         draw_menu_item(s, p, &row4, 204.0, label(s.zh, "Confirm cleaning", "清理前确认"), false, fg, disabled, hot)
     elif s.menu == 3:
         draw_menu_item(s, p, &row1, 301.0, label(s.zh, "Load on system startup", "开机启动"), false, fg, disabled, hot)
-        let row2 = ui.rect(r.x + 2.0, r.y + 24.0, r.w - 4.0, row_h)
+        let row2 = ui_geometry.root_menu_item_rect(&r, 1)
         draw_menu_item(s, p, &row2, 302.0, label(s.zh, "Start minimized", "最小化启动"), false, fg, disabled, hot)
-        let row3 = ui.rect(r.x + 2.0, r.y + 46.0, r.w - 4.0, row_h)
+        let row3 = ui_geometry.root_menu_item_rect(&r, 2)
         draw_menu_item(s, p, &row3, 303.0, label(s.zh, "Check for updates", "检查更新"), false, fg, disabled, hot)
     else:
         draw_menu_item(s, p, &row1, 401.0, label(s.zh, "Website", "项目网站"), false, fg, disabled, hot)
-        let row2 = ui.rect(r.x + 2.0, r.y + 24.0, r.w - 4.0, row_h)
+        let row2 = ui_geometry.root_menu_item_rect(&r, 1)
         draw_menu_item(s, p, &row2, 402.0, label(s.zh, "Check for updates", "检查更新"), false, fg, disabled, hot)
-        let row3 = ui.rect(r.x + 2.0, r.y + 46.0, r.w - 4.0, row_h)
+        let row3 = ui_geometry.root_menu_item_rect(&r, 2)
         draw_menu_item(s, p, &row3, 403.0, label(s.zh, "About", "关于"), false, fg, disabled, hot)
 
 fn draw_language_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, border: &ui.Color, surface: &ui.Color, hot: &ui.Color):
     let r = language_rect(s)
     p.fill_rect(&r, surface)
     draw_outline(p, &r, border)
-    let row1 = ui.rect(r.x + 2.0, r.y + 2.0, r.w - 4.0, 22.0)
-    let row2 = ui.rect(r.x + 2.0, r.y + 24.0, r.w - 4.0, 22.0)
+    let row1 = ui_geometry.language_menu_item_rect(&r, 0)
+    let row2 = ui_geometry.language_menu_item_rect(&r, 1)
     draw_menu_item(s, p, &row1, 601.0, "English", true, fg, fg, hot)
     draw_menu_item(s, p, &row2, 602.0, "简体中文", true, fg, fg, hot)
     if not s.zh: p.text(r.x + r.w - 18.0, row1.y + 5.0, "✓", fg, size=10.0)
     if s.zh: p.text(r.x + r.w - 18.0, row2.y + 5.0, "✓", fg, size=10.0)
+
+fn draw_stats_group(s: &mut MainWindow, p: &ui.Painter, group: i64, title: string, usage: string, available: string, total: string, fg: &ui.Color, secondary: &ui.Color, rule: &ui.Color):
+    let title_y = ui_geometry.group_title_y(group, s.height)
+    let label_x = ui_geometry.metric_label_x(s.width)
+    let value_x = ui_geometry.metric_value_x(s.width)
+    let row0 = ui_geometry.metric_row_y(group, 0, s.height)
+    let row1 = ui_geometry.metric_row_y(group, 1, s.height)
+    let row2 = ui_geometry.metric_row_y(group, 2, s.height)
+    p.text(label_x, title_y, title, fg, size=10.0, bold=true)
+    p.text(label_x, row0, label(s.zh, "Usage", "已用"), secondary, size=9.0)
+    p.text(value_x, row0, usage, fg, size=9.0)
+    p.text(label_x, row1, label(s.zh, "Available", "空闲"), secondary, size=9.0)
+    p.text(value_x, row1, available, fg, size=9.0)
+    p.text(label_x, row2, label(s.zh, "Total available", "总计"), secondary, size=9.0)
+    p.text(value_x, row2, total, fg, size=9.0)
+    if s.test_mode:
+        let locale = label(s.zh, "zh-CN", "en")
+        let row0_label = label(s.zh, "已用", "Usage")
+        let row1_label = label(s.zh, "空闲", "Available")
+        let row2_label = label(s.zh, "总计", "Total available")
+        println(f"CI_LAYOUT_GROUP index={group} locale={locale} title={title} title_y={title_y} row0={row0_label}@{row0} row1={row1_label}@{row1} row2={row2_label}@{row2}")
+    if group < 2:
+        let rule_y = ui_geometry.group_separator_y(group, s.height)
+        p.line(label_x, rule_y, ui_geometry.list_right_x(s.width), rule_y, rule)
 
 fn draw_clean_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, surface: &ui.Color, hot: &ui.Color):
     let r = clean_popup_rect(s)
@@ -177,7 +187,7 @@ fn draw_clean_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, disabled: &ui.
     let names_en = ["Working set", "System file cache", "Modified page list", "Standby list", "Standby list (without priority)", "Modified file cache", "Registry cache (Windows)", "Combine memory lists (Windows)"]
     let names_zh = ["工作集", "系统文件缓存", "已修改页列表", "备用列表", "无优先级备用列表", "已修改文件缓存", "注册表缓存（Windows）", "合并内存列表（Windows）"]
     for i in 0..8:
-        let row = ui.rect(r.x + 2.0, r.y + 2.0 + f64(i) * 21.0, r.w - 4.0, 21.0)
+        let row = ui_geometry.clean_menu_item_rect(&r, i)
         let target = 500.0 + f64(i)
         let mut name = names_en[i]
         if s.zh: name = names_zh[i]
@@ -213,58 +223,35 @@ fn draw(s: &mut MainWindow, p: &ui.Painter):
         pressed_bg = ui.rgb(0x485b70)
 
     p.fill_rect(&ui.rect(0.0, 0.0, s.width, s.height), &surface)
-    let sx = s.width / 224.0
-    let body_h = s.height - 24.0
-    let sy = body_h / 214.0
     p.text(8.0, 5.0, label(s.zh, "File", "文件"), &fg, size=10.0)
     p.text(48.0, 5.0, label(s.zh, "View", "视图"), &fg, size=10.0)
     p.text(92.0, 5.0, label(s.zh, "Settings", "设置"), &fg, size=10.0)
     p.text(160.0, 5.0, label(s.zh, "Help", "帮助"), &fg, size=10.0)
     p.line(0.0, 23.5, s.width, 23.5, rule)
-    if s.focus == 0.0: draw_outline(p, &ui.rect(4.0, 1.0, 40.0, 21.0), &border)
-    elif s.focus == 1.0: draw_outline(p, &ui.rect(44.0, 1.0, 44.0, 21.0), &border)
-    elif s.focus == 2.0: draw_outline(p, &ui.rect(88.0, 1.0, 66.0, 21.0), &border)
-    elif s.focus == 3.0: draw_outline(p, &ui.rect(154.0, 1.0, 48.0, 21.0), &border)
+    for index in 1..5:
+        if s.focus == f64(index - 1): draw_outline(p, &ui_geometry.menu_bar_item_rect(index), &border)
 
-    let list_x = 8.0 * sx
-    let list_right = 216.0 * sx
-    p.text(list_x, list_y(s, 8.0), label(s.zh, "Usage", "已用"), &secondary, size=9.0)
-    p.text(80.0 * sx, list_y(s, 8.0), label(s.zh, "Available", "空闲"), &secondary, size=9.0)
-    p.text(145.0 * sx, list_y(s, 8.0), label(s.zh, "Total available", "总计"), &secondary, size=9.0)
-    p.line(list_x, list_y(s, 22.0), list_right, list_y(s, 22.0), &rule)
-
-    let row1 = list_y(s, 27.0)
-    p.text(list_x, row1, label(s.zh, "Physical memory", "物理内存"), &fg, size=10.0, bold=true)
-    p.text(list_x, list_y(s, 40.0), value(s.mem_total - s.mem_available, s.sample_ok), &fg, size=9.0)
-    p.text(80.0 * sx, list_y(s, 40.0), value(s.mem_available, s.sample_ok), &fg, size=9.0)
-    p.text(145.0 * sx, list_y(s, 40.0), value(s.mem_total, s.sample_ok), &fg, size=9.0)
-    p.line(list_x, list_y(s, 56.0), list_right, list_y(s, 56.0), &rule)
-
-    p.text(list_x, list_y(s, 68.0), label(s.zh, "Pagefile / Swap", "分页文件 / Swap"), &fg, size=10.0, bold=true)
-    p.text(list_x, list_y(s, 81.0), value(s.swap_total - s.swap_free, s.sample_ok), &fg, size=9.0)
-    p.text(80.0 * sx, list_y(s, 81.0), value(s.swap_free, s.sample_ok), &fg, size=9.0)
-    p.text(145.0 * sx, list_y(s, 81.0), value(s.swap_total, s.sample_ok), &fg, size=9.0)
-    p.line(list_x, list_y(s, 97.0), list_right, list_y(s, 97.0), &rule)
-
-    p.text(list_x, list_y(s, 109.0), label(s.zh, "System working set", "系统工作集"), &fg, size=10.0, bold=true)
-    p.text(list_x, list_y(s, 122.0), "—", &fg, size=9.0)
-    p.text(80.0 * sx, list_y(s, 122.0), "—", &fg, size=9.0)
-    p.text(145.0 * sx, list_y(s, 122.0), "—", &fg, size=9.0)
-    p.text(list_x, list_y(s, 136.0), label(s.zh, "No Linux equivalent", "Linux 无同义指标"), &secondary, size=8.0)
-    p.line(list_x, list_y(s, 160.0), list_right, list_y(s, 160.0), &rule)
+    draw_stats_group(s, p, 0, label(s.zh, "Physical memory", "物理内存"), value(s.mem_total - s.mem_available, s.sample_ok), value(s.mem_available, s.sample_ok), value(s.mem_total, s.sample_ok), &fg, &secondary, &rule)
+    draw_stats_group(s, p, 1, label(s.zh, "Pagefile / Swap", "分页文件 / Swap"), value(s.swap_total - s.swap_free, s.sample_ok), value(s.swap_free, s.sample_ok), value(s.swap_total, s.sample_ok), &fg, &secondary, &rule)
+    draw_stats_group(s, p, 2, label(s.zh, "System working set", "系统工作集"), "—", "—", "—", &fg, &secondary, &rule)
+    if s.test_mode and not s.sample_ok and not s.sample_failure_draw_logged:
+        s.sample_failure_draw_logged = true
+        println("CI_DRAW_SAMPLE state=unavailable values=em-dash")
 
     let b = button_rect(s)
     p.fill_rect(&b, button_bg)
     if s.hover == 19.0: p.fill_rect(&b, button_bg)
-    if s.hover == 20.0: p.fill_rect(&ui.rect(b.right() - 34.0, b.y, 34.0, b.h), hot)
-    if s.pressed == 20.0: p.fill_rect(&ui.rect(b.right() - 34.0, b.y, 34.0, b.h), pressed_bg)
+    if s.hover == 20.0: p.fill_rect(&ui.rect(b.right() - ui_geometry.clean_arrow_width_px(), b.y, ui_geometry.clean_arrow_width_px(), b.h), hot)
+    if s.pressed == 20.0: p.fill_rect(&ui.rect(b.right() - ui_geometry.clean_arrow_width_px(), b.y, ui_geometry.clean_arrow_width_px(), b.h), pressed_bg)
     draw_outline(p, &b, border)
     p.text(b.x + 12.0, b.y + 4.0, label(s.zh, "Clean memory", "清理内存"), &disabled, size=10.0)
-    p.line(b.right() - 34.0, b.y, b.right() - 34.0, b.bottom(), &border)
+    p.line(b.right() - ui_geometry.clean_arrow_width_px(), b.y, b.right() - ui_geometry.clean_arrow_width_px(), b.bottom(), &border)
     p.line(b.right() - 22.0, b.y + 7.0, b.right() - 17.0, b.y + 12.0, &disabled)
     p.line(b.right() - 17.0, b.y + 12.0, b.right() - 12.0, b.y + 7.0, &disabled)
-    if s.focus == 4.0: draw_outline(p, &ui.rect(b.right() - 34.0, b.y + 1.0, 32.0, b.h - 2.0), &border)
-    p.text(list_x, list_y(s, 183.0), s.status, &secondary, size=8.0)
+    if s.focus == 4.0: draw_outline(p, &ui.rect(b.right() - ui_geometry.clean_arrow_width_px(), b.y + 1.0, ui_geometry.clean_arrow_width_px() - 2.0, b.h - 2.0), &border)
+    let mut status_text = s.status
+    if status_text == "": status_text = label(s.zh, "System working set is unavailable on Linux", "Linux 没有对应的系统工作集指标")
+    p.text(ui_geometry.metric_label_x(s.width), list_y(s, 183.0), status_text, &secondary, size=8.0)
 
     if s.popup == 1:
         draw_root_menu(s, p, &fg, &disabled, &border, &surface, &hot)
@@ -279,10 +266,17 @@ fn value(kib: i64, available: bool) -> string:
     return f"{memory.mib(max(0, kib))} MiB"
 
 fn refresh(s: &mut MainWindow):
-    let snapshot = memory.sample() catch e:
+    let snapshot = sample_for_ui(s) catch e:
         s.sample_ok = false
+        s.mem_total = 0
+        s.mem_available = 0
+        s.swap_total = 0
+        s.swap_free = 0
+        s.cached_estimate = 0
         s.status = label(s.zh, "Cannot read /proc/meminfo", "无法读取 /proc/meminfo")
         if s.test_mode: println(f"CI_MEMORY_ERROR {e}")
+        s.canvas.redraw()
+        if s.test_mode: println("CI_MEMORY_INVALIDATED redraw_requested=true")
         return
     s.mem_total = snapshot.total
     s.mem_available = snapshot.available
@@ -290,9 +284,15 @@ fn refresh(s: &mut MainWindow):
     s.swap_free = snapshot.swap_free
     s.cached_estimate = snapshot.cached
     s.sample_ok = true
+    s.sample_failure_draw_logged = false
     if s.test_mode:
         println(f"CI_MEMORY source=/proc/meminfo MemTotal={snapshot.total} MemAvailable={snapshot.available} SwapTotal={snapshot.swap_total} SwapFree={snapshot.swap_free} CachedPlusSReclaimable={snapshot.cached}")
     s.canvas.redraw()
+
+fn sample_for_ui(s: &MainWindow) -> memory.Snapshot!string:
+    if s.test_mode and mr_gui_test_fail_sample_after(s.elapsed_ms) != 0:
+        fail "injected non-privileged CI sample failure"
+    memory.sample()?
 
 fn tick(s: &mut MainWindow):
     s.elapsed_ms += 1000
@@ -314,6 +314,7 @@ fn activate(s: &mut MainWindow, target: f64):
             s.focus = f64(selected - 1)
             s.menu_focus = f64(selected * 100 + 1)
         if s.test_mode: println(f"CI_MENU root={s.menu} open={s.popup == 1}")
+        if s.popup == 1: log_popup(s, "root", &menu_rect(s))
     elif target == 20.0:
         s.popup = 2
         s.menu = 0
@@ -321,6 +322,7 @@ fn activate(s: &mut MainWindow, target: f64):
         s.menu_focus = 500.0
         s.status = label(s.zh, "Cleaning is not enabled in this build", "当前版本尚未开放内存清理")
         if s.test_mode: println("CI_CLEAN_MENU open=true")
+        log_popup(s, "clean", &clean_popup_rect(s))
     elif target == 19.0:
         s.status = label(s.zh, "Cleaning is disabled pending safety review", "安全验收完成前，清理操作保持禁用")
         if s.test_mode: println("CI_CLEAN_DISABLED action=none")
@@ -342,6 +344,7 @@ fn activate(s: &mut MainWindow, target: f64):
         s.popup = 3
         s.menu_focus = 601.0
         if s.test_mode: println("CI_LANGUAGE_MENU open=true")
+        log_popup(s, "language", &language_rect(s))
     elif target == 301.0 or target == 302.0 or target == 303.0:
         s.status = label(s.zh, "This startup/update action is not implemented", "启动或更新操作尚未实现")
         s.popup = 0
@@ -498,7 +501,7 @@ fn main():
         zh: false, dark: false, menu: 0, popup: 0, hover: 0.0, pressed: 0.0,
         focus: 0.0, menu_focus: 0.0, status: "", mem_total: 0, mem_available: 0, swap_total: 0,
         swap_free: 0, cached_estimate: 0, sample_ok: false, draw_logged: false,
-        test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0
+        test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, sample_failure_draw_logged: false
     )
     refresh(&mut state)
     app.run(window, state)
