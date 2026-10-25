@@ -146,22 +146,22 @@ capture 'production-view-menu-en.png'
 xdotool mousemove --sync --window "$window_id" 82 91 click 1
 wait_for_marker 'CI_LANGUAGE_MENU open=true'
 capture 'production-language-menu-en.png'
-# language_rect starts at y=68; its second (简体中文) row center is y=103.
-xdotool mousemove --sync --window "$window_id" 238 103 click 1
+# The Canvas is inset 12 px inside the 337x369 top-level window; row 2 center is Canvas y=103.
+xdotool mousemove --sync --window "$window_id" 238 115 click 1
 wait_for_marker 'CI_LOCALE locale=zh-CN'
 sleep 0.2
 window_geometry "$artifact_dir/geometry-zh.txt"
 capture 'production-main-zh.png'
 assert_changed 'production-main-en.png' 'production-main-zh.png' 'locale-pixel-diff.txt'
 
-# The split arrow and primary button use the center of their Canvas hit regions.
-xdotool mousemove --sync --window "$window_id" 300 322 click 1
+# XTEST coordinates are top-level-relative; add the Canvas's measured 12 px top inset.
+xdotool mousemove --sync --window "$window_id" 300 334 click 1
 wait_for_marker 'CI_CLEAN_MENU open=true'
-# The first popup row center is y=151 in the 313x345 Canvas.
+# The first popup row center is Canvas y=151, or top-level y=163.
 capture 'production-clean-menu-zh.png'
-xdotool mousemove --sync --window "$window_id" 95 151 click 1
+xdotool mousemove --sync --window "$window_id" 95 163 click 1
 wait_for_marker 'CI_CLEAN_REGION_DISABLED index=0 action=none'
-xdotool mousemove --sync --window "$window_id" 112 322 click 1
+xdotool mousemove --sync --window "$window_id" 112 334 click 1
 wait_for_marker 'CI_CLEAN_DISABLED action=none'
 
 # Keyboard focus, menu navigation, Enter and Escape run in the same production Canvas.
