@@ -37,3 +37,4 @@
 ## 2026-10-25 — R6 close-test provenance correction
 - Final full-diff review found `tests/gui/canvas_probe/README.md` and `SOURCE_PROVENANCE.md` still describing `xdotool windowclose` as the passing close path. Corrected them to the actual XTEST Alt+F4 WM_DELETE path under the Xvfb-owned Openbox process; documented that `windowclose` calls `XDestroyWindow`. Corrected two stale shell failure messages to refer to the WM close request.
 - `bash -n scripts/ci/p2a-xvfb-gui.sh` and `git diff --check` passed. No change to Canvas probe source or event/test logic; source SHA remains `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`. Push and PR Actions are rerun for the documentation/diagnostic update.
+- Final head `6ad0f401d2b831ee71a1387a858e7456bbe444e5` passed the rerun: GUI push/PR `40192348460` / `40192351634` and build push/PR `40192348489` / `40192351591`; all jobs successful. Fresh GUI artifacts were uploaded. The PR remains Draft.
