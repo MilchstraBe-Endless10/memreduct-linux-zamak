@@ -28,6 +28,15 @@ Optional future: ZRAM status (read-only) → independently approved manager
            ↳ sysfs/zramctl, conflict probe, policy, rollback
 ```
 
+## Upstream UI fidelity contract
+
+- The UI/UX source of truth is Henry++ Mem Reduct `v.3.5.2`, commit `2f5c55d15f69a2c88859e036b16c6f4c971e1968`. Reproduce the compact layout, resource IDs, menu tree, five settings pages, tray actions, and keyboard/mouse state transitions; do not redesign or enlarge the product UI. Preserve the official main-dialog (224×214 DLU) and settings-page template (260×168 DLU each) geometry after measured font/DPI conversion; the 336×348 CI probe is test-only.
+- Keep English and Simplified Chinese as independent locales. Do not concatenate both languages in a label. Fill upstream hard-coded translation gaps in project-owned resources and mark them as project translations.
+- Win32 dialog dimensions are Dialog Units, not pixels. Pixel targets require a measured Windows 3.5.2 font/DPI conversion and a real client-area capture; GTK defaults and an estimated test-probe size are not goldens.
+- Use Zamak `std/ui` for the native shell/lifecycle, Canvas for deterministic client-area geometry, and only narrow C/GTK bridges for measured gaps such as font selection or desktop integration. Preserve focus, keyboard navigation, accessibility, and explicit hit regions.
+- This visual contract does not assert Linux equivalence for Windows memory APIs. Keep the per-operation Linux mapping and privilege boundary in `docs/UI_LINUX_COMPATIBILITY.md`; never map all Windows cleanup choices to one `drop_caches` action.
+- Without authentic paired Windows/Linux screenshots and measured overlays, pixel acceptance remains blocked/not run.
+
 ## Domain boundaries
 1. **Presentation**: window + commands only, no direct privileged writes; native Wayland support has to be proved on Hyprland (GTK may use XWayland).
 2. **Application/domain**: sampling, policy, events and state. Deterministic functions tested with fixture `/proc/meminfo` inputs; no time-dependent hidden globals.

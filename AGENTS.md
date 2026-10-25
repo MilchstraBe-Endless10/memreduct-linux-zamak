@@ -5,6 +5,8 @@
 ## 1. 项目身份
 - Linux 原生开源内存管理工具，暂定名 **Mem Reduct Linux — Zamak Native**；非 Henry++ 官方移植，不可暗示获得原作者认证。
 - 目标：Arch Linux / Omarchy / Hyprland (Wayland)，不用 Docker，不用 WebUI，优先中文桌面 GUI；免费，GPL-3.0-or-later。
+- **产品硬约束：**界面与交互以 Henry++ Mem Reduct **v.3.5.2** 原版为高保真复刻标准，权威源码固定为 `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。不得自主重新设计、现代化、放大或简化原版布局；主窗口及设置/对话框须按各自官方资源尺寸还原，不能把全套 GUI 做成大窗口；必须提供 English 与简体中文独立切换。原版 DLU 需按真实字体/DPI 换算，不能直接当像素；CI 的 336×348 探针尺寸不是生产 UI 目标。
+- 高保真 UI 不意味着 Windows 内存 API 在 Linux 上等价；每项指标和清理动作须另有 Linux 能力/安全映射，不支持时明确说明，不得伪造。
 - 主技术：**Zamak 0.2.x** (先锁 0.2.0)、`std/ui` (Linux GTK3/libui-ng)，小体积 C FFI 和独立受权限约束的 helper。
 - 产品第一优先：用户点击后**真实执行**缓存回收/后续安全压缩策略，不是监控器或磁盘清理器。
 - 严格区别“可用 RAM 变化”“回收页缓存”“ZRAM 压缩节省”与“进程 RSS 降低”，不得用统一的“释放 GB 数量”混淆。
