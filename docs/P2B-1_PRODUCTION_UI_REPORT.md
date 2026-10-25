@@ -1,85 +1,111 @@
-# P2B-1 Production Main Window Candidate
+# P2B Production Main Window — P2B-2 Correction Report
 
 Date: 2026-10-25  
-Upstream reference: Mem Reduct `v.3.5.2`, tag commit `2f5c55d15f69a2c88859e036b16c6f4c971e1968`  
-PR: [#6](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/6), Draft, base `docs/issue-3-p2a-ui-spec`  
-Production-code test head: `a6df90389a69fc9cad12272c2daa2f273c834385`
+Upstream UI reference: Mem Reduct `v.3.5.2`, tag commit `2f5c55d15f69a2c88859e036b16c6f4c971e1968`
+PR: [#6](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/6), OPEN / Draft
+Base: `docs/issue-3-p2a-ui-spec` at `d89d74fde433da1863b4de0223f974c824fb590e`
 
-This is the first compiled Zamak production-window candidate. Its compact DLU conversion is provisional. It is not Windows pixel calibration or 1:1 visual acceptance.
+The Windows 3.5.2 source is the structural reference. This report records a Linux production candidate and its isolated-runner evidence; it does not claim Windows pixel equivalence.
 
-## Candidate geometry and test environment
+## Historical pre-correction evidence
 
-- Source resource: `IDD_MAIN=224×214 DLU`; conversion factors are centralized in `src/ui_geometry.zm` (5.6 logical px per horizontal DLU and 12 per vertical DLU at the 96-DPI candidate setting).
-- GitHub-hosted runner: Ubuntu 24.04.5, Xvfb 1024×768×24, GTK 3.24.41, Adwaita light, `GDK_SCALE=1`, `GDK_DPI_SCALE=1`, Xft DPI 96, Noto Sans CJK SC.
-- X11 run observed a 337×369 top-level client window and a 313×345 Canvas. This conversion is a temporary engineering estimate, not a measured Windows `Ms Shell Dlg` mapping.
-- Weston run: 13.0.0, Headless backend, Pixman renderer, 800×600 output at scale 1, private socket, temporary `XDG_RUNTIME_DIR` mode 0700, `DISPLAY` unset.
-- In the Wayland protocol log, GTK reports an xdg surface geometry of 337×406 including its Wayland-side window decorations. That lane verifies lifecycle only; it does not certify cross-backend pixel geometry.
+The review baseline was `c76ca82e420ea391a208c5a7afc3a3377f1006ef`. Its screenshots are retained only as the pre-fix comparison set:
 
-## Control status
-
-Status meanings are those in `UI_INTERACTION_MATRIX.md`: `NATIVE`, `EQUIVALENT`, `UNSUPPORTED`, and `NOT_IMPLEMENTED`.
-
-| Windows 3.5.2 control/resource | Production candidate behavior | Status | Evidence and remaining gap |
-|---|---|---|---|
-| `IDD_MAIN=100`, `IDC_LISTVIEW=102` — main statistics area | Canvas rows preserve the three-group order and Usage / Available / Total available columns. | `EQUIVALENT` | Geometry verified in isolated Xvfb; Windows font/DPI measurement is still missing. |
-| Physical memory row | Reads `MemTotal` and `MemAvailable` from `/proc/meminfo`; displays used as total minus available. | `EQUIVALENT` | CI log includes source and raw KiB values; refresh is timer-driven every 3 seconds. |
-| Pagefile row | Reads `SwapTotal` and `SwapFree`; English label is `Pagefile / Swap`. | `EQUIVALENT` | Swap is not Windows Pagefile. No `swapoff` or ZRAM write is called. |
-| System working set row | Displays em dashes and an explanation that Linux has no same-definition system-wide metric. | `UNSUPPORTED` | Does not substitute Cached or SReclaimable for Windows working set. |
-| `IDM_MAIN=100`, File / View / Settings / Help menu bar | Canvas-drawn menu roots respond to XTEST pointer and keyboard events. | `EQUIVALENT` | X11 root menu, language submenu, keyboard focus, arrows, Enter and Escape were exercised. No Windows pixel comparison. |
-| File → `IDM_SETTINGS=155` | Shows a clear not-implemented status. | `NOT_IMPLEMENTED` | Settings pages are not part of this PR. |
-| File → `IDM_EXIT=156` | Exits the application event loop. | `NATIVE` | X11 close lifecycle separately verified with Alt+F4. |
-| View → `IDM_ALWAYSONTOP_CHK=157` | Disabled with an explanatory state. | `NOT_IMPLEMENTED` | Wayland compositor behavior is not asserted. |
-| View → `IDM_USEDARKTHEME=159` | Toggles the Canvas light/dark palette. | `NATIVE` | Keyboard Enter path and state marker exercised; visual calibration remains pending. |
-| View → `IDM_REDUCTCONFIRMATION_CHK=161` | Disabled with an explanatory state. | `NOT_IMPLEMENTED` | No cleaning action is enabled in this candidate. |
-| View → `IDX_LANGUAGE=1000` | Switches between English and Simplified Chinese; does not concatenate locales. | `NATIVE` | XTEST selected both locale states; screenshot pair differs by 7,420 pixels. |
-| Settings → startup/minimize/update commands (`IDM_LOADONSTARTUP_CHK=158`, `IDM_STARTMINIMIZED_CHK=160`, `IDM_CHECKUPDATES_CHK=163`) | Disabled with not-implemented feedback. | `NOT_IMPLEMENTED` | No autostart, update network request, or service is configured. |
-| Help → Website / update / About (`IDM_WEBSITE=164`, `IDM_CHECKUPDATES=165`, `IDM_ABOUT=166`) | Disabled with not-implemented feedback. | `NOT_IMPLEMENTED` | No browser launch or update check is triggered. |
-| `IDC_CLEAN=103` — split button primary area | Disabled; click reports that cleaning remains closed pending safety review. | `NOT_IMPLEMENTED` | XTEST click confirmed `action=none`. No Polkit, helper execution, `drop_caches`, Swap or ZRAM operation. |
-| `IDC_CLEAN=103` — split button arrow and eight Windows cleanup choices | Arrow opens the original-order choice list; every entry is disabled and explains that no approved Linux equivalent exists. | `UNSUPPORTED` | XTEST opened the list and selected one disabled entry; event log records `action=none`. |
-| `IDA_MAIN=1` keyboard behavior | Tab focus, arrow navigation, Enter, Escape, F1/F2 status feedback; normal window close. | `EQUIVALENT` | XTEST exercised menu navigation and close. Global Wayland shortcuts and mnemonic keys are not claimed. |
-
-Settings pages, tray, notifications, update flow, persistence, and cleanup remain outside this first main-window candidate. The complete remaining source mapping is in `UI_INTERACTION_MATRIX.md`.
-
-## Production screenshots
-
-These PNGs are actual screenshots of the compiled production Zamak application in isolated GitHub-hosted Xvfb, not screenshots of the independent R5/R6 probe. Capture resolution is 337×369 for the window image; runner scale is 1. SHA-256 values are from the uploaded artifact manifest.
-
-| Screenshot | State | SHA-256 |
+| Evidence | Run / artifact | SHA-256 |
 |---|---|---|
-| `production-main-en.png` | Main window, English | `880d051b960c29ce041ef48227af517d466e616e3399a0edf17747e2408e881b` |
-| `production-main-zh.png` | Main window, 简体中文 | `f2c6ffa75ba41c931086c04d37440e3864ed2add7137238fd0a681602103076f` |
-| `production-view-menu-en.png` | View menu open, English | `8fa71b6eb1885c69c9c9e911b28aa9385ba47837fc257af2d498649b5662c10f` |
-| `production-language-menu-en.png` | Language submenu open | `e3061eb952dc5a3670460f0da70ddc3f45fc03c8e2f9e58143fece38e81fd082` |
-| `production-clean-menu-zh.png` | Cleanup choices open, Simplified Chinese | `8f7331e3fcac04ddbcb91d784fd962430d593c5365bb79b2a3a0b181a3e1b5d0` |
+| English main window | GUI run [40200556938](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40200556938), X11 artifact `12601523788` | `86492abcf79c2f05575bd69ede9d1dd6efdc58933229eaf7b41f45fa3844507a` |
+| Simplified Chinese main window | same run / artifact | `d914a1f6bab58e746caaa0c900d6d3c6f7e5f3439424e2f60ec30b93dd67e981` |
+| Build workflow | run [40200556939](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40200556939) | historical build evidence |
+| Weston lifecycle | artifact `12600974078` from GUI run | historical Wayland evidence |
 
-Artifacts and test logs:
+The review confirmed that the pre-fix main window arranged the three memory objects as rows under shared horizontal column headings, and that its English language popup exceeded the 313 px Canvas width. These historical hashes are not used for the corrected-source evidence below.
 
-- X11 screenshots/logs: [PR run 40199653180, artifact 12601156413](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40199653180/artifacts/12601156413)
-- Weston/client logs: [PR run 40199653180, artifact 12601781592](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40199653180/artifacts/12601781592)
-- Production GUI workflow: [PR run 40199653180](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40199653180)
-- Build/test workflow: [PR run 40199653440](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40199653440)
+## Intermediate correction snapshot
 
-The build artifact records production binary SHA-256 `1a5f94923b81be4aaa0ab3012f0f646b78db05047727ae8207afeceb20685efb` and `src/main.zm` SHA-256 `33afa462553a022a525c55615a0ed48962002ccf5f42c8d49091af3c5df71bc6`.
+The initial P2B-2 correction commit `0a7e9a0def48a75fc1a12d42d87d64f1dba9cb48` was validated by GUI run `40206181064` and build/test run `40206180942`. That evidence is retained as an intermediate history only; the final code and screenshot evidence below supersede it.
+
+## Latest corrected source and exact-run evidence
+
+| Item | Value |
+|---|---|
+| Tested source commit / PR HEAD | `e4fccb6293c698015c8f4105947669bfdc4693d6` |
+| Production UI PR run | [40208121223](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208121223), PASS: Production UI (Xvfb/XTEST) and lifecycle (Weston Headless/Pixman) |
+| X11 screenshots and logs | artifact [12604402691](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208121223/artifacts/12604402691) |
+| Wayland logs | artifact [12604102361](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208121223/artifacts/12604102361) |
+| Build/test PR run | [40208121224](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208121224), PASS |
+| `src/main.zm` SHA-256 | `8f14fe5793159646d87deb39f053c46ff90397b29866d8d98f3e33bc0f63b30c` |
+| `src/ui_geometry.zm` SHA-256 | `6cbf4c666cf658f516ed9d254411983667ad0e3d98cfeece637923ce8dd4aa33` |
+| `native/gui_test.c` SHA-256 | `9a299f8653f7e97c455c1c38cf138e2fd3e6c8440e6612e36ddd443c24f20c9e` |
+| Built production executable SHA-256 | `33d7042aab2c84f231562a641d3ae84f43733ad02ee8d5df6417db51d285d522` |
+| Built helper SHA-256 | `30cac693f610cd0bec92de495f6c6e4ab352f8a6ec43bc807d08a2d27f2acf08` |
+
+The run metadata reports the exact tested source SHA above. The workflow artifact’s `source-and-binary-sha256.txt` records the source and executable hashes; the PNG hashes below come only from this same run’s `screenshots-sha256.txt`.
+
+## Corrected production screenshots
+
+All PNGs are captures of the compiled production Zamak application in the isolated Xvfb runner. Window images are 337×369 px; Canvas is 313×345 logical px. Hashes are recorded in the artifact manifest.
+
+| Screenshot | Run state | SHA-256 |
+|---|---|---|
+| `production-main-en.png` | English main window | `7ff1bbf86fb388f8522b3eada4a65c82ac1d99a4884f18b7325d98ad80ccbf5f` |
+| `production-main-zh.png` | 简体中文 main window | `3a531078d137d63593cf73388cf5060c8ce7ccc1023e43ca288cf2237baa6d32` |
+| `production-view-menu-en.png` | English View menu | `058971a2e2a05f279369d050344a3ce10c7ccd0f8c52947a92096803ff8568db` |
+| `production-language-menu-en.png` | English language popup | `b4682690b5807ef86d15dea611317734b64b062ad4af49173e91f89e08ffc5d3` |
+| `production-language-menu-zh.png` | 简体中文 language popup | `6fca2c47d0e62ab2458a1fa001aafa9a2ac1317c8f4b817e6c5da46faeabc6a6` |
+| `production-clean-menu-zh.png` | disabled cleanup choices | `9424e404c085d876a29780feab86042ac793fc3cfbce557c3dc7b76b01bbff98` |
+| `production-sample-failure-zh.png` | injected sampling failure after prior live samples | `b1d376b5a4d5a94ac4eb2aa728c8d6d47c2b5779c98a669ce42483349b3f6898` |
+| `production-memory-before-failure-zh.png` | live values immediately before injected failure | `f4a519e5cf1db36515c6dd19266b398e6ded1a528c69eb1b5301cb5f8ff28d7a` |
+
+## P2B-2 changes
+
+- Replaced the incorrect horizontal summary table with three independent groups: Physical memory, Pagefile / Swap, and System working set. Each group has its own vertically stacked Usage, Available, and Total available label/value pairs, with separators between groups. Simplified Chinese localizes the swap heading as `交换空间`.
+- The unavailable System working set stays `—`. Its Linux compatibility explanation is shown in the status area, not as an extra metric row.
+- Centralized the provisional DLU conversion and main content, row, separator, button, menu, and popup rectangles in `src/ui_geometry.zm`. Drawing and hit testing use the same popup rectangles. Language and cleanup popups are fitted to the Canvas viewport; Xvfb logs report `fits=true` for all four root menus, both locale submenus, and the cleanup menu.
+- Corrected the CI locale markers and made the Xvfb script wait for fresh layout/menu events before asserting or capturing. The runner also verifies the injected memory error is exactly the expected non-privileged test failure; any other sampling error still fails the run.
+- Required memory fields are parsed as required values. Missing or malformed fields, negative values, MemAvailable greater than MemTotal, and SwapFree greater than SwapTotal are rejected; real `SwapTotal=0` remains valid. A failed later sample clears the prior values, sets the unavailable status, and requests redraw. The Xvfb artifact records the injected failure, invalidation, em-dash redraw, and visible pixel difference.
+
+## Geometry and environment limits
+
+The upstream main resource is `IDD_MAIN=224×214 DLU`. Current conversion factors and GTK insets remain explicitly `PROVISIONAL`; they are not measured Windows font/DPI conversion and not a 2 px acceptance result. The observed X11 window is 337×369 px with a 313×345 Canvas. This is a candidate generated from the centralized DLU model, not a Windows-authenticated target. The Weston protocol reports a distinct decorated surface geometry; X11 and Wayland geometry are not treated as interchangeable.
+
+The Xvfb lane ran on GitHub-hosted Ubuntu 24.04.5 with Xvfb 1024×768×24, GTK X11 backend, Adwaita light, `GDK_SCALE=1`, `GDK_DPI_SCALE=1`, and Noto Sans CJK SC. The Weston lane used Weston 13.0.0 Headless with Pixman, a private mode-0700 runtime directory and socket, and no `DISPLAY`. No host Hyprland IPC or user desktop was accessed.
+
+## Control and data status
+
+| Control/data | Current candidate status | Evidence / limit |
+|---|---|---|
+| Physical memory | `EQUIVALENT` | MemTotal and MemAvailable from `/proc/meminfo`; Usage = Total − Available. |
+| Pagefile | `EQUIVALENT` | SwapTotal and SwapFree; Linux Swap is not definitionally identical to Windows Pagefile. |
+| System working set | `UNSUPPORTED` | Three values remain em dashes; Cached/SReclaimable are not substituted. |
+| File / View / Settings / Help roots | `EQUIVALENT` | XTEST opens all four in English and Chinese; popup bounds fit the Canvas. Individual unfinished commands remain disabled or show not-implemented feedback. |
+| View → Language | `NATIVE` | Independent English and Simplified Chinese states; both popup states captured and logged. |
+| Clean memory split button | `NOT_IMPLEMENTED` | Both primary and arrow regions stay non-operational. |
+| Windows cleanup choices | `UNSUPPORTED` | Original-order choices display disabled; selection records `action=none`. No Linux operation is substituted. |
+| Sample failure | `NATIVE` | Deterministic non-privileged test injection clears stale data and redraws em dashes. |
+
+Settings pages, tray, notifications, persistence, and privileged cleanup are not implemented by this candidate. No Polkit request, `drop_caches` write, Swap/ZRAM modification, or root GUI was used. The test log checks for privileged-operation markers; that is not a system-call trace.
 
 ## Verification results
 
-| Check | Result | Evidence |
-|---|---|---|
-| `python3 scripts/verify_project.py` | PASS | 29 project/governance checks. |
-| `python3 -m unittest discover -s tests -v` | PASS | 3 C safety tests; no real kernel write. |
-| Shell syntax | PASS | `scripts/*.sh` and `scripts/ci/*.sh`. |
-| Zamak | PASS | Version 0.2.0; `zam check .`; `zam test .` 7/7; `zam build .`. |
-| `bash scripts/build-arch.sh` | PASS | Zamak application and C helper compiled. |
-| Production UI X11 | PASS | XTEST mouse, split regions, disabled item, English/zh-CN, keyboard navigation, menu close, `WM_DELETE_WINDOW`, app exit 0 and window gone. |
-| Production UI Wayland | PASS with diagnostics | Client connected to private Weston, drew, read live meminfo, returned from `app.run`, exit 0. Headless lane does not test input. |
-| Privileged action guard | PASS | Test log contains no privileged action; source keeps cleaning disabled. |
-| Windows native screenshot / 2 px comparison | BLOCKED / NOT RUN | No authenticated Windows v3.5.2 capture or paired overlay. |
-| Hyprland physical input / HiDPI | NOT RUN | Active user compositor was not accessed; only scale 1 in CI. |
+| Check | Result |
+|---|---|
+| `python3 scripts/verify_project.py` | PASS — 29 checks |
+| `python3 -m unittest discover -s tests -v` | PASS — 3 C safety tests |
+| `bash -n` for `scripts/*.sh` and `scripts/ci/*.sh` | PASS |
+| `zam --version` | PASS — 0.2.0 |
+| `zam check .` | PASS |
+| `zam test .` | PASS — 13/13, including parser and geometry cases |
+| `zam build .` | PASS |
+| `bash scripts/build-arch.sh` | PASS — Zamak GUI and C helper compiled |
+| Production Xvfb/XTEST | PASS — bilingual layout, menus, boundaries, disabled cleanup, injected failure redraw, keyboard and WM close; exit code 0 |
+| Production Weston Headless/Pixman | PASS — connected, drew, sampled live `/proc/meminfo`, returned from `app.run`, exit code 0 |
+| GitHub Actions | PASS — production UI run `40208121223`; build/test run `40208121224` on source HEAD `e4fccb6293c698015c8f4105947669bfdc4693d6` |
+| `git diff --check` | PASS |
+| Authentic Windows 3.5.2 screenshot / paired 2 px comparison | BLOCKED / NOT RUN — no genuine Windows captures or measured Windows font/DPI data |
+| Hyprland physical input / HiDPI | NOT RUN — active user desktop remains untouched |
 
-The Weston log contains one GTK `gdk_seat_get_keyboard` critical while `wl_seat` is not advertised, and logs `BUG: finalizing a layer with views still on it` when the isolated compositor receives SIGTERM during cleanup. The client exits 0 before compositor cleanup. The correlation with missing input-seat support is plausible but unproven; neither diagnostic is suppressed. No Hyprland crash or active compositor was involved.
+Weston logs retain one GTK `gdk_seat_get_keyboard` critical while no `wl_seat` is advertised, and a `BUG: finalizing a layer with views still on it` diagnostic during controlled compositor shutdown after the client exits. The relationship to the missing input seat is unproven; neither diagnostic is suppressed. The client exit was 0. No Hyprland compositor was started, queried, or restarted.
 
-PR #4's independent 12/12 probe tests remain on PR #4 and were not copied or replaced here. The production candidate has its own 7 Zamak tests and production X11/Wayland CI paths.
+## Remaining fidelity gate
 
-## Pixel acceptance and next review
-
-The candidate follows the compact 224×214 DLU source template through centralized estimated conversion. There are no genuine Windows 3.5.2 screenshots or measured Windows font/DPI data in this evidence set. The 2 px geometry gate, paired image overlay/diff, Windows visual match, Hyprland input, HiDPI, full settings, and tray remain `BLOCKED` or `NOT RUN`. Review this PR as a first production-window candidate only; do not treat the CI screenshots as Windows goldens.
+The information hierarchy now matches the source structure at code level, and Xvfb screenshots verify the production layout and interactions. Final Windows visual acceptance remains `BLOCKED / NOT RUN`: there is no authentic Windows 3.5.2 screenshot set or measured font/DPI conversion to compare against, so no claim of pixel-level or 1:1 completion is made. Review this PR as a corrected, still-provisional Linux main-window candidate.
