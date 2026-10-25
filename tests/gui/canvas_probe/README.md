@@ -4,7 +4,7 @@ This is a non-privileged CI probe, not production Mem Reduct UI. It uses placeho
 
 ## Compact geometry
 
-The probe requests a compact 338×395 logical-pixel top-level window. On the Ubuntu GTK runner, the Canvas viewport is 314×371 because GTK reserves 12 px on each edge; the earlier 941×1030 result was a tiled viewport, not the intended window size. The authoritative Mem Reduct v.3.5.2 resource declares the main dialog as 224×214 **Dialog Units**, not pixels. Windows converts those units using the selected dialog font and DPI. This fixture keeps a compact, repeatable test viewport; it does not claim that 338×395 is an authenticated Windows pixel conversion or a visual-parity result. Exact shipping-window dimensions must be based on a real Windows capture with recorded font and DPI metrics.
+The probe requests a compact 336×348 logical-pixel top-level window. The official Mem Reduct v.3.5.2 `IDD_MAIN` resource declares 224×214 **Dialog Units** and `FONT 8, "Ms Shell Dlg"`. At 96 DPI, an estimated 6×13 px dialog base unit gives `224×6/4 = 336` by `214×13/8 ≈ 348`. GTK allocates a 312×324 Canvas viewport because the toolkit reserves 12 px on each edge. This top-level area is about 12% smaller than the previous 338×395 fixture. The base-unit estimate has not been measured on a real Windows installation, so it is a compact approximation, not authenticated Windows geometry or visual parity. The earlier 941×1030 result was a tiled desktop viewport, not the intended window size. Exact shipping-window dimensions still require a real Windows capture with recorded font and DPI metrics.
 
 ## What is exercised
 

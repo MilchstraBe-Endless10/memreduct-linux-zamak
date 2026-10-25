@@ -116,12 +116,12 @@ check_geometry() {
   canvas_size="$(grep -m 1 '^CI_DRAW width=' "$artifact_dir/client.log" | sed -E 's/^CI_DRAW width=([^ ]+) height=([^ ]+).*$/\1x\2/')"
   printf 'Observed X11 top-level geometry: %sx%s; GTK Canvas viewport: %s\n' "$width" "$height" "$canvas_size"
   printf 'GTK Canvas viewport: %s\n' "$canvas_size" >>"$output"
-  [[ "$width" == "338" && "$height" == "395" ]] || {
-    printf 'Expected compact 338x395 top-level window.\n' >&2
+  [[ "$width" == "336" && "$height" == "348" ]] || {
+    printf 'Expected compact 336x348 top-level window.\n' >&2
     return 1
   }
-  [[ "$canvas_size" == "314.0x371.0" ]] || {
-    printf 'Expected compact 314x371 GTK Canvas viewport.\n' >&2
+  [[ "$canvas_size" == "312.0x324.0" ]] || {
+    printf 'Expected compact 312x324 GTK Canvas viewport.\n' >&2
     return 1
   }
 }
@@ -130,7 +130,7 @@ check_geometry "$artifact_dir/window-initial.txt"
 xdotool windowfocus --sync "$window_id"
 import -window "$window_id" "$artifact_dir/01-probe-en-initial.png"
 
-xdotool mousemove --sync --window "$window_id" 150 360
+xdotool mousemove --sync --window "$window_id" 150 306
 wait_for_marker 'CI_MOUSE_HOVER target=3'
 xdotool mousedown 1
 wait_for_marker 'CI_MOUSE_DOWN target=3'
@@ -150,11 +150,11 @@ xdotool mouseup 1
 wait_for_marker 'CI_MOUSE_ACTION action=3'
 wait_for_marker 'CI_STATE primary=on'
 
-xdotool mousemove --sync --window "$window_id" 310 360 click 1
+xdotool mousemove --sync --window "$window_id" 310 306 click 1
 wait_for_marker 'CI_MOUSE_ACTION action=4'
 wait_for_marker 'CI_MENU open=true'
 import -window "$window_id" "$artifact_dir/03-probe-en-split-menu.png"
-xdotool mousemove --sync --window "$window_id" 170 310 click 1
+xdotool mousemove --sync --window "$window_id" 170 252 click 1
 wait_for_marker 'CI_MOUSE_ACTION action=6'
 wait_for_marker 'CI_STATE option=B'
 
@@ -175,7 +175,7 @@ wait_for_marker 'CI_MENU closed reason=Escape'
 check_geometry "$artifact_dir/window-final.txt"
 for image in "$artifact_dir"/0*-probe-*.png; do
   dimensions="$(identify -format '%wx%h' "$image")"
-  [[ "$dimensions" == "338x395" ]] || {
+  [[ "$dimensions" == "336x348" ]] || {
     printf 'Unexpected screenshot dimensions for %s: %s\n' "$(basename "$image")" "$dimensions" >&2
     exit 1
   }

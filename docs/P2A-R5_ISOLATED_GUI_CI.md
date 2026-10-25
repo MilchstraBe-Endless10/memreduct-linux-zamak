@@ -12,7 +12,7 @@ The workflow runs on GitHub-hosted Ubuntu 24.04 only. It has `contents: read`, n
 
 ## Window size
 
-The test window requests a fixed compact 338×395 logical-pixel top-level size. On the Ubuntu GTK runner, the Canvas drawing viewport is 314×371 due to GTK insets (12 px per edge). The earlier 941×1030 result was a tiled desktop viewport, not the intended window size. Official Mem Reduct v.3.5.2 `IDD_MAIN` is declared as 224×214 Dialog Units. Dialog Units depend on the selected font and DPI and are not physical pixels. The fixture size is a repeatable compact CI geometry, not a claim of exact Windows pixel conversion or visual parity. A real Windows capture with font/DPI metadata is still required for an exact pixel baseline.
+The test window requests a compact 336×348 logical-pixel top-level size. Official Mem Reduct v.3.5.2 `IDD_MAIN` is 224×214 Dialog Units and declares `FONT 8, "Ms Shell Dlg"`. At 96 DPI, an estimated 6×13 px dialog base unit gives `224×6/4 = 336` by `214×13/8 ≈ 348`. The Ubuntu GTK Canvas viewport is expected to be 312×324 because the toolkit reserves 12 px on each edge. This top-level area is about 12% smaller than the previous 338×395 test fixture. The base-unit estimate has not been measured on real Windows, so this is a compact test estimate rather than authenticated Windows geometry or pixel parity. The earlier 941×1030 result was a tiled desktop viewport, not the intended window size. A real Windows capture with font/DPI metadata remains necessary for a pixel baseline.
 
 ## Test lanes
 

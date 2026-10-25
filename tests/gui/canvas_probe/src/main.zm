@@ -148,7 +148,7 @@ fn draw(s: &mut Probe, p: &ui.Painter):
         else:
             p.text(12.0, 238.0, "Menu selection: preview A", &gray, size=9.0)
     p.line(12.0, 188.0, s.w - 12.0, 188.0, &line)
-    p.text(12.0, 274.0, s.status, &gray, size=9.0)
+    p.text(12.0, button_geometry(s.w, s.h).y - 20.0, s.status, &gray, size=9.0)
 
     let b = button(s)
     p.fill_rect(&b, &button_bg)
@@ -263,12 +263,12 @@ fn key(s: &mut Probe, k: &ui.Key):
         return
     if k.name() == "F2":
         activate(s, 1.0)
-    elif k.name() == "Escape":
+    elif k.name() == "Escape" or k.name() == "Esc" or k.name() == "\x1b":
         s.menu = false
         s.pressed = 0.0
         s.status = locale_text(s.zh, "Escape: menu closed", "Escape：菜单已关闭")
         println("CI_MENU closed reason=Escape")
-    elif k.name() == "Tab":
+    elif k.name() == "Tab" or k.name() == "\t":
         s.focus = focus_next(s.focus)
         s.status = locale_text(s.zh, "Tab: focus moved", "Tab：焦点已移动")
         println(f"CI_FOCUS value={s.focus}")
@@ -282,7 +282,7 @@ fn key(s: &mut Probe, k: &ui.Key):
             s.focus = focus_previous(s.focus)
             s.status = locale_text(s.zh, "Arrow: menu focus moved", "方向键：菜单焦点已移动")
             println(f"CI_FOCUS value={s.focus}")
-    elif k.name() == "Enter":
+    elif k.name() == "Enter" or k.name() == "Return" or k.name() == "\r":
         let action = enter_action(s.menu, s.focus)
         if action != 0.0:
             println(f"CI_KEY_ACTION action={action}")
@@ -351,7 +351,7 @@ fn test_language_toggle_reaches_both_locales():
 
 fn main():
     println("CI_PROBE_START")
-    let window = ui.window("P2A-R4 CI Canvas Probe", 338, 395)
+    let window = ui.window("P2A-R4 CI Canvas Probe", 336, 348)
     let canvas = ui.canvas()
     window.set_child(canvas)
     let app: ui.App[Probe] = ui.app()
@@ -361,7 +361,7 @@ fn main():
     app.on_close(close_logged)
     app.every(250, auto_quit)
     let state = Probe(
-        canvas: canvas, w: 338.0, h: 395.0, zh: false,
+        canvas: canvas, w: 336.0, h: 348.0, zh: false,
         menu: false, split_menu: false, main_on: false, option_b: false,
         hover: 0.0, pressed: 0.0, focus: 0.0, status: "Idle; simulated UI only",
         draw_logged: false, elapsed_ms: 0

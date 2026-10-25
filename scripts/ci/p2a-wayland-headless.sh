@@ -133,6 +133,7 @@ printf 'Canvas probe exit status: %s\n' "$app_status" | tee "$artifact_dir/clien
 
 grep -Fq 'CI_PROBE_START' "$artifact_dir/client.log"
 grep -Fq 'CI_DRAW width=' "$artifact_dir/client.log"
+grep -Fq 'CI_DRAW width=312.0 height=324.0' "$artifact_dir/client.log"
 grep -Fq 'CI_QUIT source=timer' "$artifact_dir/client.log"
 grep -Fq 'CI_APP_RETURNED' "$artifact_dir/client.log"
 grep -Fq 'xdg_toplevel' "$artifact_dir/client.log"
