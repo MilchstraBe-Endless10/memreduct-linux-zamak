@@ -31,5 +31,7 @@
 
 ## GitHub / 下一步
 - 当前已验证 `gh` 账号为目标 `MilchstraBe-Endless10`；目标仓库仅为 `MilchstraBe-Endless10/memreduct-linux-zamak`。
-- P1 分支尚未提交/推送；Draft PR 创建后记录 URL、head SHA、Actions run/check 结果和远端 SHA。
+- Commit `1d4654867f59154981010007288cff1fda42f457` 使用 GitHub noreply 邮箱；已推送 `fix/issue-1-zamak-build`，`git ls-remote` 返回相同远端 SHA。
+- Draft PR #2：<https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/2>，base `main`，head 为上述 SHA，正文 `Refs #1`。PR 仍为 OPEN / Draft。
+- Actions `build-and-test` 均成功：push run [40170617141](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170617141)，pull_request run [40170634633](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170634633)。
 - 等待 ChatGPT 复审及用户决定是否合并；不得自动合并或进入 P2。
