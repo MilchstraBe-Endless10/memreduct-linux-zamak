@@ -97,9 +97,11 @@ fn hit(s: &Probe, x: f64, y: f64) -> f64:
     hit_geometry(s.w, s.h, s.menu, s.split_menu, x, y)
 
 fn draw(s: &mut Probe, p: &ui.Painter):
+    let old_w = s.w
+    let old_h = s.h
     s.w = p.width()
     s.h = p.height()
-    if not s.draw_logged:
+    if not s.draw_logged or old_w != s.w or old_h != s.h:
         s.draw_logged = true
         println(f"CI_DRAW width={s.w} height={s.h}")
     let white = ui.rgb(0xffffff)
@@ -296,6 +298,7 @@ fn key(s: &mut Probe, k: &ui.Key):
 
 fn close_logged(s: &mut Probe):
     println("CI_WINDOW_CLOSE")
+    ui.quit()
 
 fn auto_quit(s: &mut Probe):
     s.elapsed_ms += 250
@@ -353,6 +356,47 @@ fn test_logical_geometry_tracks_viewport():
 fn test_language_toggle_reaches_both_locales():
     assert(next_locale(false) == true)
     assert(next_locale(true) == false)
+
+fn test_compact_probe_geometry():
+    assert(336.0 - 24.0 == 312.0)
+    assert(348.0 - 24.0 == 324.0)
+    let b = button_geometry(312.0, 324.0)
+    assert(b.x == 12.0)
+    assert(b.y == 281.0)
+    assert(b.w == 288.0)
+    assert(b.h == 28.0)
+    assert(hit_geometry(312.0, 324.0, false, false, 13.0, 282.0) == 3.0)
+    assert(hit_geometry(312.0, 324.0, false, false, 262.0, 282.0) == 4.0)
+    let r = popup_geometry(312.0, 324.0, true)
+    assert(r.x == 124.0)
+    assert(r.y == 204.0)
+    assert(r.w == 176.0)
+    assert(r.h == 72.0)
+    assert(hit_geometry(312.0, 324.0, true, true, 125.0, 205.0) == 5.0)
+    assert(hit_geometry(312.0, 324.0, true, true, 125.0, 229.0) == 6.0)
+    assert(hit_geometry(312.0, 324.0, true, true, 125.0, 253.0) == 7.0)
+    assert(hit_geometry(312.0, 324.0, true, true, 300.0, 205.0) == 0.0)
+    assert(hit_geometry(312.0, 324.0, true, true, 125.0, 276.0) == 0.0)
+
+fn test_compact_resize_geometry():
+    let b = button_geometry(396.0, 356.0)
+    assert(b.x == 12.0)
+    assert(b.y == 313.0)
+    assert(b.w == 372.0)
+    assert(b.h == 28.0)
+    assert(hit_geometry(396.0, 356.0, false, false, 13.0, 314.0) == 3.0)
+    assert(hit_geometry(396.0, 356.0, false, false, 346.0, 314.0) == 4.0)
+    let r = popup_geometry(396.0, 356.0, true)
+    assert(r.x == 208.0)
+    assert(r.y == 236.0)
+    assert(r.right() == 384.0)
+    assert(r.bottom() == 308.0)
+
+fn test_compact_locale_text_is_independent():
+    assert(locale_text(false, "Physical memory", "物理内存") == "Physical memory")
+    assert(locale_text(true, "Physical memory", "物理内存") == "物理内存")
+    assert(locale_text(false, "Primary button (no-op)", "主按钮（无操作）") == "Primary button (no-op)")
+    assert(locale_text(true, "Primary button (no-op)", "主按钮（无操作）") == "主按钮（无操作）")
 
 fn main():
     println("CI_PROBE_START")

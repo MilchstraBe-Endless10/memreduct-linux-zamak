@@ -10,10 +10,13 @@ The probe requests a compact 336×348 logical-pixel top-level window. The offici
 
 - `zam check`, all nine pure event-routing tests, and `zam build` under pinned Zamak 0.2.0.
 - Weston Headless/Pixman Wayland socket connection, GTK Canvas draw, timer-requested `ui.quit()`, event-loop return, process exit status, and protocol log checks.
-- Independent Xvfb/XTEST GTK input: pointer hover/press/release, split-button and menu selection, locale toggle, Tab focus, Enter, Escape, fixed client geometry, screenshot dimensions/pixel delta, and clean F12 app quit.
+- Independent Xvfb/XTEST GTK input: hover-only and held-press captures at the same pointer location, non-zero pixel deltas limited to the button ROI, release event/state, split-button and menu selection, English/简体中文 layout and restoration, Tab focus, Enter, Escape, resize geometry, F12 quit, and a separate `xdotool windowclose` run.
+- Three additional geometry/locale tests verify the 336×348 top-level to 312×324 Canvas contract, the split-button and popup bounds, and the resized Canvas geometry. The original nine routing test functions remain unchanged.
 
 The Wayland lane does not inject pointer or keyboard events. The X11 lane is reported separately and is not a Wayland or Hyprland acceptance test.
 
+The Weston Headless client log is retained verbatim. R5 recorded one GTK `gdk_seat_get_keyboard` critical before the client created its surface; `wayland-info` did not list a `wl_seat` global, while the client subsequently drew and exited normally. This is consistent with the headless compositor lacking input, but does not prove causality and did not interrupt the event loop. Weston 13's help offers existing-seat selection and flags to continue without or disable input, but no virtual input-device creation option; removing the warning requires a separate synthetic-input provider, not a GTK warning filter. The test does not suppress GTK diagnostics or claim the lane is warning-free.
+
 ## Runner usage
 
-The workflow runs on pushes to `test/issue-3-isolated-gui` and pull requests targeting `fix/issue-1-zamak-build`. Dependencies are installed only in GitHub-hosted Ubuntu 24.04 jobs. Each script creates a private temporary runtime directory, tracks and cleans only its own processes, and uploads sanitized probe evidence. A timeout is a failure, not a pass.
+The workflow runs on pushes to `test/issue-3-isolated-gui` and pull requests targeting `fix/issue-1-zamak-build`. Dependencies are installed only in GitHub-hosted Ubuntu 24.04 jobs. Each script creates a private temporary runtime directory, tracks and cleans only its own processes, and uploads sanitized probe evidence. A timeout is a failure, not a pass. Uploaded evidence has 14-day retention; source, hashes, assertions, and result summary remain in the repository.

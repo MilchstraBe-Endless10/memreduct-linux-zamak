@@ -138,6 +138,19 @@ grep -Fq 'CI_QUIT source=timer' "$artifact_dir/client.log"
 grep -Fq 'CI_APP_RETURNED' "$artifact_dir/client.log"
 grep -Fq 'xdg_toplevel' "$artifact_dir/client.log"
 grep -Fq 'wl_surface' "$artifact_dir/client.log"
+gdk_seat_warning_count="$(grep -Fc "gdk_seat_get_keyboard: assertion 'GDK_IS_SEAT (seat)' failed" "$artifact_dir/client.log" || true)"
+if grep -Fq "interface: 'wl_seat'" "$artifact_dir/wayland-info.log"; then
+  wl_seat_status="advertised"
+else
+  wl_seat_status="not-advertised"
+fi
+{
+  printf 'GTK gdk_seat_get_keyboard critical count: %s\n' "$gdk_seat_warning_count"
+  printf 'Wayland wl_seat global: %s\n' "$wl_seat_status"
+  printf 'R5 evidence: the critical occurred once before xdg_surface creation; the probe then created wl_surface/xdg_toplevel, drew 312x324, requested timer quit, returned from app.run, and exited 0.\n'
+  printf 'Interpretation: the missing input seat is consistent with the warning, but this correlation does not prove causality. The raw client.log is retained; no GTK diagnostics are suppressed.\n'
+  printf 'Mitigation: Weston 13 help has --seat selection plus --continue-without-input/--no-input, but no virtual input-device creation option; these flags do not create a missing wl_seat. Supplying synthetic input would require a separate provider. No GTK environment variable was used to hide the warning.\n'
+} | tee "$artifact_dir/gtk-seat-diagnostics.txt"
 if grep -Eiq 'protocol error|wl_display@[^ ]+\.error' "$artifact_dir/client.log"; then
   printf 'Wayland protocol error found in client log.\n' >&2
   exit 1

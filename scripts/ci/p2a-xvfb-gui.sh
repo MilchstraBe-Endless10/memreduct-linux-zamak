@@ -6,7 +6,7 @@ artifact_dir="${ARTIFACT_DIR:-$root/artifacts/x11}"
 probe="${1:-$root/artifacts/probe/p2a_r4_canvas_probe}"
 mkdir -p "$artifact_dir"
 
-for cmd in Xvfb xdotool xwininfo import identify compare stdbuf grep awk xdpyinfo; do
+for cmd in Xvfb xdotool xwininfo import identify compare convert stdbuf grep awk xdpyinfo sed; do
   command -v "$cmd" >/dev/null || {
     printf 'Missing required X11 test command: %s\n' "$cmd" >&2
     exit 2
@@ -108,62 +108,137 @@ wait_for_marker() {
   return 1
 }
 check_geometry() {
-  local output="$1"
+  local expected_width="$1" expected_height="$2" expected_canvas="$3" output="$4"
   local width height canvas_size
   xwininfo -id "$window_id" >"$output"
   width="$(awk '$1 == "Width:" {print $2; exit}' "$output")"
   height="$(awk '$1 == "Height:" {print $2; exit}' "$output")"
-  canvas_size="$(grep -m 1 '^CI_DRAW width=' "$artifact_dir/client.log" | sed -E 's/^CI_DRAW width=([^ ]+) height=([^ ]+).*$/\1x\2/')"
+  canvas_size="$(grep '^CI_DRAW width=' "$artifact_dir/client.log" | tail -n 1 | sed -E 's/^CI_DRAW width=([^ ]+) height=([^ ]+).*$/\1x\2/')"
   printf 'Observed X11 top-level geometry: %sx%s; GTK Canvas viewport: %s\n' "$width" "$height" "$canvas_size"
   printf 'GTK Canvas viewport: %s\n' "$canvas_size" >>"$output"
-  [[ "$width" == "336" && "$height" == "348" ]] || {
-    printf 'Expected compact 336x348 top-level window.\n' >&2
+  [[ "$width" == "$expected_width" && "$height" == "$expected_height" ]] || {
+    printf 'Expected top-level window %sx%s.\n' "$expected_width" "$expected_height" >&2
     return 1
   }
-  [[ "$canvas_size" == "312.0x324.0" ]] || {
-    printf 'Expected compact 312x324 GTK Canvas viewport.\n' >&2
+  [[ "$canvas_size" == "$expected_canvas" ]] || {
+    printf 'Expected GTK Canvas viewport %s.\n' "$expected_canvas" >&2
     return 1
   }
 }
+
+wait_for_draw_count() {
+  local marker="$1" expected_count="$2" count
+  for _ in {1..50}; do
+    count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
+    if (( count >= expected_count )); then
+      return 0
+    fi
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  printf 'Missing resize draw marker %s (%s occurrences expected).\n' "$marker" "$expected_count" >&2
+  return 1
+}
+
+capture_button_roi() {
+  convert "$1" -crop '288x28+24+293' +repage "$2"
+}
+
+assert_pixel_delta() {
+  local before="$1" after="$2" report="$3" compare_status changed_pixels
+  set +e
+  compare -metric AE "$before" "$after" null: 2>"$report"
+  compare_status="$?"
+  set -e
+  changed_pixels="$(sed -E 's/^[[:space:]]*([0-9]+).*/\1/' "$report")"
+  [[ "$compare_status" == "1" && "$changed_pixels" =~ ^[0-9]+$ ]] && (( changed_pixels > 0 )) || {
+    printf 'Expected a non-zero pixel delta for %s vs %s; status=%s metric=%s\n' \
+      "$(basename "$before")" "$(basename "$after")" "$compare_status" "$changed_pixels" >&2
+    return 1
+  }
+  printf '\nchanged_pixels=%s\n' "$changed_pixels" | tee -a "$report"
+}
+
+assert_pixel_identity() {
+  local first="$1" second="$2" report="$3" compare_status changed_pixels
+  set +e
+  compare -metric AE "$first" "$second" null: 2>"$report"
+  compare_status="$?"
+  set -e
+  changed_pixels="$(sed -E 's/^[[:space:]]*([0-9]+).*/\1/' "$report")"
+  [[ "$compare_status" == "0" && "$changed_pixels" == "0" ]] || {
+    printf 'Expected identical pixels for %s vs %s; status=%s metric=%s\n' \
+      "$(basename "$first")" "$(basename "$second")" "$compare_status" "$changed_pixels" >&2
+    return 1
+  }
+  printf '\nchanged_pixels=0\n' | tee -a "$report"
+}
 wait_for_marker 'CI_DRAW width='
-check_geometry "$artifact_dir/window-initial.txt"
+check_geometry 336 348 312.0x324.0 "$artifact_dir/window-initial.txt"
+xdotool windowsize --sync "$window_id" 420 380
+wait_for_draw_count 'CI_DRAW width=396.0 height=356.0' 1
+check_geometry 420 380 396.0x356.0 "$artifact_dir/window-resized.txt"
+xdotool windowsize --sync "$window_id" 336 348
+wait_for_draw_count 'CI_DRAW width=312.0 height=324.0' 2
+check_geometry 336 348 312.0x324.0 "$artifact_dir/window-restored.txt"
+
 xdotool windowfocus --sync "$window_id"
-import -window "$window_id" "$artifact_dir/01-probe-en-initial.png"
+import -window "$window_id" "$artifact_dir/00-probe-en-initial.png"
 
 xdotool mousemove --sync --window "$window_id" 150 306
 wait_for_marker 'CI_MOUSE_HOVER target=3'
+sleep 0.2
+import -window "$window_id" "$artifact_dir/01-probe-en-hover.png"
+capture_button_roi "$artifact_dir/01-probe-en-hover.png" "$artifact_dir/hover-button-roi.png"
 xdotool mousedown 1
 wait_for_marker 'CI_MOUSE_DOWN target=3'
 sleep 0.2
 import -window "$window_id" "$artifact_dir/02-probe-en-pressed.png"
-set +e
-compare -metric AE "$artifact_dir/01-probe-en-initial.png" "$artifact_dir/02-probe-en-pressed.png" null: \
-  2>"$artifact_dir/pressed-pixel-diff.txt"
-compare_status="$?"
-set -e
-[[ "$compare_status" == "1" ]] || {
-  printf 'Expected a pixel difference for the pressed Canvas state; compare exit=%s\n' "$compare_status" >&2
-  exit 1
-}
-awk 'NF && $1 + 0 > 0 { found=1 } END { exit !found }' "$artifact_dir/pressed-pixel-diff.txt"
+capture_button_roi "$artifact_dir/02-probe-en-pressed.png" "$artifact_dir/pressed-button-roi.png"
+assert_pixel_delta "$artifact_dir/hover-button-roi.png" "$artifact_dir/pressed-button-roi.png" \
+  "$artifact_dir/hover-pressed-pixel-diff.txt"
 xdotool mouseup 1
+wait_for_marker 'CI_MOUSE_UP target=3'
 wait_for_marker 'CI_MOUSE_ACTION action=3'
 wait_for_marker 'CI_STATE primary=on'
+sleep 0.2
+import -window "$window_id" "$artifact_dir/03-probe-en-released.png"
+capture_button_roi "$artifact_dir/03-probe-en-released.png" "$artifact_dir/released-button-roi.png"
+assert_pixel_delta "$artifact_dir/pressed-button-roi.png" "$artifact_dir/released-button-roi.png" \
+  "$artifact_dir/pressed-release-pixel-diff.txt"
 
 xdotool mousemove --sync --window "$window_id" 310 306 click 1
 wait_for_marker 'CI_MOUSE_ACTION action=4'
 wait_for_marker 'CI_MENU open=true'
-import -window "$window_id" "$artifact_dir/03-probe-en-split-menu.png"
+import -window "$window_id" "$artifact_dir/04-probe-en-split-menu.png"
 xdotool mousemove --sync --window "$window_id" 170 252 click 1
 wait_for_marker 'CI_MOUSE_ACTION action=6'
 wait_for_marker 'CI_STATE option=B'
 
+sleep 0.2
+import -window "$window_id" "$artifact_dir/05-probe-en-locale.png"
+convert "$artifact_dir/05-probe-en-locale.png" -crop '288x42+24+50' +repage \
+  "$artifact_dir/locale-en-layout-roi.png"
 xdotool mousemove --sync --window "$window_id" 278 22 click 1
 wait_for_marker 'CI_STATE locale=zh'
-import -window "$window_id" "$artifact_dir/04-probe-zh.png"
-xdotool windowfocus --sync "$window_id"
+sleep 0.2
+check_geometry 336 348 312.0x324.0 "$artifact_dir/window-zh.txt"
+import -window "$window_id" "$artifact_dir/06-probe-zh-locale.png"
+convert "$artifact_dir/06-probe-zh-locale.png" -crop '288x42+24+50' +repage \
+  "$artifact_dir/locale-zh-layout-roi.png"
+assert_pixel_delta "$artifact_dir/locale-en-layout-roi.png" "$artifact_dir/locale-zh-layout-roi.png" \
+  "$artifact_dir/locale-layout-pixel-diff.txt"
 xdotool key --clearmodifiers F2
 wait_for_marker 'CI_STATE locale=en'
+sleep 0.2
+check_geometry 336 348 312.0x324.0 "$artifact_dir/window-en-restored.txt"
+import -window "$window_id" "$artifact_dir/07-probe-en-restored.png"
+convert "$artifact_dir/07-probe-en-restored.png" -crop '288x42+24+50' +repage \
+  "$artifact_dir/locale-en-restored-layout-roi.png"
+assert_pixel_identity "$artifact_dir/locale-en-layout-roi.png" \
+  "$artifact_dir/locale-en-restored-layout-roi.png" "$artifact_dir/locale-layout-return-diff.txt"
+
+xdotool windowfocus --sync "$window_id"
 xdotool key --clearmodifiers Tab
 wait_for_marker 'CI_FOCUS value='
 xdotool key --clearmodifiers Return
@@ -172,7 +247,7 @@ wait_for_marker 'CI_MENU open=true'
 xdotool key --clearmodifiers Escape
 wait_for_marker 'CI_MENU closed reason=Escape'
 
-check_geometry "$artifact_dir/window-final.txt"
+check_geometry 336 348 312.0x324.0 "$artifact_dir/window-final.txt"
 for image in "$artifact_dir"/0*-probe-*.png; do
   dimensions="$(identify -format '%wx%h' "$image")"
   [[ "$dimensions" == "336x348" ]] || {
@@ -203,5 +278,94 @@ set -e
 app_pid=""
 printf 'Canvas probe exit status: %s\n' "$app_status" | tee "$artifact_dir/client-exit.txt"
 [[ "$app_status" == "0" ]] || { cat "$artifact_dir/client.log" >&2; exit "$app_status"; }
-printf 'X11 GUI input/lifecycle test: XTEST mouse hover/press/release, pixel state change, split menu selection, locale change, keyboard focus, Enter/Escape, F12 clean app quit; exit=0.\n' \
+
+close_log="$artifact_dir/client-close.log"
+stdbuf -oL "$probe" >"$close_log" 2>&1 &
+app_pid="$!"
+close_window_id=""
+for _ in {1..50}; do
+  close_window_id="$(xdotool search --onlyvisible --name 'P2A-R4 CI Canvas Probe' 2>/dev/null | head -n 1 || true)"
+  [[ -n "$close_window_id" ]] && break
+  kill -0 "$app_pid" 2>/dev/null || break
+  sleep 0.1
+done
+[[ -n "$close_window_id" ]] || {
+  printf 'Independent close-test window did not appear.\n' >&2
+  cat "$close_log" >&2 || true
+  exit 1
+}
+close_drawn=false
+for _ in {1..50}; do
+  if grep -Fq 'CI_DRAW width=312.0 height=324.0' "$close_log"; then
+    close_drawn=true
+    break
+  fi
+  kill -0 "$app_pid" 2>/dev/null || break
+  sleep 0.1
+done
+[[ "$close_drawn" == true ]] || {
+  printf 'Close-test window did not draw the compact Canvas.\n' >&2
+  cat "$close_log" >&2 || true
+  exit 1
+}
+xdotool windowclose "$close_window_id" >"$artifact_dir/window-close-request.txt" 2>&1
+close_seen=false
+for _ in {1..50}; do
+  if grep -Fq 'CI_WINDOW_CLOSE' "$close_log"; then
+    close_seen=true
+    break
+  fi
+  kill -0 "$app_pid" 2>/dev/null || break
+  sleep 0.1
+done
+[[ "$close_seen" == true ]] || {
+  printf 'xdotool windowclose did not invoke CI_WINDOW_CLOSE.\n' >&2
+  cat "$close_log" >&2 || true
+  exit 1
+}
+returned_seen=false
+for _ in {1..50}; do
+  if grep -Fq 'CI_APP_RETURNED' "$close_log"; then
+    returned_seen=true
+    break
+  fi
+  kill -0 "$app_pid" 2>/dev/null || break
+  sleep 0.1
+done
+[[ "$returned_seen" == true ]] || {
+  printf 'The app event loop did not return after the WM close request.\n' >&2
+  cat "$close_log" >&2 || true
+  exit 1
+}
+if grep -Fq 'CI_QUIT source=timer' "$close_log"; then
+  printf 'The close test used the timer fallback instead of the WM close request.\n' >&2
+  cat "$close_log" >&2 || true
+  exit 1
+fi
+app_exited=false
+for _ in {1..50}; do
+  if ! kill -0 "$app_pid" 2>/dev/null; then
+    app_exited=true
+    break
+  fi
+  sleep 0.1
+done
+[[ "$app_exited" == true ]] || {
+  printf 'The app process did not exit within 5 seconds of windowclose.\n' >&2
+  exit 1
+}
+set +e
+wait "$app_pid"
+close_status="$?"
+set -e
+app_pid=""
+printf 'Window-close probe exit status: %s\n' "$close_status" | tee "$artifact_dir/window-close-exit.txt"
+[[ "$close_status" == "0" ]] || { cat "$close_log" >&2; exit "$close_status"; }
+if xdotool getwindowname "$close_window_id" >"$artifact_dir/window-after-close.txt" 2>&1; then
+  printf 'The X11 window still exists after the app exited.\n' >&2
+  exit 1
+fi
+grep -Fq 'CI_WINDOW_CLOSE' "$close_log"
+grep -Fq 'CI_APP_RETURNED' "$close_log"
+printf 'X11 GUI input/lifecycle test: actual XTEST hover/pressed/release ROI diffs, split menu, bilingual layout, resize and geometry, focus/Enter/Escape/F12, plus independent WM windowclose; both app exits=0.\n' \
   | tee "$artifact_dir/result.txt"

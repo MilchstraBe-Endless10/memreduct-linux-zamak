@@ -8,10 +8,11 @@ This is a CI-only, non-privileged fixture. It is not production application code
 - R2 source SHA-256: `37f6b5488c39caeb0c5e1d172809a0faa35340831cd6e132c83684f0c8609628`
 - R4 CI fixture: `tests/gui/canvas_probe/src/main.zm`
 - R4 fixture SHA-256 at P2A-R5 base commit `91959c05aeaa2bfb15ecea0b7d60c621f31693f2`: `16c79f49be5733562679484f8de810e3bbe4e7967e87c1f410a536794c35d029`
-- Current fixture SHA-256 after GTK key-name compatibility, compact sizing, Enter control-character routing, and fitting placeholder labels: `90264e57206ccf499e4285e394ff9ed2cb361bacc5dc6151227b7c0c5e434266`
-- Built compact fixture executable SHA-256 on this workstation (Zamak 0.2.0, GTK 3.24.52): `c96bf61acdf4510683726edcc8e6da6c2fea43f86910af65541ef6f77b3ae5d0`
+- R5 fixture SHA-256 after GTK key-name compatibility, compact sizing, Enter control-character routing, and fitting placeholder labels: `90264e57206ccf499e4285e394ff9ed2cb361bacc5dc6151227b7c0c5e434266`
+- R6 fixture SHA-256: `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`
+- R5 built fixture executable SHA-256 on this workstation (Zamak 0.2.0, GTK 3.24.52): `c96bf61acdf4510683726edcc8e6da6c2fea43f86910af65541ef6f77b3ae5d0`
 
-The nine pure routing tests below are retained verbatim from the R2 event-coverage probe:
+The nine pure routing tests below are retained verbatim from the R2 event-coverage probe and unchanged by R6:
 
 1. `test_split_button_hit_regions`
 2. `test_root_menu_rows`
@@ -23,9 +24,11 @@ The nine pure routing tests below are retained verbatim from the R2 event-covera
 8. `test_logical_geometry_tracks_viewport`
 9. `test_language_toggle_reaches_both_locales`
 
-R4 adds observable CI markers for mouse/key/locale/menu state, `F12` as a test-only explicit quit event, an `app.on_close` marker, a marker after `app.run` returns, and a bounded 10-second fallback quit. The production app is not changed. The X11 lane sends F12 and requires the app event loop to return and exit 0; the Wayland smoke accepts only the timer-requested clean return, never a timeout exit. `CI_WINDOW_CLOSE` is recorded if the UI framework invokes the close callback, but acceptance does not assume `ui.quit()` is equivalent to a user window-manager close request.
+R4 adds observable CI markers for mouse/key/locale/menu state, `F12` as a test-only explicit quit event, an `app.on_close` marker, a marker after `app.run` returns, and a bounded 10-second fallback quit. The production app is not changed. R6 makes the close callback request `ui.quit()` and starts an independent X11 probe for `xdotool windowclose`; this path passes only when `CI_WINDOW_CLOSE`, `CI_APP_RETURNED`, exit status 0, and disappearance of the X window are observed before the timer fallback.
 
 `tests/gui/canvas_probe/source-sha256.txt` pins the current probe source and is checked before every build. Its main window requests 336×348 logical pixels, an estimate from the official 224×214 Dialog Unit resource using the 8 pt `Ms Shell Dlg` font at 96 DPI; the actual GTK Canvas viewport is separately checked at 312×324. This is not a Windows screenshot measurement or pixel-parity claim. The build script writes the executable hash using a stable basename so artifacts do not expose local absolute paths.
+
+R6 adds three tests for compact button/popup bounds, resized Canvas geometry, and independent locale labels. The Xvfb lane compares hover-only and held-press screenshots at the same pointer coordinate, crops only the 288×28 button face at window offset (24,293), and records the changed-pixel count. After release it requires the release marker/action and another non-zero ROI delta. It checks 336×348 / 312×324 and a resize to 420×380 / 396×356 before restoring the compact size. English and Chinese heading ROIs must differ after switching and return pixel-identically after switching back.
 
 ## Evidence interpretation
 
