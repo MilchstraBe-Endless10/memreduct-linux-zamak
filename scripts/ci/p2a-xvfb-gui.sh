@@ -332,6 +332,8 @@ done
   cat "$close_log" >&2 || true
   exit 1
 }
+xprop -id "$close_window_id" WM_PROTOCOLS WM_STATE \
+  | tee "$artifact_dir/window-close-protocols.txt"
 xdotool windowclose "$close_window_id" >"$artifact_dir/window-close-request.txt" 2>&1
 close_seen=false
 for _ in {1..50}; do
@@ -343,7 +345,7 @@ for _ in {1..50}; do
   sleep 0.1
 done
 [[ "$close_seen" == true ]] || {
-  printf 'xdotool windowclose did not invoke CI_WINDOW_CLOSE.\n' >&2
+  printf 'xdotool windowclose did not invoke CI_WINDOW_CLOSE; inspect window-close-protocols.txt to distinguish missing WM_DELETE_WINDOW from a client close-handler issue.\n' >&2
   cat "$close_log" >&2 || true
   exit 1
 }
