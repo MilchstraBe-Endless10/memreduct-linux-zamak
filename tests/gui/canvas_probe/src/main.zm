@@ -256,7 +256,12 @@ fn mouse(s: &mut Probe, m: &ui.Mouse):
 fn key(s: &mut Probe, k: &ui.Key):
     if k.released():
         return
-    println(f"CI_KEY name={k.name()}")
+    if k.name() == "\t":
+        println("CI_KEY name=Tab")
+    elif k.name() == "\n" or k.name() == "\r":
+        println("CI_KEY name=Enter")
+    else:
+        println(f"CI_KEY name={k.name()}")
     if k.name() == "F12":
         println("CI_QUIT source=f12")
         ui.quit()
@@ -282,7 +287,7 @@ fn key(s: &mut Probe, k: &ui.Key):
             s.focus = focus_previous(s.focus)
             s.status = locale_text(s.zh, "Arrow: menu focus moved", "方向键：菜单焦点已移动")
             println(f"CI_FOCUS value={s.focus}")
-    elif k.name() == "Enter" or k.name() == "Return" or k.name() == "\r":
+    elif k.name() == "Enter" or k.name() == "Return" or k.name() == "\r" or k.name() == "\n":
         let action = enter_action(s.menu, s.focus)
         if action != 0.0:
             println(f"CI_KEY_ACTION action={action}")

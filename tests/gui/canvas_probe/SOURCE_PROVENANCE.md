@@ -8,8 +8,8 @@ This is a CI-only, non-privileged fixture. It is not production application code
 - R2 source SHA-256: `37f6b5488c39caeb0c5e1d172809a0faa35340831cd6e132c83684f0c8609628`
 - R4 CI fixture: `tests/gui/canvas_probe/src/main.zm`
 - R4 fixture SHA-256 at P2A-R5 base commit `91959c05aeaa2bfb15ecea0b7d60c621f31693f2`: `16c79f49be5733562679484f8de810e3bbe4e7967e87c1f410a536794c35d029`
-- Current fixture SHA-256 after GTK key-name compatibility and compact official-size estimate: `29dab87e5e3d34929b2e6d0e0f7e4ccb1ec7fa1b7fd28d3f7846716ac50976af`
-- Built compact fixture executable SHA-256 on this workstation (Zamak 0.2.0, GTK 3.24.52): `f9e0f44069533fe700f08687dee457e92299ab908ae846c2c7d6b5740a2b0fa9`
+- Current fixture SHA-256 after GTK key-name compatibility, compact sizing, and Enter control-character routing: `13db6282a14e90976065291379f754bf9014c336c4d282b25ea8727b4c4c16d6`
+- Built compact fixture executable SHA-256 on this workstation (Zamak 0.2.0, GTK 3.24.52): `c0ffae6ff1493c1ebb1b8359456b43c750ffb4cf453a07ab68e02ca70551cb5b`
 
 The nine pure routing tests below are retained verbatim from the R2 event-coverage probe:
 
