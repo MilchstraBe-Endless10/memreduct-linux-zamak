@@ -2,8 +2,8 @@
 
 ## 当前事实
 - 目标账号：`MilchstraBe-Endless10`；仓库建议：`memreduct-linux-zamak`，PUBLIC。
-- 截至 2026-10-25，此聊天中没有创建成功 GitHub 仓库；没有远端 SHA。**不要把待创建的 URL 写成已经上线的事实。**
-- 连接的 GitHub 动作目前未暴露创建新仓库接口；浏览器创建尝试遇到额度限制。故需要在用户登录的 Codex Desktop 终端运行 GitHub CLI 或手工建仓。
+- 2026-10-25 已创建 PUBLIC 仓库：<https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak>；默认分支 `main`。初次 bootstrap 提交 `02ca561b41d55611a131338bdca50243e78c4aa7` 已与远端 `refs/heads/main` 核验一致。
+- 首轮 GitHub Actions `build-and-test` 在 `zam check .` 失败：`project.name must be an identifier`；Zamak 0.2.0 编译验收见 [P1 Issue #1](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/1)。
 
 ## 在 Omarchy 的一次性操作
 ```bash
