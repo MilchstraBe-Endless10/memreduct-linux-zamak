@@ -3,7 +3,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 [[ -f build/memreduct-zamak-helper ]] || { echo 'First run: bash scripts/build-arch.sh' >&2; exit 1; }
-mapfile -t candidates < <(find build -maxdepth 1 -type f -name 'memreduct-zamak-*' ! -name '*helper*' -perm /111 | sort)
+mapfile -t candidates < <(find build -maxdepth 1 -type f -name 'memreduct_zamak-[0-9a-f]*' -perm /111 | sort)
 ((${#candidates[@]})) || { echo 'Zamak GUI binary not found in build/' >&2; exit 1; }
 if ((${#candidates[@]} > 1)); then
     echo 'Multiple GUI binaries found. Remove stale build binaries and run build-arch.sh again.' >&2
