@@ -122,6 +122,12 @@ wait_for_new_marker() {
   cat "$artifact_dir/client.log" >&2
   return 1
 }
+escape_and_expect_focus() {
+  local focus="$1" marker="CI_MENU closed reason=Escape focus=$1" previous_count
+  previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
+  xdotool key --clearmodifiers Escape
+  wait_for_new_marker "$marker" "$previous_count"
+}
 window_geometry() {
   local output="$1" width height canvas
   xwininfo -id "$window_id" >"$output"
@@ -175,23 +181,22 @@ previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 20 22 click 1
 wait_for_marker 'CI_POPUP kind=root'
 wait_for_new_marker "$marker" "$previous_count"
-xdotool key --clearmodifiers Escape
-wait_for_marker 'CI_MENU closed reason=Escape'
+escape_and_expect_focus 0
 marker='CI_MENU root=2 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 70 22 click 1
 wait_for_new_marker "$marker" "$previous_count"
-xdotool key --clearmodifiers Escape
+escape_and_expect_focus 1
 marker='CI_MENU root=3 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 120 22 click 1
 wait_for_new_marker "$marker" "$previous_count"
-xdotool key --clearmodifiers Escape
+escape_and_expect_focus 2
 marker='CI_MENU root=4 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 174 22 click 1
 wait_for_new_marker "$marker" "$previous_count"
-xdotool key --clearmodifiers Escape
+escape_and_expect_focus 3
 marker='CI_MENU root=2 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool mousemove --sync --window "$window_id" 70 22 click 1
@@ -230,12 +235,14 @@ wait_for_new_marker "$marker" "$previous_count"
 wait_for_new_marker "$popup_marker" "$popup_previous_count"
 sleep 0.2
 capture 'production-language-menu-zh.png'
-xdotool key --clearmodifiers Escape
+escape_and_expect_focus 1
 menu_index=1
 for menu_x in 20 70 120 174; do
+  marker="CI_POPUP kind=root menu=$menu_index locale=zh-CN"
+  previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
   xdotool mousemove --sync --window "$window_id" "$menu_x" 22 click 1
-  wait_for_marker "CI_POPUP kind=root menu=$menu_index locale=zh-CN"
-  xdotool key --clearmodifiers Escape
+  wait_for_new_marker "$marker" "$previous_count"
+  escape_and_expect_focus "$((menu_index - 1))"
   menu_index=$((menu_index + 1))
 done
 
@@ -258,10 +265,11 @@ xdotool key --clearmodifiers Down
 xdotool key --clearmodifiers Down
 xdotool key --clearmodifiers Return
 wait_for_marker 'CI_THEME dark=true'
+marker='CI_MENU root=2 open=true'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool key --clearmodifiers Down
-wait_for_marker 'CI_MENU root=2 open=true'
-xdotool key --clearmodifiers Escape
-wait_for_marker 'CI_MENU closed reason=Escape'
+wait_for_new_marker "$marker" "$previous_count"
+escape_and_expect_focus 1
 
 # The CI-only fixture fails a later sample after earlier live samples succeeded.
 # The production failure path must clear data and request a redraw immediately.

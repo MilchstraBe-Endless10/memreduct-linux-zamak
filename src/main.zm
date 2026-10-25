@@ -424,7 +424,7 @@ fn key(s: &mut MainWindow, event: &ui.Key):
         s.popup = 0
         s.menu = 0
         s.pressed = 0.0
-        if s.test_mode: println("CI_MENU closed reason=Escape")
+        if s.test_mode: println(f"CI_MENU closed reason=Escape focus={s.focus}")
     elif name == "Tab" or name == "\t":
         s.focus += 1.0
         if s.focus > 4.0: s.focus = 0.0
