@@ -1,5 +1,14 @@
 # 会话日志（追加式）
 
+## 2026-10-26 — P2C-3R1 GitHub Actions APT 稳定性补强与证据闭环
+- 工作基线：PR #7 的本地/远端 HEAD `52b7977b7582ee197470ba4a0e946a7b1558c2aa`，工作树干净，PR OPEN/Draft、base `feat/issue-3-p2b-main-window`。先读了 PR 最新 ChatGPT R3 review、AGENTS、P2C-3 视觉报告、语言差异矩阵和三层记忆。
+- 旧 P2C run `40324420754` attempt 1 的 Linux Xvfb bulk APT 安装步被取消，非应用失败；attempt 2 的三 job 均成功。日志直接显示 Ubuntu 24.04.5 runner 从 `azure.archive.ubuntu.com` 拉取 108 MB 花费 31 分 18 秒、平均 57.7 kB/s，APT update 约 1 秒；未找到 DNS、apt lock、缺包证据。compare `python3-pil` 537 kB 安装数秒通过。慢下载是观察到的阻塞，不推断更深层根因。
+- 新增 `scripts/ci/apt-diagnostics.sh`，workflow update/install 分步、step/command 超时、HTTP(S) 30 秒 timeout、retry 3、dpkg lock wait 180 秒、noninteractive、stdout/stderr 和实际 exit code、分类、镜像/OS/APT sources/包版本 metadata、失败 artifact。应用于 P2C Xvfb/Pillow 和生产 GUI P2B Xvfb/Weston。
+- 去除 P2B workflow 对 P2C 分支 push 的触发；P2C PR 仍保留 P2B 主窗 XTEST / Weston 与 P2C 独立设置 XTEST/截图对照，避免重复设置截图；P2C/P2B workflow 分别按 PR 分组，`cancel-in-progress:false`。没有删 Windows baseline、Linux screenshot/comparison job 或改变任何几何/raster 阈值。
+- CI-only 提交 `406491b70594d202f3d2bb4efa667f2e0886c552` 推送到既有 P2C 分支，未改 main/其他 PR、未创建 PR/合并。P2C run `40336249517` 全部 3 job PASS；artifacts Windows `12657162841`、Linux X11 `12656813101`、comparison `12656279296`、APT diagnostics `12656977979` / `12656638843`。P2B GUI `40336249521` 两 job PASS，artifacts X11 `12655914336` / Weston `12656259412`、APT diagnostics `12655954131` / `12656972640`。PR build `40336249519` 与 push build `40336242138` PASS；PR check 7 PASS / 0 FAIL。唯一 skipped step 是 P2B Xvfb 中重复的 settings test，由 P2C 同 head Xvfb job 完整覆盖。没有失败或取消必要 job。
+- 新 P2C Xvfb 的 APT update/install 16/26 秒，Pillow compare 14/27 秒，P2B X11 6/27 秒，Weston 9/23 秒。Runner `ubuntu24 20261023.334.3` / Ubuntu 24.04.5 / APT 2.8.3；APT logs 区分了 update/install 并记录包版本和源。P2C Linux 的 6 个 source/config SHA、2 个 binary SHA 全验证；Windows PNG hashes 41/41、Linux PNG hashes 17/17 verified。比较器未变：184 geometry/10 nav/102 tree/36 raster PASS；10 页面差异率较 P2C-2 下降，1:1 仍 NOT PASS，语言 12 `DECISION_REQUIRED` 仍不变。详细 id/hash 在 P2C-3 visual report 和 artifacts。
+- 本机非 GUI 验证：project verify 33 项 PASS，C/Python safety tests 3/3 PASS，所有 `scripts/*.sh` 与 `scripts/ci/*.sh` shell 语法 PASS，Zamak 0.2.0 check/test (29/29)/build PASS，`scripts/build-arch.sh` PASS，`git diff --check` PASS。`build-and-test` 现有 apt install 在 push/PR 用时 7:42 / 8:43 均通过，仍是 15 分钟 job 的未加固风险，本轮未改 `test.yml`。未启动 GUI/Compositor/Xvfb/Wayland，未访问 Hyprland IPC、桌面输入、drop_caches、Polkit、Swap/ZRAM。
+
 ## 2026-10-25 — Bootstrap governance
 - 输入：Zamak v0.2.0 本地源码；GitHub 公共仓库尚未成功创建。
 - 输出：架构、记忆、开发计划、Codex 协作协议与公共仓库发布脚本。

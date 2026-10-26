@@ -1,5 +1,16 @@
 # 短期记忆 / Latest Handoff
 
+## 当前续接：P2C-3R1 CI 稳定性与最终证据闭环（2026-10-26）
+
+- PR #7 OPEN / Draft，分支 `feat/issue-3-p2c-settings-ui`，base `feat/issue-3-p2b-main-window`。原始任务 HEAD `52b7977b7582ee197470ba4a0e946a7b1558c2aa`；CI-only commit `406491b70594d202f3d2bb4efa667f2e0886c552` 已推送，PR 远端 head 已核对。生产 UI checkpoint 保持 `60be390eb0ff6c18564f35abcd23d36406c6d3f8`，没有 UI 或比较器变更。
+- 修复前 P2C run `40324420754` attempt 1 在 Xvfb bulk APT step 被取消；attempt 2 全部 3 jobs PASS，但包源 `azure.archive.ubuntu.com` 下载 108 MB 用 31 分 18 秒、57.7 kB/s；APT update 本身快速完成，未见 DNS/锁/缺包错误。故障证据指向慢下载，不对更深层网络根因作推断。Pillow 安装 537 kB / 数秒成功。
+- 新增 APT 有界诊断 runner，update/install 拆步，内部 8/38 分钟硬时限，workflow step 10/40 分钟，APT 网络超时 30 秒、retry 3、锁等待 180 秒，记录 stdout/stderr/退出码/原因类别/runner 与包版本，失败仍上传 artifact。P2C Xvfb/compare 与 P2B Xvfb/Wayland 都复用；P2B 总时限为 60 分钟。
+- P2B 不再对 P2C 功能分支的 push 重复触发；P2C PR 时 P2B 仍运行主窗 X11 与 Weston 生命周期，五页 UI 由 P2C workflow 运行一次。两个 workflow 各自 PR concurrency group 使用 `cancel-in-progress: false`，避免中断正在生成证据的 run。所有 Windows 原生截图、Linux 生产截图和比较作业保留；184/184 几何等阈值/样本未变，1:1 仍 NOT PASS，12 项中文资源差异仍 `DECISION_REQUIRED`。
+- P2C run `40336249517`：Windows 官方 3.5.2 provenance/native capture、Linux Xvfb/XTEST 与视觉比较 3/3 PASS；Artifacts Windows `12657162841`、Linux `12656813101`、visual comparison `12656279296`，APT logs `12656977979` / `12656638843`。P2B GUI run `40336249521`：Xvfb main 与 Weston lifecycle 2/2 PASS；artifacts `12655914336` / `12656259412`，APT logs `12655954131` / `12656972640`。该 run 的 P2C 五页重复 XTEST step 被有意跳过，P2C run 同提交已完整执行该测试。PR build `40336249519` 和 push build `40336242138` 均 PASS；PR checks 7 PASS / 0 FAIL，无取消或失败 job。
+- P2C APT update/install：Xvfb 16/26 秒、Pillow compare 14/27 秒；P2B X11 6/27 秒、Weston 9/23 秒。Ubuntu 24.04.5 LTS runner image `ubuntu24 20261023.334.3`、APT 2.8.3；安装日志及关键版本和退出码均已在 APT artifacts 核验。
+- 最终视觉比较保持 184/184 控件/滚动行 ≤2 px PASS（最大 1.5 px）、导航 10/10、树线 102/102、控件 raster 36/36；10 组页面变化率均优于 P2C-2，本轮范围 5.0741%–14.8853%，全页像素 1:1 仍 NOT PASS。12 项简中资源差异保持 `DECISION_REQUIRED`。source/binary manifest 8 项 SHA 全通过；Windows PNG 41/41、Linux PNG 17/17 SHA 全通过。完整哈希见 `docs/P2C-3_VISUAL_FIDELITY_REPORT.md` 和本轮 artifact manifest。
+- build-and-test 系统工具 APT 步骤花 8分43秒但成功；Zamak 0.2.0 check/test/build、治理、Shell、C/Python safety 与 Arch build 全 PASS。本机非 GUI：project verify 33 项、C/Python safety 3/3、shell syntax、Zamak test 29/29、Arch build、diff check 均 PASS。没有启动本机 GUI、Xvfb/Wayland、Hyprland IPC、桌面输入或特权操作。
+
 ## 当前续接：P2C-3 原版视觉差异收敛（2026-10-26）
 
 - PR #7 仍 OPEN / Draft；分支 `feat/issue-3-p2c-settings-ui`，Base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。本轮生产源码 SHA `60be390eb0ff6c18564f35abcd23d36406c6d3f8`；随后本记忆/报告更新为文档提交，不改生产源码；未改 main 或其他 PR。
