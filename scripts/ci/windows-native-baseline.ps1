@@ -123,7 +123,7 @@ public static class P2CWin32 {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   public sealed class WindowInfo {
     public IntPtr Handle; public uint ProcessId; public string Title; public string ClassName;
-    public bool Visible; public int Width; public int Height;
+    public bool Visible; public int Width; public int Height; public int ControlId;
   }
   private delegate bool EnumWindowsCallback(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
@@ -134,6 +134,8 @@ public static class P2CWin32 {
   [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int maxCount);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder className, int maxCount);
   [DllImport("user32.dll", SetLastError=true)] private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr lParam);
+  [DllImport("user32.dll", SetLastError=true)] private static extern bool EnumChildWindows(IntPtr parent, EnumWindowsCallback callback, IntPtr lParam);
+  [DllImport("user32.dll", SetLastError=true)] private static extern int GetDlgCtrlID(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool CloseDesktop(IntPtr desktop);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint GetDpiForWindow(IntPtr hWnd);
@@ -146,8 +148,20 @@ public static class P2CWin32 {
         var title = new System.Text.StringBuilder(512); GetWindowText(hWnd, title, title.Capacity);
         var className = new System.Text.StringBuilder(256); GetClassName(hWnd, className, className.Capacity);
         windows.Add(new WindowInfo { Handle=hWnd, ProcessId=owner, Title=title.ToString(), ClassName=className.ToString(),
-          Visible=IsWindowVisible(hWnd), Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top });
+          Visible=IsWindowVisible(hWnd), Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top, ControlId=GetDlgCtrlID(hWnd) });
       }
+      return true;
+    }, IntPtr.Zero);
+    return windows.ToArray();
+  }
+  public static WindowInfo[] GetChildWindows(IntPtr parent) {
+    var windows = new System.Collections.Generic.List<WindowInfo>();
+    EnumChildWindows(parent, delegate(IntPtr hWnd, IntPtr state) {
+      var rect = new RECT(); GetWindowRect(hWnd, out rect);
+      var title = new System.Text.StringBuilder(512); GetWindowText(hWnd, title, title.Capacity);
+      var className = new System.Text.StringBuilder(256); GetClassName(hWnd, className, className.Capacity);
+      windows.Add(new WindowInfo { Handle=hWnd, Title=title.ToString(), ClassName=className.ToString(), Visible=IsWindowVisible(hWnd),
+        Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top, ControlId=GetDlgCtrlID(hWnd) });
       return true;
     }, IntPtr.Zero);
     return windows.ToArray();
@@ -224,7 +238,22 @@ public static class P2CWin32 {
                 $settingsBitmap = [System.Drawing.Bitmap]::new(($settingsRect.Right - $settingsRect.Left), ($settingsRect.Bottom - $settingsRect.Top))
                 $settingsGraphics = [System.Drawing.Graphics]::FromImage($settingsBitmap)
                 $settingsGraphics.CopyFromScreen($settingsRect.Left, $settingsRect.Top, 0, 0, $settingsBitmap.Size)
+                $settingsBitmap.Save((Join-Path $artifactDir 'windows-native-settings-initial-en.png'), [System.Drawing.Imaging.ImageFormat]::Png)
                 $settingsGraphics.Dispose(); $settingsBitmap.Dispose()
+                Write-Status "CAPTURED Windows Native settings initial page geometry=$($settingsRect.Right-$settingsRect.Left)x$($settingsRect.Bottom-$settingsRect.Top) dpi=$settingsDpi screenshot=windows-native-settings-initial-en.png"
+
+                foreach ($child in @([P2CWin32]::GetChildWindows($settingsHwnd))) {
+                    Write-Status "Native settings control id=$($child.ControlId) hwnd=$($child.Handle) visible=$($child.Visible) size=$($child.Width)x$($child.Height) class=$($child.ClassName) text=$($child.Title)"
+                }
+                try {
+                    $uiaControls = $settingsElement.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+                        [System.Windows.Automation.Condition]::TrueCondition)
+                    Write-Status "UI Automation settings descendants=$($uiaControls.Count)"
+                    for ($controlIndex = 0; $controlIndex -lt [Math]::Min(60, $uiaControls.Count); $controlIndex++) {
+                        $control = $uiaControls.Item($controlIndex)
+                        Write-Status "UIA control type=$($control.Current.ControlType.ProgrammaticName) id=$($control.Current.AutomationId) name=$($control.Current.Name)"
+                    }
+                } catch { Write-Status "UIA settings tree inspection failed: $($_.Exception.Message)" }
 
                 $controlTypes = @(
                     [System.Windows.Automation.ControlType]::ListItem,
@@ -268,7 +297,10 @@ public static class P2CWin32 {
 
                 $pageComplete = $true
                 foreach ($pageIndex in 0..4) {
-                    if (-not (& $selectPage $settingsElement $pageLabelsEnglish[$pageIndex])) { $pageComplete = $false; break }
+                    if (-not (& $selectPage $settingsElement $pageLabelsEnglish[$pageIndex])) {
+                        Write-Status "BLOCKED Windows Native page navigation: English label '$($pageLabelsEnglish[$pageIndex])' not selectable via UI Automation."
+                        $pageComplete = $false; break
+                    }
                     Start-Sleep -Milliseconds 250
                     $shotName = "windows-native-settings-$pageIndex-en.png"
                     & $captureWindow ([IntPtr]$settingsHwnd) (Join-Path $artifactDir $shotName)
