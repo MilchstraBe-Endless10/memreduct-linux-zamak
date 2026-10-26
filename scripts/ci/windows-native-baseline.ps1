@@ -16,6 +16,12 @@ function Write-Status([string]$Line) {
     Write-Host $Line
 }
 
+$writeStatusClosure = {
+    param([string]$Line)
+    Add-Content -LiteralPath $statusFile -Value $Line -Encoding UTF8
+    Write-Host $Line
+}.GetNewClosure()
+
 function Invoke-Checked([string]$Exe, [string[]]$Arguments) {
     $result = & $Exe @Arguments 2>&1
     $exitCode = $LASTEXITCODE
@@ -367,15 +373,15 @@ public static class P2CWin32 {
                 $writePageGeometry = {
                     param([int]$PageIndex, [string]$Locale)
                     $pageId = 101 + $PageIndex
-                    Write-Status "Win32 geometry begin page_idd=$pageId locale=$Locale"
+                    & $writeStatusClosure "Win32 geometry begin page_idd=$pageId locale=$Locale"
                     $rows = [System.Collections.Generic.List[object]]::new()
                     $current = @([P2CWin32]::GetChildWindows($settingsHwnd))
-                    Write-Status "Win32 geometry child enumeration complete page_idd=$pageId controls=$($current.Count)"
+                    & $writeStatusClosure "Win32 geometry child enumeration complete page_idd=$pageId controls=$($current.Count)"
                     $activePage = $current | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 } | Select-Object -First 1
                     if (-not $activePage) { throw "Visible child page geometry is missing for page $pageId ($Locale)." }
                     $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state='default'; resource_id=$pageId; part='page'; x=$activePage.Left-$settingsClientOrigin.X; y=$activePage.Top-$settingsClientOrigin.Y; width=$activePage.Width; height=$activePage.Height; class=$activePage.ClassName })
                     foreach ($control in $current | Where-Object { $_.Visible -and $_.ControlId -ne 0 }) {
-                        Write-Status "Win32 geometry control begin page_idd=$pageId resource=$($control.ControlId) class=$($control.ClassName)"
+                        & $writeStatusClosure "Win32 geometry control begin page_idd=$pageId resource=$($control.ControlId) class=$($control.ClassName)"
                         $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state='default'; resource_id=$control.ControlId; part='control'; x=$control.Left-$settingsClientOrigin.X; y=$control.Top-$settingsClientOrigin.Y; width=$control.Width; height=$control.Height; class=$control.ClassName })
                         if (($control.ControlId -eq 124 -or $control.ControlId -eq 140) -and $control.ClassName -eq 'SysListView32') {
                             $listOrigin = [P2CWin32+POINT]::new()
@@ -385,14 +391,14 @@ public static class P2CWin32 {
                             $writeVisibleRows = {
                                 param([string]$State)
                                 $itemIndex = 0
-                                Write-Status "Win32 geometry list item bounds begin page_idd=$pageId resource=$($control.ControlId) state=$State"
+                                & $writeStatusClosure "Win32 geometry list item bounds begin page_idd=$pageId resource=$($control.ControlId) state=$State"
                                 foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle))) {
                                     if ($itemRect.Top -ge $listClient.Top -and $itemRect.Bottom -le $listClient.Bottom) {
                                         $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state=$State; resource_id=$control.ControlId; part="row-$itemIndex"; x=$listOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$listOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='ListViewItem' })
                                     }
                                     $itemIndex++
                                 }
-                                Write-Status "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$State count=$itemIndex"
+                                & $writeStatusClosure "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$State count=$itemIndex"
                             }.GetNewClosure()
                             $initialState = if ($control.ControlId -eq 124) { 'scroll-0' } else { 'default' }
                             if ($control.ControlId -eq 124 -and [P2CWin32]::GetListTopIndex($control.Handle) -ne 0) {
@@ -410,9 +416,9 @@ public static class P2CWin32 {
                             }
                         }
                     }
-                    Write-Status "Win32 geometry exporting page_idd=$pageId rows=$($rows.Count)"
+                    & $writeStatusClosure "Win32 geometry exporting page_idd=$pageId rows=$($rows.Count)"
                     $rows | Export-Csv -LiteralPath $geometryFile -NoTypeInformation -Append -Encoding UTF8
-                    Write-Status "PASS Win32 geometry page_idd=$pageId locale=$Locale controls=$($rows.Count) output=windows-settings-geometry.csv"
+                    & $writeStatusClosure "PASS Win32 geometry page_idd=$pageId locale=$Locale controls=$($rows.Count) output=windows-settings-geometry.csv"
                 }.GetNewClosure()
 
                 $pageSentinels = @('116,123', '124,125,131', '133,139,140', '141,148,152', '153,154')
@@ -433,14 +439,12 @@ public static class P2CWin32 {
                             $shotName = "windows-native-settings-$PageIndex-$Language.png"
                             & $captureWindow $settingsHwnd (Join-Path $artifactDir $shotName)
                             $statusLine = "CAPTURED Windows Native page=$Label language=$Language dpi=$settingsDpi screenshot=$shotName visible_resource_ids=$($pageSentinels[$PageIndex])"
-                            Add-Content -LiteralPath $statusFile -Value $statusLine -Encoding UTF8
-                            Write-Host $statusLine
+                            & $writeStatusClosure $statusLine
                             return $true
                         }
                     }
                     $statusLine = "BLOCKED Windows Native $Language page '$Label': IDC_NAV tree selection did not show resource IDs $($expectedIds -join ',')."
-                    Add-Content -LiteralPath $statusFile -Value $statusLine -Encoding UTF8
-                    Write-Host $statusLine
+                    & $writeStatusClosure $statusLine
                     return $false
                 }.GetNewClosure()
 
