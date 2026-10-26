@@ -351,6 +351,22 @@ if xdotool search --onlyvisible --name '^Settings - Mem Reduct$' >/dev/null 2>&1
   exit 1
 fi
 
+# A WM close request must hide, not destroy, the reusable settings top-level.
+kill -0 "$app_pid"
+general_page_marker='CI_SETTINGS_PAGE idd=101 page=General locale=en'
+general_page_before="$(grep -Fc -- "$general_page_marker" "$artifact_dir/p2c-client.log" || true)"
+xdotool key --clearmodifiers F2
+window_id="$(window_by_title 'Settings - Mem Reduct')"
+[[ "$window_id" == "$settings_window_xid" ]] || {
+  printf 'Settings window was destroyed instead of reused after WM_DELETE_WINDOW.\n' >&2
+  exit 1
+}
+wait_new_marker "$general_page_marker" "$general_page_before"
+click "$window_id" 507 310
+wait_marker 'CI_SETTINGS_CLOSE resource=106 action=return_to_main'
+window_id="$(window_by_title 'Mem Reduct')"
+geometry "$window_id" 337 369 "$artifact_dir/geometry-main-after-wm-close-reopen.txt"
+
 xdotool key --clearmodifiers Alt+F4
 wait_marker 'CI_WINDOW_CLOSE'
 for _ in {1..100}; do
