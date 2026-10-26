@@ -66,10 +66,14 @@ if [[ "$font_candidate" == liberation ]]; then
 <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
 <fontconfig>
   <include>/etc/fonts/fonts.conf</include>
-  <match target="pattern">
-    <test name="family" qual="any" compare="eq"><string>Sans</string></test>
-    <edit name="family" mode="prepend" binding="strong"><string>Liberation Sans</string></edit>
-  </match>
+  <alias binding="strong">
+    <family>Sans</family>
+    <prefer><family>Liberation Sans</family></prefer>
+  </alias>
+  <alias binding="strong">
+    <family>sans-serif</family>
+    <prefer><family>Liberation Sans</family></prefer>
+  </alias>
 </fontconfig>
 XML
   export FONTCONFIG_FILE="$runtime_dir/fonts-liberation.xml" FONTCONFIG_PATH=/etc/fonts
@@ -84,11 +88,11 @@ fi
     "$(stat -c '%a' "$runtime_dir")" "$DISPLAY" "$GDK_BACKEND" "$GTK_THEME" "$font_candidate" "$fontconfig_mode" "$GDK_SCALE" "$GDK_DPI_SCALE"
   printf 'GTK_version=%s\nEnglish_font=' "$(pkg-config --modversion gtk+-3.0)"
   printf 'Fontconfig_version=%s\n' "$(fc-match --version | head -n 1)"
-  fc-match 'sans-serif:lang=en' | head -n 1
-  printf 'Linux_font_match_en=%s\n' "$(fc-match --format '%{family} | %{style}' 'sans-serif:lang=en')"
+  fc-match 'Sans:lang=en' | head -n 1
+  printf 'Linux_font_match_en=%s\n' "$(fc-match --format '%{family} | %{style}' 'Sans:lang=en')"
   printf 'Chinese_font='
-  fc-match 'sans-serif:lang=zh-cn' | head -n 1
-  printf 'Linux_font_match_zh=%s\n' "$(fc-match --format '%{family} | %{style}' 'sans-serif:lang=zh-cn')"
+  fc-match 'Sans:lang=zh-cn' | head -n 1
+  printf 'Linux_font_match_zh=%s\n' "$(fc-match --format '%{family} | %{style}' 'Sans:lang=zh-cn')"
   if [[ "$font_candidate" == liberation ]]; then
     printf 'Liberation_package_version=%s\n' "$(dpkg-query -W -f='${Version}' fonts-liberation2)"
     printf 'P2C_fontconfig_sha256=%s\n' "$(sha256sum "$runtime_dir/fonts-liberation.xml" | awk '{print $1}')"
