@@ -191,6 +191,8 @@ public static class P2CWin32 {
   [DllImport("gdi32.dll", EntryPoint="GetTextMetricsW", CharSet=CharSet.Unicode, SetLastError=true)] private static extern bool GetTextMetrics(IntPtr hdc, out TEXTMETRICW value);
   [DllImport("gdi32.dll", EntryPoint="GetTextExtentPoint32W", CharSet=CharSet.Unicode, SetLastError=true)] private static extern bool GetTextExtent(IntPtr hdc, string text, int count, out SIZE size);
   [DllImport("gdi32.dll", EntryPoint="GetTextFaceW", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetTextFace(IntPtr hdc, int count, System.Text.StringBuilder face);
+  [DllImport("gdi32.dll", EntryPoint="CreateFontIndirectW", CharSet=CharSet.Unicode, SetLastError=true)] private static extern IntPtr CreateFontIndirect(ref LOGFONTW font);
+  [DllImport("gdi32.dll", EntryPoint="DeleteObject", SetLastError=true)] private static extern bool DeleteGdiObject(IntPtr value);
   [DllImport("gdi32.dll", SetLastError=true)] private static extern IntPtr GetStockObject(int index);
   public static FontTextMetrics MeasureControlText(IntPtr hwnd, string text) {
     if (hwnd == IntPtr.Zero) throw new ArgumentException("Cannot measure text for a null control handle.");
@@ -201,11 +203,22 @@ public static class P2CWin32 {
     LOGFONTW logicalFont;
     if (GetLogFont(font, Marshal.SizeOf(typeof(LOGFONTW)), out logicalFont) == 0)
       throw new InvalidOperationException("GetObjectW(LOGFONT) failed; last-error=" + Marshal.GetLastWin32Error());
+    // The control's HFONT belongs to the Mem Reduct process and cannot be
+    // selected into this runner process's DC. Copy its actual LOGFONT request
+    // into a local GDI font, then measure the resolved font in the same Windows
+    // runner/font environment.
+    IntPtr measurementFont = CreateFontIndirect(ref logicalFont);
+    if (measurementFont == IntPtr.Zero)
+      throw new InvalidOperationException("CreateFontIndirectW from the control LOGFONT failed; last-error=" + Marshal.GetLastWin32Error());
+    fontSource += " (LOGFONT cloned for local GDI measurement)";
     IntPtr hdc = GetDC(hwnd);
-    if (hdc == IntPtr.Zero) throw new InvalidOperationException("GetDC failed; last-error=" + Marshal.GetLastWin32Error());
+    if (hdc == IntPtr.Zero) {
+      DeleteGdiObject(measurementFont);
+      throw new InvalidOperationException("GetDC failed; last-error=" + Marshal.GetLastWin32Error());
+    }
     IntPtr previous = IntPtr.Zero;
     try {
-      previous = SelectObject(hdc, font);
+      previous = SelectObject(hdc, measurementFont);
       if (previous == IntPtr.Zero || previous.ToInt64() == -1)
         throw new InvalidOperationException("SelectObject(HFONT) failed; last-error=" + Marshal.GetLastWin32Error());
       TEXTMETRICW tm;
@@ -227,6 +240,7 @@ public static class P2CWin32 {
     } finally {
       if (previous != IntPtr.Zero && previous.ToInt64() != -1) SelectObject(hdc, previous);
       ReleaseDC(hwnd, hdc);
+      DeleteGdiObject(measurementFont);
     }
   }
   public static WindowInfo[] GetProcessWindows(uint processId) {
