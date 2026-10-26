@@ -18,7 +18,7 @@ function Write-Status([string]$Line) {
 function Invoke-Checked([string]$Exe, [string[]]$Arguments) {
     $result = & $Exe @Arguments 2>&1
     $exitCode = $LASTEXITCODE
-    if ($exitCode -ne 0) { throw "$Exe failed with exit $exitCode: $($result -join ' ')" }
+    if ($exitCode -ne 0) { throw "$Exe failed with exit ${exitCode}: $($result -join ' ')" }
     return $result
 }
 
