@@ -207,7 +207,9 @@ def validate_surface_and_checkbox_raster(windows_dir: Path, linux_dir: Path, out
     }
     checkbox_regions = {
         "IDC_ALWAYSONTOP_CHK": (164, 29, 182, 47),
-        "IDC_REGIONS_row_0": (171, 32, 190, 51),
+        # Stop before row 1 begins; otherwise its top border is mistaken for
+        # extra checkbox height in the same ROI.
+        "IDC_REGIONS_row_0": (171, 33, 190, 49),
     }
     passed = 0
     failed = 0

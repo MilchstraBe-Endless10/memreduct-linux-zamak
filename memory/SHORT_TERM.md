@@ -7,7 +7,8 @@
 - 修正前可比较控件矩形 172 PASS，12 个 Linux 中间滚动项为 `NOT_COMPARABLE_NATIVE_STATE`，0 FAIL；截图像素变化 61.7290%–80.1728%，故不通过 1:1 像素验收。
 - 当前未提交修改：浅色设置页背景改为真实 Windows 截图测得 `#F0F0F0`，导航区域保持白色；复选框方框调整到 13 px；内存区域列表 checkbox / label 内缩改成 4 px / 22 px，并由 `ui_geometry.zm` 集中管理；比较脚本增加页面底色样本和 checkbox 像素边界检测。
 - 本机非 GUI 验证：Zamak 0.2.0 `check` PASS，`test` 28/28 PASS，`build` PASS；项目治理 33 项 PASS；C 安全测试 3/3 PASS；比较脚本 `py_compile` PASS；`scripts/build-arch.sh` PASS；`git diff --check` PASS。没有本地启动 Xvfb、Weston、生产 GUI 或活动 Hyprland。
-- 修改后的截图、overlay、像素差异及新 raster 检查尚未在 exact-head GitHub Actions 运行；新提交 CI pending。Windows 原生 2 px 几何、深色主题、菜单/托盘截图和像素级 1:1 仍未整体验收。所有设置快照仅为上游只读默认值；未执行设置保存、清理、Polkit、Swap/ZRAM 操作。
+- Exact-head `f5c5488b4f4e0871311c52dfe4bde61d89be7b7a` Actions：GUI/XTEST + Weston `40284199595` PASS；build/test `40284199576` PASS；Windows/Xvfb/comparison `40284199572` 的采集/Xvfb PASS，但 comparator FAIL 两个 Memory checkbox raster 行。比较结果是 172 geometry PASS / 0 FAIL（另有 12 个中间滚动项 NOT_COMPARABLE_NATIVE_STATE），六个页面底色样本和两个 General checkbox 样本 PASS；截图 changed pixels 降为 7.9548%–18.6990%，仍非像素等价。
+- 检查比较产物 `12634010092` 后确认 Memory checkbox ROI 下边缘包含下一行的一个深色像素，导致两种语言都误报高度偏差；已把裁剪范围缩到当前列表行以内，待新 commit/Actions 验证。Exact head Windows/Xvfb artifacts 为 `12633352398` / `12633925245`。Windows 原生 2 px 几何、深色主题、菜单/托盘截图和像素级 1:1 仍未整体验收。所有设置快照仅为上游只读默认值；未执行设置保存、清理、Polkit、Swap/ZRAM 操作。
 
 ## P2C-1 最新续接（2026-10-26）
 
