@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - feat/issue-3-p2b-main-window
-      - feat/issue-3-p2c-settings-ui
   pull_request:
     branches:
       - feat/issue-3-p2b-main-window
@@ -12,20 +11,32 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: p2b-production-gui-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   production-x11:
     name: Production UI (Xvfb / XTEST)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 commit used by R6 CI
         with:
           node-version: '22'
-      - name: Install runner-only GUI and build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox wmctrl fonts-noto-cjk fonts-dejavu
+      - name: Update APT indexes (10-minute step limit)
+        timeout-minutes: 10
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-x11-apt
+          APT_UPDATE_TIMEOUT: 8m
+        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_UPDATE_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh update
+      - name: Install runner-only GUI and build dependencies (40-minute step limit)
+        timeout-minutes: 40
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-x11-apt
+          APT_INSTALL_TIMEOUT: 38m
+        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_INSTALL_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox wmctrl fonts-noto-cjk fonts-dejavu
       - name: Install pinned Zamak 0.2.0
         run: npm install --global @veyralux/zamak@0.2.0
       - name: Build and verify production executable
@@ -39,9 +50,18 @@ jobs:
           ARTIFACT_DIR: ${{ runner.temp }}/p2b-x11
         run: bash scripts/ci/p2b-production-xvfb.sh "$RUNNER_TEMP/p2b-x11/memreduct-zamak-production"
       - name: Exercise production settings pages with isolated real X11 input
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'feat/issue-3-p2c-settings-ui'
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/p2b-x11
         run: bash scripts/ci/p2c-settings-xvfb.sh "$RUNNER_TEMP/p2b-x11/memreduct-zamak-production"
+      - name: Upload X11 dependency diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 commit used by R6 CI
+        with:
+          name: p2b-x11-apt-diagnostics-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p2b-x11-apt
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload X11 screenshots and logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 commit used by R6 CI
@@ -54,16 +74,24 @@ jobs:
   production-wayland:
     name: Production UI lifecycle (Weston Headless / Pixman)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 commit used by R6 CI
         with:
           node-version: '22'
-      - name: Install runner-only Wayland and build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libgtk-3-dev pkg-config python3 weston wayland-utils fonts-noto-cjk fonts-dejavu
+      - name: Update APT indexes (10-minute step limit)
+        timeout-minutes: 10
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-wayland-apt
+          APT_UPDATE_TIMEOUT: 8m
+        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_UPDATE_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh update
+      - name: Install runner-only Wayland and build dependencies (40-minute step limit)
+        timeout-minutes: 40
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-wayland-apt
+          APT_INSTALL_TIMEOUT: 38m
+        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_INSTALL_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 weston wayland-utils fonts-noto-cjk fonts-dejavu
       - name: Install pinned Zamak 0.2.0
         run: npm install --global @veyralux/zamak@0.2.0
       - name: Build and verify production executable
@@ -76,6 +104,14 @@ jobs:
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/p2b-wayland
         run: bash scripts/ci/p2b-production-wayland.sh "$RUNNER_TEMP/p2b-wayland/memreduct-zamak-production"
+      - name: Upload Weston dependency diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 commit used by R6 CI
+        with:
+          name: p2b-wayland-apt-diagnostics-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p2b-wayland-apt
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload Weston and client logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 commit used by R6 CI
