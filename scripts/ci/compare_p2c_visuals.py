@@ -83,6 +83,14 @@ def pixel_metrics(reference: Image.Image, target: Image.Image) -> tuple[int, flo
     return pixel_count, pixel_count * 100.0 / area, total / (area * 3), maximum
 
 
+def canonical_locale(locale: str) -> str:
+    if locale == "English":
+        return "en"
+    if locale in ("zh", "zh-CN"):
+        return "zh"
+    return locale
+
+
 GeometryKey = tuple[int, str, str, int, str]
 Geometry = tuple[float, float, float, float]
 
@@ -91,7 +99,7 @@ def parse_windows_geometry(path: Path) -> dict[GeometryKey, Geometry]:
     result = {}
     with path.open(newline="", encoding="utf-8-sig") as stream:
         for row in csv.DictReader(stream):
-            locale = "en" if row["locale"] == "English" else row["locale"]
+            locale = canonical_locale(row["locale"])
             key = (int(row["page_idd"]), locale, row["state"], int(row["resource_id"]), row["part"])
             result[key] = tuple(float(row[name]) for name in ("x", "y", "width", "height"))
     if not result:
@@ -106,6 +114,7 @@ def parse_linux_geometry(path: Path) -> dict[GeometryKey, Geometry]:
         if not match:
             continue
         page, locale, state, resource, part, x, y, width, height = match.groups()
+        locale = canonical_locale(locale)
         # IDC_NAV is one native Win32 TreeView resource. Its text rows are
         # painted content, not child HWND controls with independent resource IDs;
         # compare the IDC_NAV control rectangle here and assess row/highlight
@@ -125,7 +134,7 @@ def validate_linux_region_rows(geometry: dict[GeometryKey, Geometry]) -> None:
         list_rect = geometry.get((102, locale, "default", 124, "control"))
         if list_rect is None:
             raise ValueError(f"Missing Linux IDC_REGIONS list rectangle for locale={locale}")
-        for state, expected in (("scroll-0", range(0, 6)), ("scroll-2", range(2, 8))):
+        for state, expected in (("scroll-0", range(0, 6)), ("scroll-1", range(1, 7)), ("scroll-2", range(2, 8))):
             rows = {
                 key[4]: rect
                 for key, rect in geometry.items()
@@ -184,11 +193,18 @@ def write_geometry_table(windows: Path, linux: Path, output: Path) -> tuple[int,
             window_rect = win.get(key)
             linux_rect = lin.get(key)
             if window_rect is None or linux_rect is None:
-                status = "MISSING_WINDOWS" if window_rect is None else "MISSING_LINUX"
+                intermediate_region_row = (
+                    window_rect is None and key[0] == 102 and key[2] == "scroll-1"
+                    and key[3] == 124 and key[4].startswith("row-")
+                )
+                status = "NOT_COMPARABLE_NATIVE_STATE" if intermediate_region_row else "MISSING_WINDOWS" if window_rect is None else "MISSING_LINUX"
                 values = ["" for _ in range(17)]
                 values[0:5] = key
+                if intermediate_region_row and linux_rect is not None:
+                    values[9:13] = linux_rect
                 writer.writerow(values + [status])
-                failed += 1
+                if not intermediate_region_row:
+                    failed += 1
                 continue
             delta = tuple(linux_rect[index] - window_rect[index] for index in range(4))
             status = "PASS" if all(abs(value) <= 2.0 for value in delta) else "FAIL"
@@ -263,7 +279,7 @@ def main() -> int:
         "Linux source: production Zamak settings window captured by XTEST in an isolated Ubuntu 24.04 Xvfb runner.\n"
         "The Windows PNGs are only cropped at the measured client origin; neither reference nor Linux images are resized, stretched, shifted, or resampled.\n"
         "Geometry verdicts use resource-ID keyed Win32 window/control rectangles and Linux Canvas logical rectangles. PASS requires |dx|, |dy|, |dw|, |dh| <= 2 px for each row. IDC_NAV is compared as one resource control; its non-HWND tree items are assessed by screenshots and XTEST clicks.\n"
-        "The memory-region list is compared in matching top (rows 0-5) and bottom (rows 2-7) scroll states. Appearance preview rows are pixel-sampled against the pinned source colors.\n"
+        "The memory-region list is compared in matching top (rows 0-5) and bottom (rows 2-7) scroll states. Linux also tests the intermediate offset; its rows are bounds-checked and marked NOT_COMPARABLE_NATIVE_STATE because the Windows runner does not collect that scroll state. Appearance preview rows are pixel-sampled against the pinned source colors.\n"
         "Font and rasterization differences are not treated as control geometry errors. Pixel metrics are raw comparisons only and do not imply 1:1 equivalence.\n\n"
         "Windows environment metadata:\n" + windows_environment + "\nLinux environment metadata:\n" + linux_environment,
         encoding="utf-8",

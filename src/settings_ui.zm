@@ -77,9 +77,6 @@ fn upstream_color_text(index: i64) -> ui.Color:
     if index == 1 or index == 3: return ui.rgb(0xffffff)
     ui.rgb(0x161616)
 
-fn region_visible_row_y(slot: i64) -> f64:
-    12.0 + f64(slot) * 10.5
-
 fn region_data_index(slot: i64, scroll: i64) -> i64:
     slot + scroll
 
@@ -162,14 +159,13 @@ fn combo_arrow(p: &ui.Painter, r: &ui.Rect, border: &ui.Color):
     p.line(split + 5.0, r.y + 6.0, split + 9.0, r.y + 10.0, border)
     p.line(split + 9.0, r.y + 10.0, split + 13.0, r.y + 6.0, border)
 
-fn list_row(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, disabled: &ui.Color, border: &ui.Color, index: i64):
-    let r = child(s, w, h, x, y, width, height)
-    if id == 124: emit_region_row_geometry(s, index, &r)
-    else: emit_geometry(s, id, f"row-{index}", &r)
+fn draw_list_row(s: &State, p: &ui.Painter, r: &ui.Rect, id: i64, title: string, disabled: &ui.Color, border: &ui.Color, index: i64):
+    if id == 124: emit_region_row_geometry(s, index, r)
+    else: emit_geometry(s, id, f"row-{index}", r)
     if id == 140:
         let color = upstream_color(index)
         let color_text = upstream_color_text(index)
-        p.fill_rect(&r, &color)
+        p.fill_rect(r, &color)
         p.text(r.x + 7.0, r.y + max(0.0, (r.h - 10.0) / 2.0), title, &color_text, size=8.0)
         return
     let mut text_x = r.x + 5.0
@@ -213,13 +209,13 @@ fn draw_memory(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disable
     p.fill_rect(&list, &list_bg)
     outline(p, &list, border)
     emit_geometry(s, 124, "control", &list)
-    let row_h = 10.5
     for i in 0..6:
         let mut name = names_en[i]
         let row_index = region_data_index(i, s.region_scroll)
         if zh: name = names_zh[row_index]
         else: name = names_en[row_index]
-        list_row(s, p, w, h, 124, 8.0, region_visible_row_y(i), 232.0, row_h, name, disabled, border, row_index)
+        let row = ui_geometry.settings_list_item_rect(w, h, 8.0, 12.0, 244.0, 70.0, i, 17.0)
+        draw_list_row(s, p, &row, 124, name, disabled, border, row_index)
     let scrollbar = ui.rect(list.right() - 17.0, list.y + 1.0, 16.0, list.h - 2.0)
     p.fill_rect(&scrollbar, &ui.rgb(0xf0f0f0))
     outline(p, &scrollbar, border)
@@ -262,7 +258,8 @@ fn draw_appearance(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, dis
     for i in 0..4:
         let mut name = colors_en[i]
         if zh: name = colors_zh[i]
-        list_row(s, p, w, h, 140, 8.0, 110.0 + f64(i) * 12.0, 244.0, 12.0, name, disabled, border, i)
+        let row = ui_geometry.settings_list_item_rect(w, h, 8.0, 110.0, 244.0, 50.0, i, 0.0)
+        draw_list_row(s, p, &row, 140, name, disabled, border, i)
 
 fn draw_tray(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
     frame(s, p, w, h, 113, 0.0, 0.0, 260.0, 46.0, text(zh, "Color indication:", "颜色指示:"), fg, border)
@@ -413,10 +410,9 @@ pub fn hit(s: &State, x: f64, y: f64, width: f64, height: f64) -> f64:
             if child(s, width, height, 8.0, row, 244.0, 10.0).contains(x, y): return f64(id)
     elif s.page == 1:
         let list = child(s, width, height, 8.0, 12.0, 244.0, 70.0)
-        let row_h = 10.5 * 273.0 / 168.0
-        if x < list.right() - 18.0 and list.contains(x, y):
-            let row = i64((y - list.y) / row_h)
-            if row >= 0 and row < 6: return 1240.0 + f64(row + s.region_scroll)
+        for slot in 0..6:
+            let row = ui_geometry.settings_list_item_rect(width, height, 8.0, 12.0, 244.0, 70.0, slot, 17.0)
+            if row.contains(x, y): return 1240.0 + f64(slot + s.region_scroll)
         if list.contains(x, y) and x >= list.right() - 18.0:
             if y < list.y + 17.0: return 1248.0
             if y > list.bottom() - 17.0: return 1249.0
@@ -435,8 +431,9 @@ pub fn hit(s: &State, x: f64, y: f64, width: f64, height: f64) -> f64:
             let row = if id == 133: 12.0 elif id == 134: 24.0 elif id == 135: 36.0 elif id == 136: 48.0 else: 60.0
             if child(s, width, height, 8.0, row, 244.0, 10.0).contains(x, y): return f64(id)
         if child(s, width, height, 128.0, 92.0, 124.0, 12.0).contains(x, y): return 139.0
-        let colors = child(s, width, height, 8.0, 110.0, 244.0, 50.0)
-        if colors.contains(x, y): return 1400.0 + f64(max(0, min(3, i64((y - colors.y) / (colors.h / 4.0)))))
+        for row_index in 0..4:
+            let row = ui_geometry.settings_list_item_rect(width, height, 8.0, 110.0, 244.0, 50.0, row_index, 0.0)
+            if row.contains(x, y): return 1400.0 + f64(row_index)
     elif s.page == 3:
         if child(s, width, height, 208.0, 12.0, 33.3333, 12.0).contains(x, y): return 142.0
         if child(s, width, height, 240.0, 12.0, 12.0, 12.0).contains(x, y): return 143.0
@@ -664,10 +661,23 @@ fn test_regions_list_scroll_is_bounded_and_keeps_all_rows_read_only():
     assert upstream_default_checked(124, 7)
 
 fn test_regions_visible_rows_stay_inside_viewport_when_scrolled():
-    assert region_visible_row_y(0) == 12.0
-    assert region_visible_row_y(5) + 10.5 <= 82.0
+    let list = ui_geometry.settings_child_rect(558.0, 335.0, 8.0, 12.0, 244.0, 70.0)
+    let first = ui_geometry.settings_list_item_rect(558.0, 335.0, 8.0, 12.0, 244.0, 70.0, 0, 17.0)
+    let last = ui_geometry.settings_list_item_rect(558.0, 335.0, 8.0, 12.0, 244.0, 70.0, 5, 17.0)
+    assert first.x == 170.0 and first.y == 31.5 and first.w == 345.0 and first.h == 17.0
+    assert last.bottom() <= list.bottom()
     assert region_data_index(0, 2) == 2
     assert region_data_index(5, 2) == 7
+
+fn test_appearance_color_rows_match_native_list_item_insets():
+    let first = ui_geometry.settings_list_item_rect(558.0, 335.0, 8.0, 110.0, 244.0, 50.0, 0, 0.0)
+    let last = ui_geometry.settings_list_item_rect(558.0, 335.0, 8.0, 110.0, 244.0, 50.0, 3, 0.0)
+    assert first.x == 170.0 and first.y == 190.75 and first.w == 362.0 and first.h == 17.0
+    assert last.bottom() < ui_geometry.settings_child_rect(558.0, 335.0, 8.0, 110.0, 244.0, 50.0).bottom()
+    let mut s = initial(true)
+    s.page = 2
+    assert hit(&s, first.x + 5.0, first.y + 5.0, 558.0, 335.0) == 1400.0
+    assert hit(&s, last.x + 5.0, last.bottom() + 4.0, 558.0, 335.0) == 0.0
 
 fn test_settings_navigation_language_and_reset_are_interactive():
     let mut s = initial(true)
