@@ -142,7 +142,12 @@ public static class P2CWin32 {
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetFocus(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
   [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)] private static extern IntPtr SendMessageTimeoutValue(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
-  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)] private static extern IntPtr SendMessageTimeoutRect(IntPtr hWnd, uint message, IntPtr wParam, ref RECT lParam, uint flags, uint timeout, out IntPtr result);
+  [DllImport("kernel32.dll", SetLastError=true)] private static extern IntPtr OpenProcess(uint access, bool inherit, uint processId);
+  [DllImport("kernel32.dll", SetLastError=true)] private static extern IntPtr VirtualAllocEx(IntPtr process, IntPtr address, UIntPtr size, uint allocationType, uint protect);
+  [DllImport("kernel32.dll", SetLastError=true)] private static extern bool VirtualFreeEx(IntPtr process, IntPtr address, UIntPtr size, uint freeType);
+  [DllImport("kernel32.dll", SetLastError=true)] private static extern bool WriteProcessMemory(IntPtr process, IntPtr address, ref RECT buffer, UIntPtr size, out UIntPtr bytesWritten);
+  [DllImport("kernel32.dll", SetLastError=true)] private static extern bool ReadProcessMemory(IntPtr process, IntPtr address, out RECT buffer, UIntPtr size, out UIntPtr bytesRead);
+  [DllImport("kernel32.dll", SetLastError=true)] private static extern bool CloseHandle(IntPtr handle);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageText(IntPtr hWnd, uint message, IntPtr wParam, System.Text.StringBuilder lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool IsWindowVisible(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
@@ -220,20 +225,43 @@ public static class P2CWin32 {
     SendMessage(GetParent(combo), 0x0111, new IntPtr(command), combo);
     return GetComboSelection(combo) == index;
   }
-  public static RECT[] GetListItemRects(IntPtr list) {
+  public static RECT[] GetListItemRects(IntPtr list, uint processId) {
     const uint LVM_GETITEMCOUNT=0x1004, LVM_GETITEMRECT=0x100E, SMTO_ABORTIFHUNG=0x0002, MESSAGE_TIMEOUT_MS=3000;
-    IntPtr messageResult;
-    if (SendMessageTimeoutValue(list, LVM_GETITEMCOUNT, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out messageResult) == IntPtr.Zero)
-      throw new TimeoutException("Win32 LVM_GETITEMCOUNT failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
-    int count=messageResult.ToInt32();
-    var rects=new System.Collections.Generic.List<RECT>();
-    for (int index=0; index<count; index++) {
-      var rect=new RECT(); rect.Left=0; // LVIR_BOUNDS
-      if (SendMessageTimeoutRect(list, LVM_GETITEMRECT, new IntPtr(index), ref rect, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out messageResult) == IntPtr.Zero)
-        throw new TimeoutException("Win32 LVM_GETITEMRECT item " + index + " failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
-      if (messageResult != IntPtr.Zero) rects.Add(rect);
+    const uint PROCESS_VM_OPERATION=0x0008, PROCESS_VM_READ=0x0010, PROCESS_VM_WRITE=0x0020;
+    IntPtr process=OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, false, processId);
+    if (process == IntPtr.Zero)
+      throw new InvalidOperationException("OpenProcess for Win32 list geometry failed; last-error=" + Marshal.GetLastWin32Error());
+    UIntPtr rectSize=new UIntPtr((uint)Marshal.SizeOf(typeof(RECT)));
+    IntPtr remoteRect=IntPtr.Zero;
+    try {
+      remoteRect=VirtualAllocEx(process, IntPtr.Zero, rectSize, 0x3000, 0x04); // MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE
+      if (remoteRect == IntPtr.Zero)
+        throw new InvalidOperationException("VirtualAllocEx for Win32 list geometry failed; last-error=" + Marshal.GetLastWin32Error());
+      IntPtr messageResult;
+      if (SendMessageTimeoutValue(list, LVM_GETITEMCOUNT, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out messageResult) == IntPtr.Zero)
+        throw new TimeoutException("Win32 LVM_GETITEMCOUNT failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
+      int count=messageResult.ToInt32();
+      var rects=new System.Collections.Generic.List<RECT>();
+      for (int index=0; index<count; index++) {
+        var rect=new RECT(); rect.Left=0; // LVIR_BOUNDS
+        UIntPtr bytesWritten;
+        if (!WriteProcessMemory(process, remoteRect, ref rect, rectSize, out bytesWritten) || bytesWritten.ToUInt64() != rectSize.ToUInt64())
+          throw new InvalidOperationException("WriteProcessMemory for Win32 list item " + index + " failed; last-error=" + Marshal.GetLastWin32Error());
+        // LVM_GETITEMRECT dereferences lParam in the target process, so it must receive remote memory.
+        if (SendMessageTimeoutValue(list, LVM_GETITEMRECT, new IntPtr(index), remoteRect, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out messageResult) == IntPtr.Zero)
+          throw new TimeoutException("Win32 LVM_GETITEMRECT item " + index + " failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
+        if (messageResult != IntPtr.Zero) {
+          UIntPtr bytesRead;
+          if (!ReadProcessMemory(process, remoteRect, out rect, rectSize, out bytesRead) || bytesRead.ToUInt64() != rectSize.ToUInt64())
+            throw new InvalidOperationException("ReadProcessMemory for Win32 list item " + index + " failed; last-error=" + Marshal.GetLastWin32Error());
+          rects.Add(rect);
+        }
+      }
+      return rects.ToArray();
+    } finally {
+      if (remoteRect != IntPtr.Zero) VirtualFreeEx(process, remoteRect, UIntPtr.Zero, 0x8000); // MEM_RELEASE
+      CloseHandle(process);
     }
-    return rects.ToArray();
   }
   public static int GetListTopIndex(IntPtr list) {
     IntPtr messageResult;
@@ -408,7 +436,7 @@ public static class P2CWin32 {
                             }
                             & $writeStatusClosure "Win32 geometry list item bounds begin page_idd=$pageId resource=$($control.ControlId) state=$initialState"
                             $itemIndex = 0
-                            foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle))) {
+                            foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle, [uint32]$appProcess.Id))) {
                                 if ($itemRect.Top -ge $listClient.Top -and $itemRect.Bottom -le $listClient.Bottom) {
                                     $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state=$initialState; resource_id=$control.ControlId; part="row-$itemIndex"; x=$listOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$listOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='ListViewItem' })
                                 }
@@ -423,7 +451,7 @@ public static class P2CWin32 {
                                 $bottomState = 'scroll-2'
                                 & $writeStatusClosure "Win32 geometry list item bounds begin page_idd=$pageId resource=$($control.ControlId) state=$bottomState"
                                 $itemIndex = 0
-                                foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle))) {
+                                foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle, [uint32]$appProcess.Id))) {
                                     if ($itemRect.Top -ge $listClient.Top -and $itemRect.Bottom -le $listClient.Bottom) {
                                         $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state=$bottomState; resource_id=$control.ControlId; part="row-$itemIndex"; x=$listOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$listOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='ListViewItem' })
                                     }
