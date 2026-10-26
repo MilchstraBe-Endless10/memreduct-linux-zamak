@@ -305,7 +305,7 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
         p.text(no.x + 19.0, no.y + 5.0, text(zh, "Cancel", "取消"), fg, size=8.0)
 
     if s.language_open and s.page == 0:
-        let combo = child(s, width, height, 128.0, 104.0, 124.0, 18.0)
+        let combo = child(s, width, height, 128.0, 104.0, 124.0, 13.0)
         let popup = ui.rect(combo.x, combo.bottom(), combo.w, 36.0)
         p.fill_rect(&popup, &bg)
         outline(p, &popup, &border)
@@ -324,7 +324,7 @@ pub fn hit(s: &State, x: f64, y: f64, width: f64, height: f64) -> f64:
         if ui_geometry.settings_modal_button_rect(width, height, false).contains(x, y): return 702.0
         return 700.0
     if s.language_open and s.page == 0:
-        let combo = child(s, width, height, 128.0, 104.0, 124.0, 18.0)
+        let combo = child(s, width, height, 128.0, 104.0, 124.0, 13.0)
         let popup = ui.rect(combo.x, combo.bottom(), combo.w, 36.0)
         if ui.rect(popup.x, popup.y, popup.w, 18.0).contains(x, y): return 801.0
         if ui.rect(popup.x, popup.y + 18.0, popup.w, 18.0).contains(x, y): return 802.0

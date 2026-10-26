@@ -7,7 +7,9 @@
 /* Stable GTK3/GLib ABI declarations keep this bridge independent of Gtk headers. */
 typedef struct _GtkWidget GtkWidget;
 typedef struct _GtkWindow GtkWindow;
-typedef struct _GtkContainer GtkContainer;
+typedef struct _GtkStyleContext GtkStyleContext;
+typedef struct _GtkCssProvider GtkCssProvider;
+typedef struct _GtkStyleProvider GtkStyleProvider;
 typedef struct _GList GList;
 struct _GList {
     void *data;
@@ -19,8 +21,14 @@ extern GList *gtk_window_list_toplevels(void);
 extern const char *gtk_window_get_title(GtkWindow *window);
 extern void gtk_widget_show(GtkWidget *widget);
 extern void gtk_widget_hide(GtkWidget *widget);
-extern void gtk_container_set_border_width(GtkContainer *container, unsigned int border_width);
+extern GtkStyleContext *gtk_widget_get_style_context(GtkWidget *widget);
+extern void gtk_widget_queue_resize(GtkWidget *widget);
 extern void gtk_window_present(GtkWindow *window);
+extern GtkCssProvider *gtk_css_provider_new(void);
+extern int gtk_css_provider_load_from_data(GtkCssProvider *provider, const char *data, long length, void *error);
+extern void gtk_style_context_add_class(GtkStyleContext *context, const char *class_name);
+extern void gtk_style_context_add_provider(GtkStyleContext *context, GtkStyleProvider *provider, unsigned int priority);
+extern void g_object_unref(void *object);
 extern unsigned long gtk_widget_get_type(void);
 extern unsigned int g_signal_lookup(const char *name, unsigned long type);
 extern unsigned int g_signal_handlers_disconnect_matched(
@@ -117,16 +125,27 @@ int64_t mr_gui_window_mode(int64_t show_settings)
     }
 
     if (settings_window_found != NULL && !settings_geometry_prepared) {
-        /* Let the Canvas occupy the complete measured client surface. */
-        gtk_container_set_border_width((GtkContainer *)settings_window_found, 0);
-        settings_geometry_prepared = 1;
+        GtkStyleContext *style = gtk_widget_get_style_context((GtkWidget *)settings_window_found);
+        GtkCssProvider *provider = gtk_css_provider_new();
+        const int loaded = gtk_css_provider_load_from_data(
+            provider,
+            "window.memreduct-settings-window { padding: 0; }",
+            -1,
+            NULL);
+        if (loaded) {
+            gtk_style_context_add_class(style, "memreduct-settings-window");
+            gtk_style_context_add_provider(style, (GtkStyleProvider *)provider, 600);
+            gtk_widget_queue_resize((GtkWidget *)settings_window_found);
+            settings_geometry_prepared = 1;
+        }
+        g_object_unref(provider);
         if (getenv("MEMREDUCT_CI") != NULL) {
-            fputs("CI_SETTINGS_CONTAINER_BORDER_WIDTH=0\n", stderr);
+            fprintf(stderr, "CI_SETTINGS_CSS_PADDING=0 loaded=%d\n", loaded);
             fflush(stderr);
         }
     }
 
-    if (settings_window_found == NULL || main_window == NULL ||
+    if (settings_window_found == NULL || main_window == NULL || !settings_geometry_prepared ||
         !settings_close_handler_connected) {
         g_list_free(windows);
         return 0;

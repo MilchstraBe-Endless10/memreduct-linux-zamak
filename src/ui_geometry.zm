@@ -109,10 +109,10 @@ pub fn clean_menu_item_rect(popup: &ui.Rect, row: i64) -> ui.Rect:
 pub fn clean_button_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
     dlu_rect(canvas_width, canvas_height, 8.0, 192.0, 208.0, 14.0)
 
-# Windows v.3.5.2 release measurements at 96 DPI: the settings child template
-# occupies 390x273 px for 260x168 DLU. The Linux test window targets a compact
-# 547x345 client surface; native window decorations are separate.
-# These measurements guide the layout but do not claim cross-theme pixel parity.
+# Windows v.3.5.2 release measured at 96 DPI: outer settings window 574x374,
+# client area 558x335; child page 390x273 for 260x168 DLU. Linux uses the same
+# client target, excluding native decorations and without GTK's default inset.
+# This is a measured layout baseline, not cross-theme pixel acceptance.
 pub fn settings_page_width_dlu() -> i64:
     260
 
@@ -120,10 +120,10 @@ pub fn settings_page_height_dlu() -> i64:
     168
 
 pub fn settings_client_width_px() -> i64:
-    547
+    558
 
 pub fn settings_client_height_px() -> i64:
-    345
+    335
 
 pub fn settings_window_width_px() -> i64:
     settings_client_width_px()
@@ -143,6 +143,14 @@ fn settings_x(value: f64, canvas_width: f64) -> f64:
 fn settings_y(value: f64, canvas_height: f64) -> f64:
     settings_page_y_dlu(value) * canvas_height / f64(settings_client_height_px())
 
+fn settings_reference_rect(canvas_width: f64, canvas_height: f64, x: f64, y: f64, w: f64, h: f64) -> ui.Rect:
+    ui.rect(
+        x * canvas_width / f64(settings_client_width_px()),
+        y * canvas_height / f64(settings_client_height_px()),
+        w * canvas_width / f64(settings_client_width_px()),
+        h * canvas_height / f64(settings_client_height_px())
+    )
+
 pub fn settings_dlu_rect(canvas_width: f64, canvas_height: f64, x: f64, y: f64, w: f64, h: f64) -> ui.Rect:
     ui.rect(
         settings_x(x, canvas_width),
@@ -152,13 +160,13 @@ pub fn settings_dlu_rect(canvas_width: f64, canvas_height: f64, x: f64, y: f64, 
     )
 
 pub fn settings_page_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
-    settings_dlu_rect(canvas_width, canvas_height, 102.0, 8.0, 260.0, 168.0)
+    settings_reference_rect(canvas_width, canvas_height, 156.0, 10.0, 390.0, 273.0)
 
 pub fn settings_nav_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
-    settings_dlu_rect(canvas_width, canvas_height, 8.0, 8.0, 88.0, 192.0)
+    settings_reference_rect(canvas_width, canvas_height, 12.0, 10.0, 132.0, 312.0)
 
 pub fn settings_nav_item_rect(canvas_width: f64, canvas_height: f64, index: i64) -> ui.Rect:
-    settings_dlu_rect(canvas_width, canvas_height, 8.0, 8.0 + f64(index) * 12.0, 88.0, 12.0)
+    settings_reference_rect(canvas_width, canvas_height, 12.0, 10.0 + f64(index) * 20.0, 132.0, 20.0)
 
 pub fn settings_child_rect(canvas_width: f64, canvas_height: f64, x: f64, y: f64, w: f64, h: f64) -> ui.Rect:
     let page = settings_page_rect(canvas_width, canvas_height)
@@ -167,13 +175,13 @@ pub fn settings_child_rect(canvas_width: f64, canvas_height: f64, x: f64, y: f64
     ui.rect(page.x + settings_page_x_dlu(x) * sx, page.y + settings_page_y_dlu(y) * sy, settings_page_x_dlu(w) * sx, settings_page_y_dlu(h) * sy)
 
 pub fn settings_feedback_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
-    settings_dlu_rect(canvas_width, canvas_height, 102.0, 180.0, 260.0, 12.0)
+    settings_reference_rect(canvas_width, canvas_height, 156.0, 285.0, 390.0, 12.0)
 
 pub fn settings_reset_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
-    settings_dlu_rect(canvas_width, canvas_height, 102.0, 196.0, 48.0, 14.0)
+    settings_reference_rect(canvas_width, canvas_height, 153.0, 299.0, 75.0, 23.0)
 
 pub fn settings_close_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
-    settings_dlu_rect(canvas_width, canvas_height, 314.0, 196.0, 48.0, 14.0)
+    settings_reference_rect(canvas_width, canvas_height, 471.0, 299.0, 75.0, 23.0)
 
 pub fn settings_reset_modal_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
     settings_dlu_rect(canvas_width, canvas_height, 112.0, 72.0, 252.0, 72.0)
@@ -273,8 +281,8 @@ fn test_resize_keeps_content_inside_compact_canvas():
 fn test_settings_child_template_and_shell_are_distinct():
     assert(settings_page_width_dlu() == 260)
     assert(settings_page_height_dlu() == 168)
-    assert(settings_window_width_px() == 547)
-    assert(settings_window_height_px() == 345)
+    assert(settings_window_width_px() == 558)
+    assert(settings_window_height_px() == 335)
     assert(settings_window_width_px() != x_dlu_to_logical_px(260))
 
 fn test_settings_geometry_matches_measured_child_template():
@@ -284,14 +292,14 @@ fn test_settings_geometry_matches_measured_child_template():
     let page = settings_page_rect(w, h)
     let reset = settings_reset_rect(w, h)
     let close = settings_close_rect(w, h)
-    assert(page.w == 390.0 and page.h == 273.0)
-    assert(nav.h == 312.0 and nav.bottom() == 325.0)
+    assert(page.x == 156.0 and page.y == 10.0 and page.w == 390.0 and page.h == 273.0)
+    assert(nav.x == 12.0 and nav.y == 10.0 and nav.w == 132.0 and nav.h == 312.0)
+    assert(nav.bottom() == 322.0)
     assert(settings_nav_item_rect(w, h, 4).bottom() < nav.bottom())
-    assert(nav.x == 12.0 and nav.w == 132.0)
-    assert(page.x == 153.0 and page.right() == 543.0)
-    assert(page.right() <= w)
-    assert(reset.x == page.x and reset.y == 318.5)
-    assert(close.x == 471.0 and close.right() <= w)
+    assert(page.right() == 546.0 and page.right() <= w)
+    assert(reset.x == 153.0 and reset.y == 299.0 and reset.w == 75.0 and reset.h == 23.0)
+    assert(close.x == 471.0 and close.y == 299.0 and close.w == 75.0 and close.h == 23.0)
+    assert(close.right() == 546.0 and close.right() <= w)
 
 fn test_settings_shell_contains_page_navigation_and_actions():
     let w = f64(settings_client_width_px())
