@@ -109,10 +109,10 @@ int64_t mr_gui_window_mode(int64_t show_settings)
             on_settings_delete,
             NULL,
             NULL,
-            1); /* G_CONNECT_AFTER: keep libui-ng's own close callback intact. */
+            0); /* Run after the existing libui handler, before GTK's default close. */
         if (getenv("MEMREDUCT_CI") != NULL) {
             fprintf(stderr,
-                    "CI_NATIVE_SETTINGS_DELETE_HANDLER signal_id=%u order=after connected=%d\n",
+                    "CI_NATIVE_SETTINGS_DELETE_HANDLER signal_id=%u phase=normal connected=%d\n",
                     delete_signal_id,
                     settings_close_handler_id != 0);
             fflush(stderr);
