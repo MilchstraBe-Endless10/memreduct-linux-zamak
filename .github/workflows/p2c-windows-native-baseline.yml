@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: p2-ui-validation-${{ github.event.pull_request.number || github.ref }}
+  group: p2c-ui-validation-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
