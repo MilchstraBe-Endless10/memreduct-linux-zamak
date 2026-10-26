@@ -1,6 +1,25 @@
 # 短期记忆 / Latest Handoff
 
-## 当前续接：P2C-3R1 CI 稳定性与最终证据闭环（2026-10-26）
+## 当前续接：P2C-4 字体/控件绘制/深色主题校准（2026-10-26）
+
+### 最新核对（2026-10-26 17:44 UTC）
+
+- P2C `40363399854` 已结束 FAILURE：Windows job PASS，Xvfb 截图 job 因 APT 38 分钟硬超时退出 `124`，comparison job SKIPPED。APT diagnostic artifact `12672670397` 的日志中 `fonts-noto-cjk` 61.2 MB 包下载未完成，之前出现 `Ign` 后重试；未看到 DNS、锁或缺包错误，底层网络/镜像根因未确认。字体候选及 Linux 截图均未执行。
+- P2B `40363344884` 在 17:44 UTC 仍处于 Xvfb 与 Weston 的依赖安装中，未取消、不预判结论。
+- 本轮暗色 palette 改动仍为未提交工作树内容；不改变 Light palette、字体字号、几何、文案、Windows goldens 或验收阈值。workflow 正在准备共享同一 PR 并发组、`cancel-in-progress: false`，压低两条 GUI workflow 的同时 APT 争用，但保留各自独立覆盖。
+- 重新执行本机非 GUI检查：Zamak 0.2.0 `check/test/build` PASS，30/30 Zamak tests；`verify_project.py` 33 项 PASS；Python/C safety 3/3 PASS；Shell syntax、Arch build 与 `git diff --check` PASS。未在本机启动 GUI、Xvfb、Wayland 或操作 Hyprland。
+- PR build run `40363344887` 和 push build run `40363337339`（head `eea82a8...`）PASS；当前远端视觉结果仍没有新 Linux截图。Windows 41/41 PNG SHA 核验仅是上游基准证据，不是暗色修复验收。
+- 17:50 UTC 更新：P2B run `40363344884` 的 production Xvfb/XTEST job PASS，APT 安装用时约 35 分钟；它只验证旧推送头，设置页重复场景按条件 SKIPPED。Weston lifecycle job 仍卡在自己的 APT 安装阶段，仍无终态。此次观察支持“Hosted APT 安装极慢”的症状，但不能证明单一根因。
+- 17:52 UTC 终态：P2B run `40363344884` FAILURE；Xvfb job PASS，Weston job APT exit `124`。Wayland diagnostic artifact `12672539453` 中同样显示 `fonts-noto-cjk` 61.2 MB 下载未完成。Xvfb apt artifact `12673795414` 显示相同版本依赖最后成功，约 35 分钟。当前工作树已移除仅英文 Weston 生命周期所需作业中的无用 Noto CJK 下载，并增加跨 P2B/P2C 的同 PR 并发控制；尚未推送/验证。
+
+- PR #7 OPEN / Draft，branch `feat/issue-3-p2c-settings-ui`，base `feat/issue-3-p2b-main-window`；本轮起点为 P2C-3R1 已验收 HEAD `2c745710210c8794b52a0e9eb19dd1830c00d8d6`，当前推送 HEAD `eea82a8c2cafb16b25acf3d319e084335548356d`。本地未提交改动已按修复前真实 Windows/Linux 暗色截图校准 Canvas 暗色颜色；不改 Light 调色板、字体、布局、窗口几何、资源文案、goldens 或阈值，等 exact-head CI 验证后提交；未合并 PR。
+- Exact-head Windows P2C job [40363399854](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40363399854) PASS，artifact `12670040771`，digest `sha256:74ca2a4a52afcde5fe04334918587a77b1fc6c469ffce03916dbb9920aa616c6`。来源标签 v3.5.2、官方资产 SHA、setup detached PGP signature 与二进制版本核验通过；环境 Windows Server 2022 build 20348、1024×768、96 DPI/100%。设置外框 574×374、客户区 558×335。GDI 132 行：逻辑 face `MS Shell Dlg 2`，8.25 pt/400，ascent/descent 11/2 px；注册表 substitution 指向 Tahoma，尚不足以证明实际字体文件。41/41 PNG hash 对照 `result.txt` 通过。
+- Windows 已有主窗与五页 EN/简中 light/dark、四个 English 主菜单、Memory cleaning 滚动两语言截图。托盘菜单未被 UI Automation 暴露；安全清理菜单未能无副作用打开；确认/结果弹窗需真实清理，均 BLOCKED。未执行任何清理。
+- Exact-head Linux P2C run `40363399854` 的 Xvfb 作业仍运行于 APT `Install runner-only build and X11 dependencies`，自 16:53:35 UTC 开始；截至上次查询 GitHub 未公开运行中 job 日志。APT 停滞根因未知，Linux截图、字体候选、dark comparison/overlay 尚无结果。P2B exact-head Weston run `40363344884` pending；旧 head run `40355264157` 的 Weston job状态陈旧且仍 reported in progress，不取消/不冒充当前结果。
+- 旧字体基线：Windows GDI face alias `MS Shell Dlg 2`、registry substitute Tahoma；Linux 8 pt Sans / DejaVu Sans、简中 Noto Sans CJK SC，Pango ascent/descent 10/3；历史同源 120 行中 25 行宽高差≤2 px、95 行仍有度量差。Liberation Sans 作为独立 CI 进程候选，许可证文件随 artifact 检查；不提交字体文件、不修改生产默认、不通过缩放或缩小字号掩盖误差。Zamak Canvas `Painter.text` 当前给字号/粗体参数，没有 per-call 字体 family 参数；是否需要桥接等候候选实测后决定。
+- 本机无图形桌面运行：Zamak 0.2.0；治理 33 项 PASS、Python/C safety 3/3 PASS、Zamak 30/30 PASS、check/build PASS、`scripts/build-arch.sh` PASS、所有 shell `bash -n` PASS、`git diff --check` PASS。未运行本机 Xvfb、Wayland、GUI、桌面输入或 Hyprland IPC。
+
+## 历史续接：P2C-3R1 CI 稳定性与最终证据闭环（2026-10-26）
 
 - PR #7 OPEN / Draft，分支 `feat/issue-3-p2c-settings-ui`，base `feat/issue-3-p2b-main-window`。原始任务 HEAD `52b7977b7582ee197470ba4a0e946a7b1558c2aa`；CI-only commit `406491b70594d202f3d2bb4efa667f2e0886c552` 已推送，PR 远端 head 已核对。生产 UI checkpoint 保持 `60be390eb0ff6c18564f35abcd23d36406c6d3f8`，没有 UI 或比较器变更。
 - 修复前 P2C run `40324420754` attempt 1 在 Xvfb bulk APT step 被取消；attempt 2 全部 3 jobs PASS，但包源 `azure.archive.ubuntu.com` 下载 108 MB 用 31 分 18 秒、57.7 kB/s；APT update 本身快速完成，未见 DNS/锁/缺包错误。故障证据指向慢下载，不对更深层网络根因作推断。Pillow 安装 537 kB / 数秒成功。
@@ -11,7 +30,7 @@
 - 最终视觉比较保持 184/184 控件/滚动行 ≤2 px PASS（最大 1.5 px）、导航 10/10、树线 102/102、控件 raster 36/36；10 组页面变化率均优于 P2C-2，本轮范围 5.0741%–14.8853%，全页像素 1:1 仍 NOT PASS。12 项简中资源差异保持 `DECISION_REQUIRED`。source/binary manifest 8 项 SHA 全通过；Windows PNG 41/41、Linux PNG 17/17 SHA 全通过。完整哈希见 `docs/P2C-3_VISUAL_FIDELITY_REPORT.md` 和本轮 artifact manifest。
 - build-and-test 系统工具 APT 步骤花 8分43秒但成功；Zamak 0.2.0 check/test/build、治理、Shell、C/Python safety 与 Arch build 全 PASS。本机非 GUI：project verify 33 项、C/Python safety 3/3、shell syntax、Zamak test 29/29、Arch build、diff check 均 PASS。没有启动本机 GUI、Xvfb/Wayland、Hyprland IPC、桌面输入或特权操作。
 
-## 当前续接：P2C-3 原版视觉差异收敛（2026-10-26）
+## 历史续接：P2C-3 原版视觉差异收敛（2026-10-26）
 
 - PR #7 仍 OPEN / Draft；分支 `feat/issue-3-p2c-settings-ui`，Base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。本轮生产源码 SHA `60be390eb0ff6c18564f35abcd23d36406c6d3f8`；随后本记忆/报告更新为文档提交，不改生产源码；未改 main 或其他 PR。
 - Exact-source Windows native + Linux Xvfb + comparison run `40319586672` 三个 job 均 PASS；artifacts：Windows `12648157361`、X11 `12648453073`、Overlay/heatmap/metrics/SHA `12648552362`。Windows 的 `IDC_HOTKEY=132` 经 `HKM_GETHOTKEY` 正确采到 `Ctrl+F1`（English/zh-CN），根因是旧采集器把返回值字节顺序反读。

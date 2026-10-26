@@ -4,7 +4,7 @@
 
 状态含义：NATIVE=Linux 上实现原生相同动作；EQUIVALENT=语义受限的 Linux 等价；UNSUPPORTED=没有安全/准确的 Linux 等价；NOT_IMPLEMENTED=可评估但项目当前未实现。状态描述当前 Linux 项目，不代表上游 Windows 功能状态。
 
-P2C-4 在 GitHub-hosted Xvfb/XTEST 中核验了四个主菜单、English/简体中文文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示。GTK 环境主题 `Adwaita:light` 与应用 View 菜单控制的 Canvas 深色调色板分别记录；这不改变本机 GTK 主题。明细与证据边界见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
+P2C-4 的隔离 Xvfb/XTEST 套件覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图时分别记录 GTK `Adwaita:light` 与应用自己的 Canvas 暗色调色板，不更改桌面主题。此前提交已执行相关菜单/主题场景；当前 exact-head P2C run `40363399854` 的 Linux Xvfb job 已因 APT 38 分钟安装超时（exit 124）失败，Windows/Linux comparator 未运行；本矩阵不把该 HEAD 的截图或视觉比较写为已验收。明细与证据边界见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
 
 ## 1. 主窗口、菜单、快捷键
 

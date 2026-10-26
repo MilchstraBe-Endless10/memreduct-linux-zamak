@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: p2b-production-gui-${{ github.event.pull_request.number || github.ref }}
+  group: p2-ui-validation-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -91,7 +91,7 @@ jobs:
         env:
           APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-wayland-apt
           APT_INSTALL_TIMEOUT: 38m
-        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_INSTALL_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 weston wayland-utils fonts-noto-cjk fonts-dejavu
+        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_INSTALL_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 weston wayland-utils fonts-dejavu
       - name: Install pinned Zamak 0.2.0
         run: npm install --global @veyralux/zamak@0.2.0
       - name: Build and verify production executable
