@@ -59,8 +59,10 @@ export HOME="$runtime_dir/home" XDG_CONFIG_HOME="$runtime_dir/config"
     "$(stat -c '%a' "$runtime_dir")" "$DISPLAY" "$GDK_BACKEND" "$GTK_THEME" "$GDK_SCALE" "$GDK_DPI_SCALE"
   printf 'GTK_version=%s\nEnglish_font=' "$(pkg-config --modversion gtk+-3.0)"
   fc-match 'sans-serif:lang=en' | head -n 1
+  printf 'Linux_font_match_en=%s\n' "$(fc-match --format '%{family} | %{style}' 'sans-serif:lang=en')"
   printf 'Chinese_font='
   fc-match 'sans-serif:lang=zh-cn' | head -n 1
+  printf 'Linux_font_match_zh=%s\n' "$(fc-match --format '%{family} | %{style}' 'sans-serif:lang=zh-cn')"
   xdpyinfo | awk '/dimensions:/{print "X11_dimensions=" $2; exit}'
   printf 'Windows source=Mem Reduct v.3.5.2 tag 2f5c55d15f69a2c88859e036b16c6f4c971e1968\n'
   printf 'Windows reference: 574x374 outer / 558x335 client settings window. Linux target: 558x335 client; Canvas fills it. Child template=260x168 DLU measured at 390x273 px on Windows Server 2022, 96 DPI.\n'
@@ -134,6 +136,7 @@ capture() {
 click() { xdotool mousemove --sync --window "$1" "$2" "$3" click 1; sleep 0.12; }
 
 wait_marker 'CI_PRODUCTION_START'
+wait_marker 'CI_GTK_FONT source=GtkLabelStyle'
 wait_marker 'CI_MEMORY source=/proc/meminfo'
 wait_marker 'CI_DRAW width='
 window_id="$(window_by_title 'Mem Reduct')"
@@ -177,6 +180,9 @@ for index in 0 1 2 3 4; do
       before="$(grep -Fc "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$artifact_dir/p2c-client.log" || true)"
       click "$window_id" 525 136
       wait_new_marker "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$before"
+      if [[ "$offset" == 1 ]]; then
+        capture "$window_id" 'production-settings-memory-en-scroll-1.png' '558x335'
+      fi
     done
     capture "$window_id" 'production-settings-memory-en-scroll-2.png' '558x335'
     for offset in 1 0; do
@@ -220,6 +226,9 @@ for index in 1 2 3 4; do
       before="$(grep -Fc "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$artifact_dir/p2c-client.log" || true)"
       click "$window_id" 525 136
       wait_new_marker "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$before"
+      if [[ "$offset" == 1 ]]; then
+        capture "$window_id" 'production-settings-memory-zh-scroll-1.png' '558x335'
+      fi
     done
     capture "$window_id" 'production-settings-memory-zh-scroll-2.png' '558x335'
     for offset in 1 0; do

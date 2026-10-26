@@ -10,6 +10,7 @@ use settings_ui
 extern fn mr_gui_test_mode() -> i64
 extern fn mr_gui_test_timeout_ms() -> i64
 extern fn mr_gui_test_fail_sample_after(elapsed_ms: i64) -> i64
+extern fn mr_gui_test_log_canvas_font() -> i64
 extern fn mr_gui_test_start_settings() -> i64
 extern fn mr_gui_window_mode(settings: i64) -> i64
 extern fn mr_gui_take_settings_close_request() -> i64
@@ -589,6 +590,8 @@ fn main():
         println(f"CI_GEOMETRY resource=IDD_MAIN:224x214_dlu provisional_window={width}x{height}")
         println(f"CI_SETTINGS_GEOMETRY resource=IDD_SETTINGS_*:260x168_dlu provisional_shell={settings_width}x{settings_height} canvas={ui_geometry.settings_client_width_px()}x{ui_geometry.settings_client_height_px()}")
     let app: ui.App[MainWindow] = ui.app()
+    if test_mode and mr_gui_test_log_canvas_font() == 0:
+        println("CI_GTK_FONT status=unavailable")
     app.on_draw(canvas, draw)
     app.on_mouse(canvas, mouse)
     app.on_key(canvas, key)

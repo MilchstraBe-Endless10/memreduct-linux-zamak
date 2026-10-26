@@ -9,6 +9,7 @@ $workDir = Join-Path $env:RUNNER_TEMP 'memreduct-windows-native-work'
 New-Item -ItemType Directory -Force -Path $artifactDir, $workDir | Out-Null
 $statusFile = Join-Path $artifactDir 'result.txt'
 $geometryFile = Join-Path $artifactDir 'windows-settings-geometry.csv'
+$fontMetricsFile = Join-Path $artifactDir 'windows-control-font-metrics.csv'
 $appProcess = $null
 
 function Write-Status([string]$Line) {
@@ -129,6 +130,22 @@ using System.Runtime.InteropServices;
 public static class P2CWin32 {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct LOGFONTW {
+    public int Height, Width, Escapement, Orientation, Weight;
+    public byte Italic, Underline, StrikeOut, CharSet, OutPrecision, ClipPrecision, Quality, PitchAndFamily;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string FaceName;
+  }
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct TEXTMETRICW {
+    public int Height, Ascent, Descent, InternalLeading, ExternalLeading, AveCharWidth, MaxCharWidth, Weight, Overhang, DigitizedAspectX, DigitizedAspectY;
+    public char FirstChar, LastChar, DefaultChar, BreakChar;
+    public byte Italic, Underlined, StruckOut, PitchAndFamily, CharSet;
+  }
+  [StructLayout(LayoutKind.Sequential)] public struct SIZE { public int Width, Height; }
+  public sealed class FontTextMetrics {
+    public string FaceName; public string ResolvedFaceName; public int LogFontHeight; public int LogFontWidth; public int LogFontWeight;
+    public int LogFontCharSet; public int TextMetricHeight; public int TextMetricAscent; public int TextMetricDescent; public int TextMetricWeight;
+    public int AverageCharWidth; public int MeasuredTextWidth; public int MeasuredTextHeight; public string FontSource;
+  }
   public sealed class WindowInfo {
     public IntPtr Handle; public uint ProcessId; public string Title; public string ClassName;
     public bool Visible; public int Left; public int Top; public int Width; public int Height; public int ControlId;
@@ -160,6 +177,46 @@ public static class P2CWin32 {
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool CloseDesktop(IntPtr desktop);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint GetDpiForWindow(IntPtr hWnd);
+  [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr GetDC(IntPtr hWnd);
+  [DllImport("user32.dll", SetLastError=true)] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
+  [DllImport("gdi32.dll", EntryPoint="GetObjectW", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetLogFont(IntPtr hObject, int size, out LOGFONTW value);
+  [DllImport("gdi32.dll", SetLastError=true)] private static extern IntPtr SelectObject(IntPtr hdc, IntPtr value);
+  [DllImport("gdi32.dll", EntryPoint="GetTextMetricsW", CharSet=CharSet.Unicode, SetLastError=true)] private static extern bool GetTextMetrics(IntPtr hdc, out TEXTMETRICW value);
+  [DllImport("gdi32.dll", EntryPoint="GetTextExtentPoint32W", CharSet=CharSet.Unicode, SetLastError=true)] private static extern bool GetTextExtent(IntPtr hdc, string text, int count, out SIZE size);
+  [DllImport("gdi32.dll", EntryPoint="GetTextFaceW", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetTextFace(IntPtr hdc, int count, System.Text.StringBuilder face);
+  [DllImport("gdi32.dll", SetLastError=true)] private static extern IntPtr GetStockObject(int index);
+  public static FontTextMetrics MeasureControlText(IntPtr hwnd, string text) {
+    if (hwnd == IntPtr.Zero) return null;
+    IntPtr font = SendMessage(hwnd, 0x0031, IntPtr.Zero, IntPtr.Zero); // WM_GETFONT
+    string fontSource = "WM_GETFONT";
+    if (font == IntPtr.Zero) { font = GetStockObject(17); fontSource = "DEFAULT_GUI_FONT fallback"; }
+    if (font == IntPtr.Zero) return null;
+    LOGFONTW logicalFont;
+    if (GetLogFont(font, Marshal.SizeOf(typeof(LOGFONTW)), out logicalFont) == 0) return null;
+    IntPtr hdc = GetDC(hwnd);
+    if (hdc == IntPtr.Zero) return null;
+    IntPtr previous = IntPtr.Zero;
+    try {
+      previous = SelectObject(hdc, font);
+      if (previous == IntPtr.Zero || previous.ToInt64() == -1) return null;
+      TEXTMETRICW tm;
+      if (!GetTextMetrics(hdc, out tm)) return null;
+      var resolvedFace = new System.Text.StringBuilder(64);
+      if (GetTextFace(hdc, resolvedFace.Capacity, resolvedFace) == 0) return null;
+      string sample = text ?? String.Empty;
+      SIZE extent;
+      if (!GetTextExtent(hdc, sample, sample.Length, out extent)) return null;
+      return new FontTextMetrics {
+        FaceName=logicalFont.FaceName, ResolvedFaceName=resolvedFace.ToString(), LogFontHeight=logicalFont.Height, LogFontWidth=logicalFont.Width,
+        LogFontWeight=logicalFont.Weight, LogFontCharSet=logicalFont.CharSet, TextMetricHeight=tm.Height,
+        TextMetricAscent=tm.Ascent, TextMetricDescent=tm.Descent, TextMetricWeight=tm.Weight, AverageCharWidth=tm.AveCharWidth,
+        MeasuredTextWidth=extent.Width, MeasuredTextHeight=extent.Height, FontSource=fontSource
+      };
+    } finally {
+      if (previous != IntPtr.Zero && previous.ToInt64() != -1) SelectObject(hdc, previous);
+      ReleaseDC(hwnd, hdc);
+    }
+  }
   public static WindowInfo[] GetProcessWindows(uint processId) {
     var windows = new System.Collections.Generic.List<WindowInfo>();
     EnumWindows(delegate(IntPtr hWnd, IntPtr state) {
@@ -316,6 +373,123 @@ public static class P2CWin32 {
             $graphics.Dispose(); $bitmap.Dispose()
             Write-Status "CAPTURED Windows Native main window geometry=$($mainRect.Right-$mainRect.Left)x$($mainRect.Bottom-$mainRect.Top) dpi=$mainDpi screenshot=windows-native-main-en.png"
 
+            $captureVisiblePopup = {
+                param([string]$Name, [string]$Path)
+                $popups = @([P2CWin32]::GetProcessWindows([uint32]$appProcess.Id) | Where-Object { $_.Visible -and $_.ClassName -eq '#32768' })
+                if ($popups.Count -eq 0) {
+                    & $writeStatusClosure "BLOCKED Windows Native popup screenshot name=$Name reason=no-visible-#32768-menu-window"
+                    return $false
+                }
+                $popup = $popups | Sort-Object { $_.Width * $_.Height } -Descending | Select-Object -First 1
+                & $captureWindow ([IntPtr]$popup.Handle) $Path
+                & $writeStatusClosure "CAPTURED Windows Native popup name=$Name size=$($popup.Width)x$($popup.Height) screenshot=$([System.IO.Path]::GetFileName($Path))"
+                return $true
+            }.GetNewClosure()
+
+            $desktopRoot = [System.Windows.Automation.AutomationElement]::RootElement
+            $trayButtonCondition = [System.Windows.Automation.AndCondition]::new(
+                [System.Windows.Automation.PropertyCondition]::new(
+                    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                    [System.Windows.Automation.ControlType]::Button
+                ),
+                [System.Windows.Automation.PropertyCondition]::new(
+                    [System.Windows.Automation.AutomationElement]::NameProperty,
+                    'Mem Reduct',
+                    [System.Windows.Automation.PropertyConditionFlags]::IgnoreCase
+                )
+            )
+            $trayButtons = @($desktopRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants, $trayButtonCondition))
+            if ($trayButtons.Count -eq 0) {
+                Write-Status 'BLOCKED Windows Native tray menu: runner UI Automation did not expose a Mem Reduct notification-area button.'
+            } else {
+                try {
+                    $trayButtons[0].SetFocus()
+                    [System.Windows.Forms.SendKeys]::SendWait('+{F10}')
+                    Start-Sleep -Milliseconds 300
+                    $trayMenuCaptured = & $captureVisiblePopup 'tray-context-English' (Join-Path $artifactDir 'windows-native-tray-en.png')
+                    if (-not $trayMenuCaptured) {
+                        Write-Status 'BLOCKED Windows Native tray menu: context request produced no visible app-owned native popup.'
+                    } else {
+                        $trayPopup = @([P2CWin32]::GetProcessWindows([uint32]$appProcess.Id) | Where-Object { $_.Visible -and $_.ClassName -eq '#32768' }) | Select-Object -First 1
+                        $trayPopupElement = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$trayPopup.Handle)
+                        $menuItemCondition = [System.Windows.Automation.PropertyCondition]::new(
+                            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                            [System.Windows.Automation.ControlType]::MenuItem
+                        )
+                        $allMenuItems = @($trayPopupElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $menuItemCondition))
+                        $cleanMenuItems = @($allMenuItems | Where-Object { $_.Current.Name -match 'Clean|清理' })
+                        if ($cleanMenuItems.Count -eq 0) {
+                            Write-Status 'BLOCKED Windows Native tray submenu: no clean-region menu item was exposed to UI Automation.'
+                        } else {
+                            try {
+                                $submenuPattern = $cleanMenuItems[0].GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+                                $submenuPattern.Expand()
+                                Start-Sleep -Milliseconds 250
+                                $submenuPopups = @([P2CWin32]::GetProcessWindows([uint32]$appProcess.Id) | Where-Object { $_.Visible -and $_.ClassName -eq '#32768' })
+                                if ($submenuPopups.Count -lt 2) {
+                                    Write-Status 'BLOCKED Windows Native tray submenu: safe expansion produced no separately measurable popup window.'
+                                } else {
+                                    $popupIndex = 0
+                                    foreach ($popupWindow in $submenuPopups) {
+                                        $popupPath = Join-Path $artifactDir "windows-native-tray-clean-popup-$popupIndex.png"
+                                        & $captureWindow ([IntPtr]$popupWindow.Handle) $popupPath
+                                        Write-Status "CAPTURED Windows Native tray clean-menu popup index=$popupIndex screenshot=$([System.IO.Path]::GetFileName($popupPath))"
+                                        $popupIndex++
+                                    }
+                                }
+                            } catch {
+                                Write-Status "BLOCKED Windows Native tray submenu: safe ExpandCollapse was unavailable; no menu action was invoked. detail=$($_.Exception.GetType().Name)"
+                            }
+                        }
+                    }
+                } catch {
+                    Write-Status "BLOCKED Windows Native tray menu: isolated runner UI Automation/context request failed; no menu item was invoked. detail=$($_.Exception.GetType().Name)"
+                } finally {
+                    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+                    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+                }
+            }
+
+            foreach ($menu in @(
+                [pscustomobject]@{ name='file'; key='f' },
+                [pscustomobject]@{ name='view'; key='v' },
+                [pscustomobject]@{ name='settings'; key='s' },
+                [pscustomobject]@{ name='help'; key='h' }
+            )) {
+                [void][P2CWin32]::SetForegroundWindow($mainHwnd)
+                [System.Windows.Forms.SendKeys]::SendWait("%$($menu.key)")
+                Start-Sleep -Milliseconds 250
+                $menuPath = Join-Path $artifactDir "windows-native-menu-$($menu.name)-en.png"
+                if (-not (& $captureVisiblePopup "main-$($menu.name)-English" $menuPath)) {
+                    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+                    Write-Status "NOT_CAPTURED Windows Native main menu name=$($menu.name) reason=runner-menu-window-not-enumerated"
+                } else {
+                    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+                    Start-Sleep -Milliseconds 100
+                }
+            }
+
+            # The clean menu is opened through UI Automation's split-button
+            # ExpandCollapse pattern only. Never invoke or click the main button.
+            $cleanButton = @([P2CWin32]::GetChildWindows($mainHwnd)) | Where-Object { $_.ControlId -eq 103 -and $_.Visible } | Select-Object -First 1
+            $cleanPopupCaptured = $false
+            if ($cleanButton) {
+                try {
+                    $cleanElement = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$cleanButton.Handle)
+                    $expandPattern = $cleanElement.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+                    $expandPattern.Expand()
+                    Start-Sleep -Milliseconds 250
+                    $cleanPopupCaptured = & $captureVisiblePopup 'clean-regions-dropdown-English' (Join-Path $artifactDir 'windows-native-clean-regions-en.png')
+                    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+                    if (-not $cleanPopupCaptured) { Write-Status 'BLOCKED Windows Native clean-region menu: UIA expanded but no native popup HWND was enumerated.' }
+                } catch {
+                    Write-Status "BLOCKED Windows Native clean-region menu: safe split-button ExpandCollapse pattern unavailable; no click/invoke was attempted. detail=$($_.Exception.GetType().Name)"
+                }
+            } else {
+                Write-Status 'BLOCKED Windows Native clean-region menu: IDC_CLEAN split button was not visible; no button input was attempted.'
+            }
+            Write-Status 'BLOCKED Windows Native clean confirmation/result dialogs: opening them would require invoking real memory cleaning; no clean command was sent.'
+
             $mainHandleValue = $mainHwnd.ToInt64()
             [System.Windows.Forms.SendKeys]::SendWait('{F2}')
             Start-Sleep -Milliseconds 750
@@ -412,6 +586,8 @@ public static class P2CWin32 {
 
                 'page_idd,locale,state,resource_id,part,x,y,width,height,class' |
                     Set-Content -LiteralPath $geometryFile -Encoding UTF8
+                'page_idd,locale,resource_id,class,sample_kind,sample_text,sample_text_source,logical_face_name,resolved_face_name,font_source,logfont_height_px,point_size,logfont_weight,charset,textmetric_height_px,text_ascent_px,text_descent_px,textmetric_weight,average_char_width_px,text_width_px,text_height_px' |
+                    Set-Content -LiteralPath $fontMetricsFile -Encoding UTF8
                 $writePageGeometry = {
                     param([int]$PageIndex, [string]$Locale)
                     $pageId = 101 + $PageIndex
@@ -444,6 +620,24 @@ public static class P2CWin32 {
                             }
                             & $writeStatusClosure "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$initialState count=$itemIndex"
                             if ($control.ControlId -eq 124) {
+                                [P2CWin32]::EnsureListItemVisible($control.Handle, 6)
+                                Start-Sleep -Milliseconds 100
+                                $topIndex = [P2CWin32]::GetListTopIndex($control.Handle)
+                                if ($topIndex -ne 1) { throw "IDC_REGIONS expected middle scroll top index 1, got $topIndex." }
+                                $middleState = 'scroll-1'
+                                & $writeStatusClosure "Win32 geometry list item bounds begin page_idd=$pageId resource=$($control.ControlId) state=$middleState"
+                                $itemIndex = 0
+                                foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle, [uint32]$appProcess.Id))) {
+                                    if ($itemRect.Top -ge $listClient.Top -and $itemRect.Bottom -le $listClient.Bottom) {
+                                        $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state=$middleState; resource_id=$control.ControlId; part="row-$itemIndex"; x=$listOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$listOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='ListViewItem' })
+                                    }
+                                    $itemIndex++
+                                }
+                                & $writeStatusClosure "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$middleState count=$itemIndex"
+                                $middleShot = Join-Path $artifactDir "windows-native-regions-scroll-1-$Locale.png"
+                                & $captureWindow ([IntPtr]$settingsHwnd) $middleShot
+                                & $writeStatusClosure "CAPTURED Windows Native IDC_REGIONS state=scroll-1 locale=$Locale screenshot=$([System.IO.Path]::GetFileName($middleShot))"
+
                                 [P2CWin32]::EnsureListItemVisible($control.Handle, 7) # LVM_ENSUREVISIBLE, final row
                                 Start-Sleep -Milliseconds 100
                                 $topIndex = [P2CWin32]::GetListTopIndex($control.Handle)
@@ -462,6 +656,69 @@ public static class P2CWin32 {
                                 if ([P2CWin32]::GetListTopIndex($control.Handle) -ne 0) { throw 'IDC_REGIONS failed to restore top scroll position.' }
                             }
                         }
+                    }
+                    $fontRows = [System.Collections.Generic.List[object]]::new()
+                    foreach ($control in $current | Where-Object { $_.Visible -and $_.ControlId -ne 0 }) {
+                        $samples = @()
+                        if (-not [string]::IsNullOrWhiteSpace($control.Title)) {
+                            $samples += [pscustomobject]@{ kind='native-control-text'; text=$control.Title; text_source='Win32GetWindowText' }
+                        }
+                        if ($control.ControlId -eq 124 -and $control.ClassName -eq 'SysListView32') {
+                            $listElement = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$control.Handle)
+                            $listItemCondition = [System.Windows.Automation.PropertyCondition]::new(
+                                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                                [System.Windows.Automation.ControlType]::ListItem
+                            )
+                            $listItems = @($listElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $listItemCondition))
+                            $emptyItems = @($listItems | Where-Object { [string]::IsNullOrWhiteSpace($_.Current.Name) })
+                            if ($listItems.Count -ne 8 -or $emptyItems.Count -ne 0) {
+                                throw "UI Automation exposed $($listItems.Count) IDC_REGIONS rows for page $pageId/$Locale; expected 8 visible source strings."
+                            }
+                            foreach ($regionIndex in 0..7) {
+                                $samples += [pscustomobject]@{
+                                    kind="IDC_REGIONS_row-$regionIndex"
+                                    text=$listItems[$regionIndex].Current.Name
+                                    text_source='UIAutomationListItem'
+                                }
+                            }
+                        }
+                        if ($control.ControlId -eq 140 -and $control.ClassName -eq 'SysListView32') {
+                            $listElement = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$control.Handle)
+                            $listItemCondition = [System.Windows.Automation.PropertyCondition]::new(
+                                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                                [System.Windows.Automation.ControlType]::ListItem
+                            )
+                            $listItems = @($listElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $listItemCondition))
+                            $emptyItems = @($listItems | Where-Object { [string]::IsNullOrWhiteSpace($_.Current.Name) })
+                            if ($listItems.Count -ne 4 -or $emptyItems.Count -ne 0) {
+                                throw "UI Automation exposed $($listItems.Count) IDC_COLORS rows for page $pageId/$Locale; expected 4 source strings."
+                            }
+                            foreach ($colorIndex in 0..3) {
+                                $samples += [pscustomobject]@{
+                                    kind="IDC_COLORS_row-$colorIndex"
+                                    text=$listItems[$colorIndex].Current.Name
+                                    text_source='UIAutomationListItem'
+                                }
+                            }
+                        }
+                        foreach ($sample in $samples) {
+                            $metrics = [P2CWin32]::MeasureControlText($control.Handle, $sample.text)
+                            if (-not $metrics) { continue }
+                            $pointSize = [Math]::Round(([Math]::Abs($metrics.LogFontHeight) * 72.0 / $settingsDpi), 3)
+                            $fontRows.Add([pscustomobject]@{
+                                page_idd=$pageId; locale=$Locale; resource_id=$control.ControlId; class=$control.ClassName
+                                sample_kind=$sample.kind; sample_text=$sample.text; sample_text_source=$sample.text_source
+                                logical_face_name=$metrics.FaceName; resolved_face_name=$metrics.ResolvedFaceName
+                                font_source=$metrics.FontSource; logfont_height_px=$metrics.LogFontHeight; point_size=$pointSize; logfont_weight=$metrics.LogFontWeight
+                                charset=$metrics.LogFontCharSet; textmetric_height_px=$metrics.TextMetricHeight
+                                text_ascent_px=$metrics.TextMetricAscent; text_descent_px=$metrics.TextMetricDescent; textmetric_weight=$metrics.TextMetricWeight
+                                average_char_width_px=$metrics.AverageCharWidth; text_width_px=$metrics.MeasuredTextWidth
+                                text_height_px=$metrics.MeasuredTextHeight
+                            })
+                        }
+                    }
+                    if ($fontRows.Count -gt 0) {
+                        $fontRows | Export-Csv -LiteralPath $fontMetricsFile -NoTypeInformation -Append -Encoding UTF8
                     }
                     & $writeStatusClosure "Win32 geometry exporting page_idd=$pageId rows=$($rows.Count)"
                     $rows | Export-Csv -LiteralPath $geometryFile -NoTypeInformation -Append -Encoding UTF8
@@ -586,6 +843,68 @@ public static class P2CWin32 {
                             Start-Sleep -Milliseconds 300
                             & $captureWindow $mainHwnd (Join-Path $artifactDir 'windows-native-main-zh-CN.png')
                             Write-Status 'CAPTURED Windows Native main window language=zh-CN screenshot=windows-native-main-zh-CN.png'
+
+                            # Toggle the source-verified UI-only dark-theme command
+                            # inside this ephemeral runner; never send a clean command.
+                            if (-not [P2CWin32]::PostMessage($mainHwnd, 0x0111, [IntPtr]159, [IntPtr]::Zero)) {
+                                throw 'Unable to request IDM_USEDARKTHEME=159.'
+                            }
+                            Start-Sleep -Milliseconds 400
+                            & $captureWindow $mainHwnd (Join-Path $artifactDir 'windows-native-main-zh-CN-dark.png')
+                            Write-Status 'CAPTURED Windows Native main theme=dark language=zh-CN source_command=IDM_USEDARKTHEME screenshot=windows-native-main-zh-CN-dark.png'
+
+                            [System.Windows.Forms.SendKeys]::SendWait('{F2}')
+                            Start-Sleep -Milliseconds 350
+                            $settingsWindow = @([P2CWin32]::GetProcessWindows([uint32]$appProcess.Id)) | Where-Object { $_.Visible -and $_.Handle.ToInt64() -ne $mainHandleValue -and $_.Width -gt 200 -and $_.Height -gt 100 } | Select-Object -First 1
+                            if (-not $settingsWindow) { throw 'Settings window did not reopen for dark-theme screenshots.' }
+                            $settingsHwnd = $settingsWindow.Handle
+                            $settingsElement = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$settingsHwnd)
+
+                            foreach ($pageIndex in 0..4) {
+                                if (-not (& $selectPage $settingsElement $pageLabelsChinese[$pageIndex])) {
+                                    if (-not (& $selectPageByTree $pageIndex 'zh-CN dark' $pageLabelsChinese[$pageIndex])) {
+                                        Write-Status "BLOCKED Windows Native dark zh-CN page=$pageIndex navigation-unavailable=true"
+                                        break
+                                    }
+                                }
+                                Start-Sleep -Milliseconds 200
+                                $shotName = "windows-native-settings-$pageIndex-zh-CN-dark.png"
+                                & $captureWindow ([IntPtr]$settingsHwnd) (Join-Path $artifactDir $shotName)
+                                Write-Status "CAPTURED Windows Native page=$($pageLabelsChinese[$pageIndex]) locale=zh-CN theme=dark screenshot=$shotName"
+                            }
+
+                            if (-not (& $selectPage $settingsElement $pageLabelsChinese[0])) {
+                                [void](& $selectPageByTree 0 'zh-CN dark' $pageLabelsChinese[0])
+                            }
+                            $darkLanguageControl = @([P2CWin32]::GetChildWindows([IntPtr]$settingsHwnd)) | Where-Object { $_.ControlId -eq 123 -and $_.ClassName -eq 'ComboBox' } | Select-Object -First 1
+                            $englishIndex = -1
+                            if ($darkLanguageControl) {
+                                $darkLanguageItems = @([P2CWin32]::GetComboItems($darkLanguageControl.Handle))
+                                for ($itemIndex = 0; $itemIndex -lt $darkLanguageItems.Count; $itemIndex++) {
+                                    if ($darkLanguageItems[$itemIndex] -eq 'English') { $englishIndex = $itemIndex; break }
+                                }
+                            }
+                            if ($englishIndex -lt 0 -or -not [P2CWin32]::SelectComboItem($darkLanguageControl.Handle, $englishIndex)) {
+                                Write-Status 'BLOCKED Windows Native dark English settings screenshots: could not select IDC_LANGUAGE English.'
+                            } else {
+                                Start-Sleep -Milliseconds 400
+                                foreach ($pageIndex in 0..4) {
+                                    if (-not (& $selectPage $settingsElement $pageLabelsEnglish[$pageIndex])) {
+                                        if (-not (& $selectPageByTree $pageIndex 'English dark' $pageLabelsEnglish[$pageIndex])) {
+                                            Write-Status "BLOCKED Windows Native dark English page=$pageIndex navigation-unavailable=true"
+                                            break
+                                        }
+                                    }
+                                    Start-Sleep -Milliseconds 200
+                                    $shotName = "windows-native-settings-$pageIndex-English-dark.png"
+                                    & $captureWindow ([IntPtr]$settingsHwnd) (Join-Path $artifactDir $shotName)
+                                    Write-Status "CAPTURED Windows Native page=$($pageLabelsEnglish[$pageIndex]) locale=English theme=dark screenshot=$shotName"
+                                }
+                                [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+                                Start-Sleep -Milliseconds 300
+                                & $captureWindow $mainHwnd (Join-Path $artifactDir 'windows-native-main-English-dark.png')
+                                Write-Status 'CAPTURED Windows Native main theme=dark language=English screenshot=windows-native-main-English-dark.png'
+                            }
                         } else {
                             Write-Status 'BLOCKED complete Chinese settings screenshots: localized settings navigation labels were not exposed to UI Automation.'
                         }

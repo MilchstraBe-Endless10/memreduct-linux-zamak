@@ -60,6 +60,14 @@ fn emit_region_row_geometry(s: &State, index: i64, r: &ui.Rect):
         let locale = text(s.logged_zh, "en", "zh-CN")
         println(f"CI_SETTINGS_GEOMETRY page_idd=102 locale={locale} state=scroll-{s.region_scroll} resource=124 part=row-{index} x={r.x} y={r.y} w={r.w} h={r.h}")
 
+fn canvas_text(s: &State, p: &ui.Painter, id: i64, part: string, x: f64, y: f64, value: string, color: &ui.Color, size: f64, bold: bool):
+    if s.emit_geometry:
+        let locale = text(s.logged_zh, "en", "zh-CN")
+        let width = ui.text_width(value, size=size, bold=bold)
+        let height = ui.text_height(value, size=size, bold=bold)
+        println(f"CI_SETTINGS_TEXT page_idd={page_dialog_id(s.page)} locale={locale} state=scroll-{s.region_scroll} resource={id} part={part} x={x} y={y} size={size} bold={bold} width={width} height={height} text={value}")
+    p.text(x, y, value, color, size=size, bold=bold)
+
 fn upstream_default_checked(id: i64, row: i64) -> bool:
     # Mem Reduct v.3.5.2 defaults from src/main.c WM_INITDIALOG and src/app.h.
     if id == 120 or id == 121 or id == 136 or id == 151 or id == 152: return true
@@ -85,7 +93,7 @@ fn outline(p: &ui.Painter, r: &ui.Rect, color: &ui.Color):
     p.add_rect(r)
     p.stroke(color, 1.0)
 
-fn group(s: &State, p: &ui.Painter, r: &ui.Rect, title: string, fg: &ui.Color):
+fn group(s: &State, p: &ui.Painter, r: &ui.Rect, id: i64, title: string, fg: &ui.Color):
     # Measured on the Win32 3.5.2 GroupBox edge in the pinned 96-DPI capture.
     let mut edge = ui.rgb(0xdcdcdc)
     if s.dark: edge = ui.rgb(0x707070)
@@ -96,7 +104,7 @@ fn group(s: &State, p: &ui.Painter, r: &ui.Rect, title: string, fg: &ui.Color):
     let mut bg = ui.rgb(0xf0f0f0)
     if s.dark: bg = ui.rgb(0x242424)
     p.fill_rect(&ui.rect(r.x + 7.0, r.y - 2.0, f64(len(title)) * 5.2 + 8.0, 5.0), &bg)
-    p.text(r.x + 10.0, r.y - 5.0, title, fg, size=8.0)
+    canvas_text(s, p, id, "group-title", r.x + 10.0, r.y - 5.0, title, fg, 8.0, false)
 
 fn checkbox(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color):
     let r = child(s, w, h, x, y, width, height)
@@ -112,19 +120,19 @@ fn checkbox(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, 
         p.line(box.x + 5.0, box.y + 9.5, box.x + 11.0, box.y + 2.0, disabled)
     let mut text_size = 8.0
     if id == 153: text_size = 7.0
-    p.text(r.x + ui_geometry.settings_checkbox_label_inset_px(), r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, size=text_size)
+    canvas_text(s, p, id, "label", r.x + ui_geometry.settings_checkbox_label_inset_px(), r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, text_size, false)
     if s.focus == id: outline(p, &r, focus)
 
 fn frame(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, fg: &ui.Color):
     let r = child(s, w, h, x, y, width, height)
     emit_geometry(s, id, "control", &r)
-    group(s, p, &r, title, fg)
+    group(s, p, &r, id, title, fg)
     if s.test_mode: println(f"CI_SETTINGS_FRAME id={id} x={x} y={y} w={width} h={height}")
 
 fn text_row(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, disabled: &ui.Color):
     let r = child(s, w, h, x, y, width, height)
     emit_geometry(s, id, "control", &r)
-    p.text(r.x, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, size=8.0)
+    canvas_text(s, p, id, "label", r.x, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, 8.0, false)
 
 fn button(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color):
     let r = child(s, w, h, x, y, width, height)
@@ -133,7 +141,7 @@ fn button(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, wi
     if s.dark: bg = ui.rgb(0x3a3a3a)
     p.fill_rect(&r, &bg)
     outline(p, &r, border)
-    p.text(r.x + 5.0, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, size=8.0)
+    canvas_text(s, p, id, "label", r.x + 5.0, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, 8.0, false)
     if s.focus == id: outline(p, &r, focus)
 
 fn field(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, value: string, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color):
@@ -143,7 +151,7 @@ fn field(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, wid
     if s.dark: bg = ui.rgb(0x303030)
     p.fill_rect(&r, &bg)
     outline(p, &r, border)
-    p.text(r.x + 5.0, r.y + max(0.0, (r.h - 10.0) / 2.0), value, disabled, size=8.0)
+    canvas_text(s, p, id, "value", r.x + 5.0, r.y + max(0.0, (r.h - 10.0) / 2.0), value, disabled, 8.0, false)
     if s.focus == id: outline(p, &r, focus)
 
 fn spinner(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, border: &ui.Color, focus: &ui.Color):
@@ -171,7 +179,7 @@ fn draw_list_row(s: &State, p: &ui.Painter, r: &ui.Rect, id: i64, title: string,
         let color = upstream_color(index)
         let color_text = upstream_color_text(index)
         p.fill_rect(r, &color)
-        p.text(r.x + 7.0, r.y + max(0.0, (r.h - 10.0) / 2.0), title, &color_text, size=8.0)
+        canvas_text(s, p, id, f"row-{index}", r.x + 7.0, r.y + max(0.0, (r.h - 10.0) / 2.0), title, &color_text, 8.0, false)
         return
     let mut text_x = r.x + 5.0
     if id == 124:
@@ -183,7 +191,7 @@ fn draw_list_row(s: &State, p: &ui.Painter, r: &ui.Rect, id: i64, title: string,
         if upstream_default_checked(id, index):
             p.line(box.x + 2.0, box.y + 6.5, box.x + 5.0, box.y + 9.5, disabled)
             p.line(box.x + 5.0, box.y + 9.5, box.x + 11.0, box.y + 2.0, disabled)
-    p.text(text_x, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, size=8.0)
+    canvas_text(s, p, id, f"row-{index}", text_x, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, 8.0, false)
 
 fn draw_general(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
     frame(s, p, w, h, 107, 0.0, 0.0, 260.0, 90.0, text(zh, "General configuration:", "选项:"), fg)
@@ -201,13 +209,13 @@ fn draw_general(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabl
     if s.dark: lang_bg = ui.rgb(0x303030)
     p.fill_rect(&lang, &lang_bg)
     outline(p, &lang, border)
-    p.text(lang.x + 5.0, lang.y + 3.0, text(zh, "English", "简体中文"), fg, size=8.0)
+    canvas_text(s, p, 123, "value", lang.x + 5.0, lang.y + 3.0, text(zh, "English", "简体中文"), fg, 8.0, false)
     combo_arrow(p, &lang, border)
     if s.focus == 123: outline(p, &lang, focus)
 
 fn draw_memory(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
     frame(s, p, w, h, 109, 0.0, 0.0, 260.0, 90.0, text(zh, "Memory regions to be cleaned:", "要清理的内存区域:"), fg)
-    let names_en = ["Working set", "System file cache", "Modified page list*", "Standby list*", "Standby list (without priority)", "Modified file cache", "Registry cache (Windows 8.1+)", "Combine memory lists (Windows 10+)"]
+    let names_en = ["Working set", "System file cache", "Modified page list*", "Standby list*", "Standby list (without priority)", "Modified file cache", "Registry cache (win8.1+)", "Combine memory lists (win10+)"]
     let names_zh = ["工作集", "系统文件缓存", "已修改页列表*", "备用列表*", "无优先级备用列表", "已修改文件缓存", "注册表缓存（Windows 8.1+）", "合并内存列表（Windows 10+）"]
     let list = child(s, w, h, 8.0, 12.0, 244.0, 70.0)
     let mut list_bg = ui.rgb(0xffffff)
@@ -254,7 +262,7 @@ fn draw_appearance(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, dis
     text_row(s, p, w, h, 138, 8.0, 92.0, 112.0, 12.0, text(zh, "Font:", "字体："), disabled)
     button(s, p, w, h, 139, 128.0, 92.0, 124.0, 12.0, "Lucida Console, 8px, 400", fg, disabled, border, focus)
     let colors_en = ["Text color", "Background color", "\"Warning level\" color", "\"Danger level\" color"]
-    let colors_zh = ["文本颜色", "背景颜色", "“警告级别”颜色", "“危险级别”颜色"]
+    let colors_zh = ["文本颜色", "正常背景颜色", "“警告级别”背景色", "“危险级别”背景色"]
     let colors = child(s, w, h, 8.0, 110.0, 244.0, 50.0)
     let mut colors_bg = ui.rgb(0xffffff)
     if s.dark: colors_bg = ui.rgb(0x303030)
@@ -333,7 +341,7 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
         let title = page_title(i, zh)
         let selected_item = ui_geometry.settings_nav_selection_rect(width, height, i, zh)
         if i == s.page: p.fill_rect(&selected_item, &selected)
-        p.text(r.x + 18.0, r.y + max(1.0, (r.h - 10.0) / 2.0), title, fg, size=8.0)
+        canvas_text(s, p, 104, f"item-{i}", r.x + 18.0, r.y + max(1.0, (r.h - 10.0) / 2.0), title, fg, 8.0, false)
 
     # Native TreeView dotted branch: one vertical stem and short branches at
     # each measured row center. Navigation rows remain full-width hit targets.
@@ -353,7 +361,7 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
     else: draw_advanced(s, p, width, height, &fg, &disabled, &border, &fg, zh)
 
     let footer = ui_geometry.settings_feedback_rect(width, height)
-    if s.status != "": p.text(footer.x, footer.y + 2.0, s.status, &disabled, size=8.0)
+    if s.status != "": canvas_text(s, p, 0, "feedback", footer.x, footer.y + 2.0, s.status, &disabled, 8.0, false)
     let reset = ui_geometry.settings_reset_rect(width, height)
     let close = ui_geometry.settings_close_rect(width, height)
     emit_geometry(s, 105, "control", &reset)
@@ -368,8 +376,8 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
     if s.pressed == 106.0: p.fill_rect(&close, &border)
     outline(p, &reset, &border)
     outline(p, &close, &border)
-    p.text(reset.x + 12.0, reset.y + 5.0, text(zh, "Reset", "重置"), fg, size=8.0)
-    p.text(close.x + 12.0, close.y + 5.0, text(zh, "Close", "关闭"), fg, size=8.0)
+    canvas_text(s, p, 105, "label", reset.x + 12.0, reset.y + 5.0, text(zh, "Reset", "重置"), fg, 8.0, false)
+    canvas_text(s, p, 106, "label", close.x + 12.0, close.y + 5.0, text(zh, "Close", "关闭"), fg, 8.0, false)
     if s.focus == 106: outline(p, &reset, &fg)
     if s.focus == 107: outline(p, &close, &fg)
 
@@ -377,16 +385,16 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
         let modal = ui_geometry.settings_reset_modal_rect(width, height)
         p.fill_rect(&modal, &bg)
         outline(p, &modal, &border)
-        p.text(modal.x + 10.0, modal.y + 10.0, text(zh, "Reset all application settings?", "确定要将所有设置恢复默认吗？"), fg, size=8.0)
-        p.text(modal.x + 10.0, modal.y + 27.0, text(zh, "No settings are saved in this build.", "当前版本尚未保存设置。"), disabled, size=8.0)
+        canvas_text(s, p, 83, "question", modal.x + 10.0, modal.y + 10.0, text(zh, "Reset all application settings?", "确定要将所有设置恢复默认吗？"), fg, 8.0, false)
+        canvas_text(s, p, 0, "limitation", modal.x + 10.0, modal.y + 27.0, text(zh, "No settings are saved in this build.", "当前版本尚未保存设置。"), disabled, 8.0, false)
         let yes = ui_geometry.settings_modal_button_rect(width, height, true)
         let no = ui_geometry.settings_modal_button_rect(width, height, false)
         p.fill_rect(&yes, &button_bg)
         p.fill_rect(&no, &button_bg)
         outline(p, &yes, &border)
         outline(p, &no, &border)
-        p.text(yes.x + 19.0, yes.y + 5.0, text(zh, "Reset", "重置"), fg, size=8.0)
-        p.text(no.x + 19.0, no.y + 5.0, text(zh, "Cancel", "取消"), fg, size=8.0)
+        canvas_text(s, p, 105, "confirm-reset", yes.x + 19.0, yes.y + 5.0, text(zh, "Reset", "重置"), fg, 8.0, false)
+        canvas_text(s, p, 0, "cancel-reset", no.x + 19.0, no.y + 5.0, text(zh, "Cancel", "取消"), fg, 8.0, false)
 
     if s.language_open and s.page == 0:
         let combo = child(s, width, height, 128.0, 104.0, 124.0, 13.0)
@@ -397,10 +405,10 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
         let chinese = ui.rect(popup.x + 1.0, popup.y + 18.0, popup.w - 2.0, 17.0)
         if s.language_focus == 801: p.fill_rect(&english, &selected)
         if s.language_focus == 802: p.fill_rect(&chinese, &selected)
-        p.text(english.x + 5.0, english.y + 4.0, "English", fg, size=8.0)
-        p.text(chinese.x + 5.0, chinese.y + 4.0, "简体中文", fg, size=8.0)
-        if not zh: p.text(english.right() - 16.0, english.y + 4.0, "✓", fg, size=8.0)
-        if zh: p.text(chinese.right() - 16.0, chinese.y + 4.0, "✓", fg, size=8.0)
+        canvas_text(s, p, 123, "popup-english", english.x + 5.0, english.y + 4.0, "English", fg, 8.0, false)
+        canvas_text(s, p, 123, "popup-chinese", chinese.x + 5.0, chinese.y + 4.0, "简体中文", fg, 8.0, false)
+        if not zh: canvas_text(s, p, 123, "selected-mark", english.right() - 16.0, english.y + 4.0, "✓", fg, 8.0, false)
+        if zh: canvas_text(s, p, 123, "selected-mark", chinese.right() - 16.0, chinese.y + 4.0, "✓", fg, 8.0, false)
 
 pub fn hit(s: &State, x: f64, y: f64, width: f64, height: f64) -> f64:
     if s.modal == 1:

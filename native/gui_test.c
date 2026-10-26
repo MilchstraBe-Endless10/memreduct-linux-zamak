@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include <errno.h>
+#include <gtk/gtk.h>
+#include <pango/pangocairo.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -49,4 +51,59 @@ long long mr_gui_test_start_settings(void)
 {
     const char *value = getenv("MEMREDUCT_CI_START_SETTINGS");
     return mr_gui_test_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
+}
+
+long long mr_gui_test_log_canvas_font(void)
+{
+    if (mr_gui_test_mode() == 0) {
+        return 0;
+    }
+
+    GtkWidget *probe = gtk_label_new("");
+    g_object_ref_sink(probe);
+    GtkStyleContext *style = gtk_widget_get_style_context(probe);
+    PangoFontDescription *base = NULL;
+    gtk_style_context_get(style, GTK_STATE_FLAG_NORMAL, "font", &base, NULL);
+    if (base == NULL) {
+        gtk_widget_destroy(probe);
+        g_object_unref(probe);
+        fputs("CI_GTK_FONT status=unavailable reason=no-label-font\n", stderr);
+        return 0;
+    }
+
+    PangoFontDescription *canvas_font = pango_font_description_copy(base);
+    pango_font_description_set_size(canvas_font, 8 * PANGO_SCALE);
+    PangoContext *context = gtk_widget_get_pango_context(probe);
+    PangoFont *resolved = pango_font_map_load_font(
+        pango_context_get_font_map(context), context, canvas_font);
+    PangoFontMetrics *metrics = pango_context_get_metrics(
+        context, canvas_font, pango_language_from_string("en"));
+    PangoFontDescription *resolved_description = resolved != NULL
+        ? pango_font_describe(resolved)
+        : NULL;
+    char *base_text = pango_font_description_to_string(base);
+    const char *family = pango_font_description_get_family(base);
+    const char *resolved_family = resolved_description != NULL
+        ? pango_font_description_get_family(resolved_description)
+        : "unresolved";
+
+    fprintf(stderr,
+            "CI_GTK_FONT source=GtkLabelStyle family=\"%s\" resolved=\"%s\" base=\"%s\" canvas_size_pt=8 weight=%d ascent_px=%.2f descent_px=%.2f\n",
+            family != NULL ? family : "unknown",
+            resolved_family != NULL ? resolved_family : "unknown",
+            base_text != NULL ? base_text : "unknown",
+            pango_font_description_get_weight(canvas_font),
+            metrics != NULL ? (double)pango_font_metrics_get_ascent(metrics) / PANGO_SCALE : 0.0,
+            metrics != NULL ? (double)pango_font_metrics_get_descent(metrics) / PANGO_SCALE : 0.0);
+    fflush(stderr);
+
+    if (metrics != NULL) pango_font_metrics_unref(metrics);
+    if (resolved_description != NULL) pango_font_description_free(resolved_description);
+    if (resolved != NULL) g_object_unref(resolved);
+    pango_font_description_free(canvas_font);
+    pango_font_description_free(base);
+    g_free(base_text);
+    gtk_widget_destroy(probe);
+    g_object_unref(probe);
+    return 1;
 }
