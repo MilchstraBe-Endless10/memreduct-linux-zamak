@@ -193,26 +193,31 @@ public static class P2CWin32 {
   [DllImport("gdi32.dll", EntryPoint="GetTextFaceW", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetTextFace(IntPtr hdc, int count, System.Text.StringBuilder face);
   [DllImport("gdi32.dll", SetLastError=true)] private static extern IntPtr GetStockObject(int index);
   public static FontTextMetrics MeasureControlText(IntPtr hwnd, string text) {
-    if (hwnd == IntPtr.Zero) return null;
+    if (hwnd == IntPtr.Zero) throw new ArgumentException("Cannot measure text for a null control handle.");
     IntPtr font = SendMessage(hwnd, 0x0031, IntPtr.Zero, IntPtr.Zero); // WM_GETFONT
     string fontSource = "WM_GETFONT";
     if (font == IntPtr.Zero) { font = GetStockObject(17); fontSource = "DEFAULT_GUI_FONT fallback"; }
-    if (font == IntPtr.Zero) return null;
+    if (font == IntPtr.Zero) throw new InvalidOperationException("WM_GETFONT and DEFAULT_GUI_FONT both returned a null font handle.");
     LOGFONTW logicalFont;
-    if (GetLogFont(font, Marshal.SizeOf(typeof(LOGFONTW)), out logicalFont) == 0) return null;
+    if (GetLogFont(font, Marshal.SizeOf(typeof(LOGFONTW)), out logicalFont) == 0)
+      throw new InvalidOperationException("GetObjectW(LOGFONT) failed; last-error=" + Marshal.GetLastWin32Error());
     IntPtr hdc = GetDC(hwnd);
-    if (hdc == IntPtr.Zero) return null;
+    if (hdc == IntPtr.Zero) throw new InvalidOperationException("GetDC failed; last-error=" + Marshal.GetLastWin32Error());
     IntPtr previous = IntPtr.Zero;
     try {
       previous = SelectObject(hdc, font);
-      if (previous == IntPtr.Zero || previous.ToInt64() == -1) return null;
+      if (previous == IntPtr.Zero || previous.ToInt64() == -1)
+        throw new InvalidOperationException("SelectObject(HFONT) failed; last-error=" + Marshal.GetLastWin32Error());
       TEXTMETRICW tm;
-      if (!GetTextMetrics(hdc, out tm)) return null;
+      if (!GetTextMetrics(hdc, out tm))
+        throw new InvalidOperationException("GetTextMetricsW failed; last-error=" + Marshal.GetLastWin32Error());
       var resolvedFace = new System.Text.StringBuilder(64);
-      if (GetTextFace(hdc, resolvedFace.Capacity, resolvedFace) == 0) return null;
+      if (GetTextFace(hdc, resolvedFace.Capacity, resolvedFace) == 0)
+        throw new InvalidOperationException("GetTextFaceW failed; last-error=" + Marshal.GetLastWin32Error());
       string sample = text ?? String.Empty;
       SIZE extent;
-      if (!GetTextExtent(hdc, sample, sample.Length, out extent)) return null;
+      if (!GetTextExtent(hdc, sample, sample.Length, out extent))
+        throw new InvalidOperationException("GetTextExtentPoint32W failed; last-error=" + Marshal.GetLastWin32Error());
       return new FontTextMetrics {
         FaceName=logicalFont.FaceName, ResolvedFaceName=resolvedFace.ToString(), LogFontHeight=logicalFont.Height, LogFontWidth=logicalFont.Width,
         LogFontWeight=logicalFont.Weight, LogFontCharSet=logicalFont.CharSet, TextMetricHeight=tm.Height,
@@ -745,8 +750,11 @@ public static class P2CWin32 {
                             }
                         }
                         foreach ($sample in $samples) {
-                            $metrics = [P2CWin32]::MeasureControlText($control.Handle, $sample.text)
-                            if (-not $metrics) { continue }
+                            try {
+                                $metrics = [P2CWin32]::MeasureControlText($control.Handle, $sample.text)
+                            } catch {
+                                throw "GDI text metrics failed page_idd=$pageId locale=$Locale resource_id=$($control.ControlId) sample=$($sample.kind): $($_.Exception.Message)"
+                            }
                             $pointSize = [Math]::Round(([Math]::Abs($metrics.LogFontHeight) * 72.0 / $settingsDpi), 3)
                             $fontRows.Add([pscustomobject]@{
                                 page_idd=$pageId; locale=$Locale; resource_id=$control.ControlId; class=$control.ClassName
@@ -763,6 +771,8 @@ public static class P2CWin32 {
                     if ($fontRows.Count -gt 0) {
                         $fontRows | Export-Csv -LiteralPath $fontMetricsFile -NoTypeInformation -Append -Encoding UTF8
                     }
+                    if ($fontRows.Count -eq 0) { throw "No Win32/GDI font text metrics were collected for page_idd=$pageId locale=$Locale." }
+                    & $writeStatusClosure "PASS Win32 GDI font metrics page_idd=$pageId locale=$Locale samples=$($fontRows.Count) output=windows-control-font-metrics.csv"
                     & $writeStatusClosure "Win32 geometry exporting page_idd=$pageId rows=$($rows.Count)"
                     $rows | Export-Csv -LiteralPath $geometryFile -NoTypeInformation -Append -Encoding UTF8
                     & $writeStatusClosure "PASS Win32 geometry page_idd=$pageId locale=$Locale controls=$($rows.Count) output=windows-settings-geometry.csv"
