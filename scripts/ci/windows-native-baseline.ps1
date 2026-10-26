@@ -373,6 +373,17 @@ public static class P2CWin32 {
             $graphics.Dispose(); $bitmap.Dispose()
             Write-Status "CAPTURED Windows Native main window geometry=$($mainRect.Right-$mainRect.Left)x$($mainRect.Bottom-$mainRect.Top) dpi=$mainDpi screenshot=windows-native-main-en.png"
 
+            $captureWindow = {
+                param([IntPtr]$Handle, [string]$Path)
+                $rect = [P2CWin32+RECT]::new()
+                if (-not [P2CWin32]::GetWindowRect($Handle, [ref]$rect)) { throw 'Unable to read screenshot window bounds.' }
+                $shot = [System.Drawing.Bitmap]::new(($rect.Right - $rect.Left), ($rect.Bottom - $rect.Top))
+                $g = [System.Drawing.Graphics]::FromImage($shot)
+                $g.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $shot.Size)
+                $shot.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+                $g.Dispose(); $shot.Dispose()
+            }.GetNewClosure()
+
             $captureVisiblePopup = {
                 param([string]$Name, [string]$Path)
                 $popups = @([P2CWin32]::GetProcessWindows([uint32]$appProcess.Id) | Where-Object { $_.Visible -and $_.ClassName -eq '#32768' })
@@ -572,16 +583,6 @@ public static class P2CWin32 {
                         }
                     }
                     return $false
-                }.GetNewClosure()
-                $captureWindow = {
-                    param([IntPtr]$Handle, [string]$Path)
-                    $rect = [P2CWin32+RECT]::new()
-                    if (-not [P2CWin32]::GetWindowRect($Handle, [ref]$rect)) { throw 'Unable to read screenshot window bounds.' }
-                    $shot = [System.Drawing.Bitmap]::new(($rect.Right - $rect.Left), ($rect.Bottom - $rect.Top))
-                    $g = [System.Drawing.Graphics]::FromImage($shot)
-                    $g.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $shot.Size)
-                    $shot.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
-                    $g.Dispose(); $shot.Dispose()
                 }.GetNewClosure()
 
                 'page_idd,locale,state,resource_id,part,x,y,width,height,class' |
