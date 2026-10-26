@@ -132,7 +132,7 @@ app_pid=""
 printf 'Production Wayland settings client exit status=%s\n' "$settings_status" | tee "$artifact_dir/settings-client-exit.txt"
 [[ "$settings_status" == 0 ]] || { cat "$artifact_dir/settings-client.log" >&2; exit "$settings_status"; }
 grep -Fq 'CI_SETTINGS_WINDOW mode=settings' "$artifact_dir/settings-client.log"
-grep -Fq 'CI_SETTINGS_PAGE idd=101 page=General locale=en controls=116,117,118,120,119,121,122,123 child_dlu=260x168 provisional_canvas=523.0x321.0' "$artifact_dir/settings-client.log"
+grep -Fq 'CI_SETTINGS_PAGE idd=101 page=General locale=en controls=116,117,118,120,119,121,122,123 child_dlu=260x168 provisional_canvas=558.0x335.0' "$artifact_dir/settings-client.log"
 grep -Fq 'CI_APP_RETURNED' "$artifact_dir/settings-client.log"
 grep -Fq 'xdg_toplevel' "$artifact_dir/settings-client.log"
 grep -Fq 'wl_surface' "$artifact_dir/settings-client.log"

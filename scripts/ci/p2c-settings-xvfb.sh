@@ -148,7 +148,7 @@ wait_new_marker "$menu_marker" "$menu_before"
 click "$window_id" 45 49
 wait_marker 'CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true'
 window_id="$(window_by_title 'Settings - Mem Reduct')"
-wait_marker 'CI_SETTINGS_CANVAS_MARGIN old='
+wait_marker 'CI_SETTINGS_CONTENT_BORDER old='
 wait_marker 'CI_SETTINGS_PAGE idd=101 page=General locale=en controls=116,117,118,120,119,121,122,123 child_dlu=260x168 provisional_canvas=558.0x335.0'
 geometry "$window_id" 558 335 "$artifact_dir/geometry-settings-en.txt"
 capture "$window_id" 'production-settings-general-en.png' '558x335'

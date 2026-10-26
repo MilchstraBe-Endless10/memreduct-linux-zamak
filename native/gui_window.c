@@ -8,6 +8,7 @@
 typedef struct _GtkWidget GtkWidget;
 typedef struct _GtkWindow GtkWindow;
 typedef struct _GtkBin GtkBin;
+typedef struct _GtkContainer GtkContainer;
 typedef struct _GList GList;
 struct _GList {
     void *data;
@@ -20,15 +21,10 @@ extern const char *gtk_window_get_title(GtkWindow *window);
 extern void gtk_widget_show(GtkWidget *widget);
 extern void gtk_widget_hide(GtkWidget *widget);
 extern GtkWidget *gtk_bin_get_child(GtkBin *bin);
+extern GList *gtk_container_get_children(GtkContainer *container);
+extern unsigned int gtk_container_get_border_width(GtkContainer *container);
+extern void gtk_container_set_border_width(GtkContainer *container, unsigned int border_width);
 extern void gtk_widget_queue_resize(GtkWidget *widget);
-extern int gtk_widget_get_margin_top(GtkWidget *widget);
-extern int gtk_widget_get_margin_bottom(GtkWidget *widget);
-extern int gtk_widget_get_margin_start(GtkWidget *widget);
-extern int gtk_widget_get_margin_end(GtkWidget *widget);
-extern void gtk_widget_set_margin_top(GtkWidget *widget, int margin);
-extern void gtk_widget_set_margin_bottom(GtkWidget *widget, int margin);
-extern void gtk_widget_set_margin_start(GtkWidget *widget, int margin);
-extern void gtk_widget_set_margin_end(GtkWidget *widget, int margin);
 extern void gtk_window_present(GtkWindow *window);
 extern unsigned long gtk_widget_get_type(void);
 extern unsigned int g_signal_lookup(const char *name, unsigned long type);
@@ -126,25 +122,27 @@ int64_t mr_gui_window_mode(int64_t show_settings)
     }
 
     if (settings_window_found != NULL && !settings_geometry_prepared) {
-        GtkWidget *canvas = gtk_bin_get_child((GtkBin *)settings_window_found);
-        if (canvas != NULL) {
-            const int old_top = gtk_widget_get_margin_top(canvas);
-            const int old_bottom = gtk_widget_get_margin_bottom(canvas);
-            const int old_start = gtk_widget_get_margin_start(canvas);
-            const int old_end = gtk_widget_get_margin_end(canvas);
-            gtk_widget_set_margin_top(canvas, 0);
-            gtk_widget_set_margin_bottom(canvas, 0);
-            gtk_widget_set_margin_start(canvas, 0);
-            gtk_widget_set_margin_end(canvas, 0);
-            gtk_widget_queue_resize(canvas);
+        GtkWidget *root = gtk_bin_get_child((GtkBin *)settings_window_found);
+        GList *children = root == NULL ? NULL : gtk_container_get_children((GtkContainer *)root);
+        GList *holder_item = children;
+        while (holder_item != NULL && holder_item->next != NULL) {
+            holder_item = holder_item->next;
+        }
+        GtkWidget *holder = holder_item == NULL ? NULL : (GtkWidget *)holder_item->data;
+        if (holder != NULL) {
+            /* libui-ng's last GtkBox child is the content holder; its margined inset is 12 px. */
+            const unsigned int old_border = gtk_container_get_border_width((GtkContainer *)holder);
+            gtk_container_set_border_width((GtkContainer *)holder, 0);
+            gtk_widget_queue_resize(holder);
+            gtk_widget_queue_resize(root);
             gtk_widget_queue_resize((GtkWidget *)settings_window_found);
             settings_geometry_prepared = 1;
             if (getenv("MEMREDUCT_CI") != NULL) {
-                fprintf(stderr, "CI_SETTINGS_CANVAS_MARGIN old=%d,%d,%d,%d new=0,0,0,0\n",
-                        old_top, old_bottom, old_start, old_end);
+                fprintf(stderr, "CI_SETTINGS_CONTENT_BORDER old=%u new=0\n", old_border);
                 fflush(stderr);
             }
         }
+        g_list_free(children);
     }
 
     if (settings_window_found == NULL || main_window == NULL || !settings_geometry_prepared ||
