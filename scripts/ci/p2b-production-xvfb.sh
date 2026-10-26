@@ -209,8 +209,9 @@ xdotool mousemove --sync --window "$window_id" 82 130 click 1
 wait_for_new_marker "$marker" "$previous_count"
 wait_for_marker 'CI_POPUP kind=language menu=2 locale=en'
 capture 'production-language-menu-en.png'
-# The Canvas is inset 12 px inside the 337x369 top-level window; row 2 center is Canvas y=103.
-xdotool mousemove --sync --window "$window_id" 238 115 click 1
+# XTEST uses top-level-relative coordinates. The second language row is centered
+# at Canvas y=134, or top-level y=146 after the measured 12 px content inset.
+xdotool mousemove --sync --window "$window_id" 238 146 click 1
 wait_for_marker 'CI_LOCALE locale=zh-CN'
 sleep 0.2
 window_geometry "$artifact_dir/geometry-zh.txt"

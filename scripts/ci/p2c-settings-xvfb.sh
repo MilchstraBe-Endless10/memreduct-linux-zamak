@@ -259,7 +259,7 @@ xdotool key --clearmodifiers Return
 wait_new_marker 'CI_LOCALE locale=en' "$before"
 marker='CI_CLEAN_MENU open=true'
 before="$(grep -Fc -- "$marker" "$artifact_dir/p2c-client.log" || true)"
-click "$window_id" 288 322
+click "$window_id" 300 334
 wait_new_marker "$marker" "$before"
 capture "$window_id" 'production-menu-clean-dropdown-en.png' '337x369'
 xdotool key --clearmodifiers Escape
