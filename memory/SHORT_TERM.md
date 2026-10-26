@@ -2,7 +2,7 @@
 
 ## P2C-1 最新续接（2026-10-26）
 
-- PR #7 仍 OPEN / Draft；base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。生产源码测试 head `d4f1ca97ac42bc1516a484163b9d4536ea9194b2`，分支 `feat/issue-3-p2c-settings-ui`。未合并或改写任何其他分支。
+- PR #7 仍 OPEN / Draft；base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。生产源码测试 checkpoint `d4f1ca97ac42bc1516a484163b9d4536ea9194b2`；规格/记忆同步 commit `ed3c2d8ee4fa0d5f5bbd7752cd460526191a49d5` 是当前 PR 分支 head。分支 `feat/issue-3-p2c-settings-ui`。未合并或改写任何其他分支。
 - 已修正 libui-ng settings content holder 的 12 px border。最新 X11 artifact `12627741039` 记录 `CI_SETTINGS_CONTENT_BORDER old=12 new=0`，Canvas 与 Windows 原生 client area 均为 `558×335`（固定 Windows Server 2022 / 96 DPI / 100% 条件）。此前 Linux `523×321` / `547×345` 数值不再作为当前尺寸。
 - 首次从隔离 Windows Server 2022 interactive runner 获得实际原版 `v.3.5.2` Native 截图。固定 upstream SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`；release archive、setup SHA、setup detached PGP signer、portable executable 3.5.2 及 SHA 均通过核验。环境/几何/PNG SHA-256 与 5 页双语索引在 `docs/P2C-1_SETTINGS_UI_REPORT.md`；Windows artifact `12626872531`，Linux settings X11 artifact `12627741039`。
 - Windows 捕获 1024×768、96 DPI、100% scale、light theme、8pt Ms Shell Dlg，时间 `2026-10-26T04:16:04Z`。Settings 外框 574×374、客户区 558×335；IDC_NAV `(12,10) 132×312`，页面 `(156,10) 390×273`，Reset `(153,299) 75×23`，Close `(471,299) 75×23`。Windows 主窗 352×407。采集只在临时 runner 执行，未触发内存清理。
