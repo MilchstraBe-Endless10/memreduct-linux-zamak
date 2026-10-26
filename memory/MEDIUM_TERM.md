@@ -45,7 +45,7 @@ PR #7 的 Xvfb/XTEST + Weston run `40284909745` 两项通过，Windows native ba
 | P2B | 主窗口 UI 高保真实现 | 首个待校准生产候选已在 Draft PR #6；待代码/截图复审；最终像素验收仍等真实 Windows 截图 |
 | P2C-1 | 五页设置窗口、双语页面、Reset/Close 与生产 UI 隔离验收 | Draft PR #7；production Xvfb/XTEST、Weston lifecycle、Windows native baseline、Win32 resource geometry 和 overlays 均有隔离 CI 证据；设置 Canvas 与 Windows client 均 558×335；像素级 1:1 未通过 |
 | P2C-2 | 基于 Windows 3.5.2 截图校准五页设置界面 | PR #7 同一功能分支 HEAD `20c8fbc8fc80c481965fecbde17aa507eb7247fe`；172 geometry、10/10 双语导航 selection bounds、102 树线像素、12/12 raster PASS；当时 12 个中间滚动状态不可比较；像素差异 6.8528%–16.8042%，故仍不等价；PR / push build-and-test runs `40294897341` / `40294892563` PASS |
-| P2C-3 | 字体/控件光栅/中滚动态及来源语言差异收敛 | 源码 `60be390` exact-head Windows/Xvfb/comparison PR run `40319586672` PASS；184 geometry、导航 10、树点线 102、raster 样本 36 均 PASS；全页 10/10 改善但 1:1 NOT PASS；12 项语言差异待产品决定；push run `40319576201` Xvfb 启动前 FAIL（原因无证据）；lifecycle run `40319586679` 在依赖安装阶段 CANCELLED；文档 head PR run `40321867253` 与 `40321867312` PASS，settings capture `40321867271` 尚运行；暗色 Linux/托盘/清理对话框未覆盖 |
+| P2C-3 | 字体/控件光栅/中滚动态及来源语言差异收敛 | 最终文档 head `7f1f75a` 下 PR runs `40323243037`、`40323243043`、`40323243029` 全部 PASS；当前 artifacts `12650430810` / `12650680581` / `12649498772`。源码 `60be390` 对比 184 geometry、导航 10、树点线 102、raster 样本 36 均 PASS；10/10 全页率改善但 1:1 NOT PASS；12 项语言差异待产品决策。独立 push 旧 run `40319576201` 启动前 FAIL（具体原因无证据）；后续 PR Xvfb 均 PASS。暗色 Linux/托盘/清理对话框未覆盖 |
 | P2 | 可信指标显示/日志/只读探测，安全反馈 | 未开始；依赖 P1 与阶段审查 |
 | P3 | 手动一键缓存清理验收、特权隔离与回滚测试 | 未开始；依赖 P2 |
 | P4 | 有条件的自动策略、配置持久化、冷却与可观察性 | 未开始；依赖 P3 安全评审 |
