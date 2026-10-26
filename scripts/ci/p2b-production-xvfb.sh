@@ -205,7 +205,7 @@ wait_for_new_marker "$marker" "$previous_count"
 capture 'production-view-menu-en.png'
 marker='CI_LANGUAGE_MENU open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 82 91 click 1
+xdotool mousemove --sync --window "$window_id" 82 130 click 1
 wait_for_new_marker "$marker" "$previous_count"
 wait_for_marker 'CI_POPUP kind=language menu=2 locale=en'
 capture 'production-language-menu-en.png'
@@ -232,7 +232,7 @@ marker='CI_LANGUAGE_MENU open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 popup_marker='CI_POPUP kind=language menu=2 locale=zh-CN'
 popup_previous_count="$(grep -Fc -- "$popup_marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 82 91 click 1
+xdotool mousemove --sync --window "$window_id" 82 130 click 1
 wait_for_new_marker "$marker" "$previous_count"
 wait_for_new_marker "$popup_marker" "$popup_previous_count"
 sleep 0.2

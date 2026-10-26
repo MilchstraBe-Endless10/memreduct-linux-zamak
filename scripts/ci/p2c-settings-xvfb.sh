@@ -208,7 +208,7 @@ capture_root_menus() {
   for index in 0 1 2 3; do
     marker="CI_MENU root=$((index + 1)) open=true"
     before="$(grep -Fc -- "$marker" "$artifact_dir/p2c-client.log" || true)"
-    click "$window_id" "${positions[$index]}" 10
+    click "$window_id" "${positions[$index]}" 22
     wait_new_marker "$marker" "$before"
     wait_popup_fits root "$((index + 1))" "$locale"
     capture "$window_id" "production-menu-${names[$index]}-${suffix}.png" '337x369' light "$locale"
@@ -224,7 +224,7 @@ capture_root_menus en en
 # keep the submenu inside the Canvas, and update only the session locale.
 marker='CI_MENU root=2 open=true'
 before="$(grep -Fc -- "$marker" "$artifact_dir/p2c-client.log" || true)"
-click "$window_id" 60 10
+click "$window_id" 60 22
 wait_new_marker "$marker" "$before"
 focus_before="$(grep -Fc -- 'CI_FOCUS item=204' "$artifact_dir/p2c-client.log" || true)"
 xdotool key --clearmodifiers Down Down Down
@@ -244,7 +244,7 @@ capture "$window_id" 'production-main-zh.png' '337x369' light zh-CN
 capture_root_menus zh-CN zh
 marker='CI_MENU root=2 open=true'
 before="$(grep -Fc -- "$marker" "$artifact_dir/p2c-client.log" || true)"
-click "$window_id" 60 10
+click "$window_id" 60 22
 wait_new_marker "$marker" "$before"
 focus_before="$(grep -Fc -- 'CI_FOCUS item=204' "$artifact_dir/p2c-client.log" || true)"
 xdotool key --clearmodifiers Down Down Down
@@ -502,7 +502,7 @@ geometry "$window_id" 337 369 "$artifact_dir/geometry-main-after-wm-close-reopen
 # keyboard events; GTK_THEME remains recorded independently as Adwaita:light.
 view_marker='CI_MENU root=2 open=true'
 view_before="$(grep -Fc -- "$view_marker" "$artifact_dir/p2c-client.log" || true)"
-click "$window_id" 60 10
+click "$window_id" 60 22
 wait_new_marker "$view_marker" "$view_before"
 xdotool key --clearmodifiers Down
 wait_marker 'CI_FOCUS item=202'
@@ -522,6 +522,15 @@ for index in 0 1 2 3 4; do
   wait_page_theme "CI_SETTINGS_PAGE idd=$((101 + index)) page=${page_names[$index]} locale=en controls=" dark
   capture "$window_id" "production-settings-${index}-en-dark.png" '558x335' dark en
 done
+click "$window_id" 60 23
+focus_before="$(grep -Fc 'CI_SETTINGS_KEY name=Tab page_idd=101 focus=105' "$artifact_dir/p2c-client.log" || true)"
+for _ in {1..5}; do xdotool key --clearmodifiers Tab; done
+wait_new_marker 'CI_SETTINGS_KEY name=Tab page_idd=101 focus=105' "$focus_before"
+capture "$window_id" 'production-settings-focus-reset-en-dark.png' '558x335' dark en
+focus_before="$(grep -Fc 'CI_SETTINGS_KEY name=Tab page_idd=101 focus=106' "$artifact_dir/p2c-client.log" || true)"
+xdotool key --clearmodifiers Tab
+wait_new_marker 'CI_SETTINGS_KEY name=Tab page_idd=101 focus=106' "$focus_before"
+capture "$window_id" 'production-settings-focus-close-en-dark.png' '558x335' dark en
 click "$window_id" 60 20
 click "$window_id" 400 190
 wait_marker 'CI_SETTINGS_LANGUAGE resource=123 popup_open=true'
@@ -540,6 +549,15 @@ for index in 0 1 2 3 4; do
   wait_page_theme "CI_SETTINGS_PAGE idd=$((101 + index)) page=$page_name locale=zh-CN controls=" dark
   capture "$window_id" "production-settings-${index}-zh-dark.png" '558x335' dark zh-CN
 done
+click "$window_id" 60 23
+focus_before="$(grep -Fc 'CI_SETTINGS_KEY name=Tab page_idd=101 focus=105' "$artifact_dir/p2c-client.log" || true)"
+for _ in {1..5}; do xdotool key --clearmodifiers Tab; done
+wait_new_marker 'CI_SETTINGS_KEY name=Tab page_idd=101 focus=105' "$focus_before"
+capture "$window_id" 'production-settings-focus-reset-zh-dark.png' '558x335' dark zh-CN
+focus_before="$(grep -Fc 'CI_SETTINGS_KEY name=Tab page_idd=101 focus=106' "$artifact_dir/p2c-client.log" || true)"
+xdotool key --clearmodifiers Tab
+wait_new_marker 'CI_SETTINGS_KEY name=Tab page_idd=101 focus=106' "$focus_before"
+capture "$window_id" 'production-settings-focus-close-zh-dark.png' '558x335' dark zh-CN
 click "$window_id" 507 310
 wait_marker 'CI_SETTINGS_CLOSE resource=106 action=return_to_main'
 window_id="$(window_by_title 'Mem Reduct')"
@@ -580,5 +598,5 @@ sha256sum "$artifact_dir"/production-*.png | sed "s#$artifact_dir/##" | tee "$ar
     scripts/ci/compare_p2c_dark.py scripts/ci/compare_font_candidates.py \
     scripts/ci/windows-native-baseline.ps1
 ) | tee "$artifact_dir/p2c-source-sha256.txt"
-printf 'PASS: production XTEST captured File/View/Settings/Help in English and Simplified Chinese, the Language submenu in both selection states, and the safe clean dropdown; keyboard navigation skipped native menu separators and locale changed session-only; application dark palette toggled through View; 5 settings pages x 2 locales captured in light and dark states; existing Windows region scroll, Reset, language, keyboard, Escape, Close, Alt+F4 and WM_DELETE_WINDOW tests passed; main remained available and both windows were released on exit.\n' \
+printf 'PASS: production XTEST captured File/View/Settings/Help in English and Simplified Chinese, the Language submenu in both selection states, and the safe clean dropdown; keyboard navigation skipped native menu separators and locale changed session-only; application dark palette toggled through View; 5 settings pages x 2 locales captured in light and dark states, plus Reset/Close focus screenshots in both locales; existing Windows region scroll, Reset, language, keyboard, Escape, Close, Alt+F4 and WM_DELETE_WINDOW tests passed; main remained available and both windows were released on exit.\n' \
   | tee "$artifact_dir/p2c-result.txt"
