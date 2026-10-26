@@ -4,7 +4,7 @@
 
 状态含义：NATIVE=Linux 上实现原生相同动作；EQUIVALENT=语义受限的 Linux 等价；UNSUPPORTED=没有安全/准确的 Linux 等价；NOT_IMPLEMENTED=可评估但项目当前未实现。状态描述当前 Linux 项目，不代表上游 Windows 功能状态。
 
-P2C-4 的隔离 Xvfb/XTEST 套件覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图分别记录 GTK `Adwaita:light` 与应用自己的 Canvas 暗色调色板，不更改桌面主题。最新 exact-head `33367f3c15273f3e817bba27e9272a19663ea829` 的 P2C run `40408926862` 中 Windows 原版采集、Linux 五页双语生产 Xvfb/XTEST、视觉比较均 PASS（3/3）；P2B run `40408926842` 的主窗 Xvfb/XTEST 与 Weston Headless/Pixman 生命周期 PASS（2/2）。P2B 重复设置页 step 条件跳过，由 P2C 同 head 完整覆盖。PR build `40408926778`、push build `40408920155` PASS，PR checks 7/7。184/184 几何、36/36 raster、10/10 导航、102/102 树线及 2/2 中间滚动检查通过；亮色 changed-pixel 5.0741%–14.8853%，暗色 5.9434%–73.2932%，全页 1:1 仍 NOT PASS。P2B 初次 Xvfb APT install 在 `fonts-noto-cjk` 下载期间 exit 124；update 成功、底层网络原因未确认，仅重跑失败 job 后通过。Weston 只代表隔离生命周期验证，不代表 Wayland 输入或 Hyprland 验收。精确 artifacts、digest、PNG SHA、字体数据见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
+P2C-4 的隔离 Xvfb/XTEST 套件覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图分别记录 GTK `Adwaita:light` 与应用自己的 Canvas 暗色调色板，不更改桌面主题。最新产品/视觉证据绑定 Actions head `516e824cf4bbb840650bccdbbfdedb2d352d9090`：P2C run `40415153443` 的 Windows 原版采集、Linux 五页双语生产 Xvfb/XTEST、视觉比较均 PASS（3/3）；P2B run `40415153555` 的主窗 Xvfb/XTEST 与 Weston Headless/Pixman 生命周期 PASS（2/2）。P2B 重复设置页 step 条件跳过，由 P2C 同 head 完整覆盖。PR build `40415153495`、push build `40415146990` PASS，PR checks 7/7。184/184 几何、36/36 raster、10/10 导航、102/102 树线及 2/2 中间滚动检查通过；亮色 changed-pixel 5.0741%–14.8853%，暗色 5.9434%–73.2932%，全页 1:1 仍 NOT PASS。当前 P2C/P2B APT 作业通过；历史 P2B 下载超时 exit 124 的底层网络原因未确认。Weston 只代表隔离生命周期验证，不代表 Wayland 输入或 Hyprland 验收。文档同步后的当前 PR 检查状态以 PR 页面为准；精确 artifacts、digest、PNG SHA、字体数据见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
 
 ## 1. 主窗口、菜单、快捷键
 

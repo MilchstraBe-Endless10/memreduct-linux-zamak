@@ -75,3 +75,11 @@
 ## 本轮结果
 - （本轮结束后补记：PR #5 修正提交、P2B-1 生产代码、验证、CI、截图 artifacts 与实际 SHA。）
 - 用户主桌面和 Hyprland 未操作；未执行内存清理、Polkit、Swap/ZRAM 写入。PR #2/#4/#5 不合并。
+
+## 2026-10-27 — P2C-4 最终证据同步（516e824）
+
+- 复核 PR #7 最新 ChatGPT review：最新正式 review 仍是 P2C-3R1（针对 `2c745710210c8794b52a0e9eb19dd1830c00d8d6`），其 CI gate 已接受，但整体 Windows/GTK 1:1 仍 NOT PASS；未发现更新的 review 或未解决行内评论。
+- P2C-4 exact evidence head `516e824cf4bbb840650bccdbbfdedb2d352d9090`：P2C run `40415153443` 为 Windows native、生产 Xvfb/XTEST、视觉比较 3/3 PASS；P2B run `40415153555` 为生产 Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build `40415153495` 与 push build `40415146990` PASS，PR checks 7/7。P2B 重复设置页步骤条件跳过，由同 head P2C 完整覆盖。
+- Artifact digest/SHA 和指标同步至 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`、`docs/UI_INTERACTION_MATRIX.md`、三层记忆。几何 184/184（最大分量 1.5 px）、导航 10/10、树线 102/102、控件栅格 36/36、滚动 2/2 PASS；亮色差异率 5.0741%–14.8853%，暗色 5.9434%–73.2932%，整页 1:1 NOT PASS。
+- 生产 UI 保持源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；没有生产字体/UI/阈值改动。Windows 专有字体未打包，12 项简中来源差异仍 `DECISION_REQUIRED`；托盘和无安全路径的清理弹窗仍 BLOCKED；Wayland 仅生命周期通过，输入 NOT RUN。
+- PR #7 保持 OPEN / Draft。没有合并 PR、真实清理、Polkit/Swap/ZRAM 写入、root GUI、活动 Hyprland IPC 或本机桌面输入。
