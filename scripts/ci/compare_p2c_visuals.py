@@ -106,6 +106,12 @@ def parse_linux_geometry(path: Path) -> dict[GeometryKey, Geometry]:
         if not match:
             continue
         page, locale, state, resource, part, x, y, width, height = match.groups()
+        # IDC_NAV is one native Win32 TreeView resource. Its text rows are
+        # painted content, not child HWND controls with independent resource IDs;
+        # compare the IDC_NAV control rectangle here and assess row/highlight
+        # rendering through the unscaled screenshot diff and XTEST clicks.
+        if int(resource) == 104 and part.startswith("item-"):
+            continue
         key = (int(page), locale, state, int(resource), part)
         # Keep the first rendering: later list-scroll captures intentionally move visible rows.
         result.setdefault(key, tuple(map(float, (x, y, width, height))))
@@ -256,7 +262,7 @@ def main() -> int:
         f"Windows measured outer/client: {outer_w}x{outer_h} / {client_w}x{client_h}; client crop origin={origin_x},{origin_y}.\n"
         "Linux source: production Zamak settings window captured by XTEST in an isolated Ubuntu 24.04 Xvfb runner.\n"
         "The Windows PNGs are only cropped at the measured client origin; neither reference nor Linux images are resized, stretched, shifted, or resampled.\n"
-        "Geometry verdicts use resource-ID keyed Win32 window/control rectangles and Linux Canvas logical rectangles. PASS requires |dx|, |dy|, |dw|, |dh| <= 2 px for each row.\n"
+        "Geometry verdicts use resource-ID keyed Win32 window/control rectangles and Linux Canvas logical rectangles. PASS requires |dx|, |dy|, |dw|, |dh| <= 2 px for each row. IDC_NAV is compared as one resource control; its non-HWND tree items are assessed by screenshots and XTEST clicks.\n"
         "The memory-region list is compared in matching top (rows 0-5) and bottom (rows 2-7) scroll states. Appearance preview rows are pixel-sampled against the pinned source colors.\n"
         "Font and rasterization differences are not treated as control geometry errors. Pixel metrics are raw comparisons only and do not imply 1:1 equivalence.\n\n"
         "Windows environment metadata:\n" + windows_environment + "\nLinux environment metadata:\n" + linux_environment,

@@ -123,11 +123,6 @@ using System.Runtime.InteropServices;
 public static class P2CWin32 {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
-  [StructLayout(LayoutKind.Explicit)] public struct TREE_RECT {
-    [FieldOffset(0)] public IntPtr Item;
-    [FieldOffset(0)] public int Left; [FieldOffset(4)] public int Top;
-    [FieldOffset(8)] public int Right; [FieldOffset(12)] public int Bottom;
-  }
   public sealed class WindowInfo {
     public IntPtr Handle; public uint ProcessId; public string Title; public string ClassName;
     public bool Visible; public int Left; public int Top; public int Width; public int Height; public int ControlId;
@@ -141,7 +136,6 @@ public static class P2CWin32 {
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetFocus(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
   [DllImport("user32.dll", EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageRect(IntPtr hWnd, uint message, IntPtr wParam, ref RECT lParam);
-  [DllImport("user32.dll", EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageTreeRect(IntPtr hWnd, uint message, IntPtr wParam, ref TREE_RECT lParam);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageText(IntPtr hWnd, uint message, IntPtr wParam, System.Text.StringBuilder lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool IsWindowVisible(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
@@ -212,17 +206,6 @@ public static class P2CWin32 {
   }
   public static bool SelectTreeItem(IntPtr tree, IntPtr item) {
     return SendMessage(tree, 0x110B, new IntPtr(9), item) != IntPtr.Zero;
-  }
-  public static RECT[] GetTreeItemRects(IntPtr tree) {
-    const uint TVM_GETITEMRECT=0x1104;
-    var rects=new System.Collections.Generic.List<RECT>();
-    foreach (IntPtr item in GetTreeItems(tree)) {
-      var treeRect=new TREE_RECT(); treeRect.Item=item;
-      if (SendMessageTreeRect(tree, TVM_GETITEMRECT, IntPtr.Zero, ref treeRect) != IntPtr.Zero) {
-        rects.Add(new RECT { Left=treeRect.Left, Top=treeRect.Top, Right=treeRect.Right, Bottom=treeRect.Bottom });
-      }
-    }
-    return rects.ToArray();
   }
   public static bool SelectComboItem(IntPtr combo, int index) {
     if (SendMessage(combo, 0x014E, new IntPtr(index), IntPtr.Zero).ToInt32() < 0) return false;
@@ -384,23 +367,16 @@ public static class P2CWin32 {
                 $writePageGeometry = {
                     param([int]$PageIndex, [string]$Locale)
                     $pageId = 101 + $PageIndex
+                    Write-Status "Win32 geometry begin page_idd=$pageId locale=$Locale"
                     $rows = [System.Collections.Generic.List[object]]::new()
                     $current = @([P2CWin32]::GetChildWindows($settingsHwnd))
+                    Write-Status "Win32 geometry child enumeration complete page_idd=$pageId controls=$($current.Count)"
                     $activePage = $current | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 } | Select-Object -First 1
                     if (-not $activePage) { throw "Visible child page geometry is missing for page $pageId ($Locale)." }
                     $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state='default'; resource_id=$pageId; part='page'; x=$activePage.Left-$settingsClientOrigin.X; y=$activePage.Top-$settingsClientOrigin.Y; width=$activePage.Width; height=$activePage.Height; class=$activePage.ClassName })
                     foreach ($control in $current | Where-Object { $_.Visible -and $_.ControlId -ne 0 }) {
+                        Write-Status "Win32 geometry control begin page_idd=$pageId resource=$($control.ControlId) class=$($control.ClassName)"
                         $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state='default'; resource_id=$control.ControlId; part='control'; x=$control.Left-$settingsClientOrigin.X; y=$control.Top-$settingsClientOrigin.Y; width=$control.Width; height=$control.Height; class=$control.ClassName })
-                        if ($control.ControlId -eq 104 -and $control.ClassName -eq 'SysTreeView32') {
-                            $navOrigin = [P2CWin32+POINT]::new()
-                            if (-not [P2CWin32]::ClientToScreen($control.Handle, [ref]$navOrigin)) { throw 'Unable to locate IDC_NAV client origin.' }
-                            $navIndex = 0
-                            foreach ($itemRect in @([P2CWin32]::GetTreeItemRects($control.Handle))) {
-                                $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state='default'; resource_id=104; part="item-$navIndex"; x=$navOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$navOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='TreeViewItem' })
-                                $navIndex++
-                            }
-                            if ($navIndex -ne 5) { throw "Expected 5 IDC_NAV items; captured $navIndex." }
-                        }
                         if (($control.ControlId -eq 124 -or $control.ControlId -eq 140) -and $control.ClassName -eq 'SysListView32') {
                             $listOrigin = [P2CWin32+POINT]::new()
                             if (-not [P2CWin32]::ClientToScreen($control.Handle, [ref]$listOrigin)) { throw "Unable to locate list client origin for IDC_$($control.ControlId)." }
@@ -409,12 +385,14 @@ public static class P2CWin32 {
                             $writeVisibleRows = {
                                 param([string]$State)
                                 $itemIndex = 0
+                                Write-Status "Win32 geometry list item bounds begin page_idd=$pageId resource=$($control.ControlId) state=$State"
                                 foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle))) {
                                     if ($itemRect.Top -ge $listClient.Top -and $itemRect.Bottom -le $listClient.Bottom) {
                                         $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state=$State; resource_id=$control.ControlId; part="row-$itemIndex"; x=$listOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$listOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='ListViewItem' })
                                     }
                                     $itemIndex++
                                 }
+                                Write-Status "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$State count=$itemIndex"
                             }.GetNewClosure()
                             $initialState = if ($control.ControlId -eq 124) { 'scroll-0' } else { 'default' }
                             if ($control.ControlId -eq 124 -and [P2CWin32]::GetListTopIndex($control.Handle) -ne 0) {
@@ -432,6 +410,7 @@ public static class P2CWin32 {
                             }
                         }
                     }
+                    Write-Status "Win32 geometry exporting page_idd=$pageId rows=$($rows.Count)"
                     $rows | Export-Csv -LiteralPath $geometryFile -NoTypeInformation -Append -Encoding UTF8
                     Write-Status "PASS Win32 geometry page_idd=$pageId locale=$Locale controls=$($rows.Count) output=windows-settings-geometry.csv"
                 }.GetNewClosure()
