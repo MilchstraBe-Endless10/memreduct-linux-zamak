@@ -47,6 +47,12 @@ fn label(zh: bool, en: string, cn: string) -> string:
     if zh: return cn
     return en
 
+fn normalized_key_name(name: string) -> string:
+    if name == "\t": return "Tab"
+    if name == "\r" or name == "\n": return "Enter"
+    if name == "\x1b": return "Escape"
+    name
+
 fn menu_rows(menu: i64) -> i64:
     if menu == 1: return 2
     if menu == 2: return 4
@@ -541,7 +547,7 @@ fn settings_mouse(s: &mut MainWindow, event: &ui.Mouse):
 
 fn settings_key(s: &mut MainWindow, event: &ui.Key):
     if event.released(): return
-    let name = event.name()
+    let name = normalized_key_name(event.name())
     if s.test_mode: println(f"CI_SETTINGS_KEY_EVENT name={name}")
     let action = settings_ui.key(&mut s.settings, name, s.zh)
     if action == 1:
@@ -553,6 +559,11 @@ fn settings_key(s: &mut MainWindow, event: &ui.Key):
             else: println("CI_LOCALE locale=en source=IDC_LANGUAGE_123")
     s.settings_canvas.redraw()
     s.canvas.redraw()
+
+fn test_normalized_settings_key_names():
+    assert(normalized_key_name("\t") == "Tab")
+    assert(normalized_key_name("\r") == "Enter")
+    assert(normalized_key_name("\x1b") == "Escape")
 
 fn close_window(s: &mut MainWindow):
     if s.test_mode: println("CI_WINDOW_CLOSE")
