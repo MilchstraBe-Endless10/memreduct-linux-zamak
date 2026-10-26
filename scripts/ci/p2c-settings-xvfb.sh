@@ -6,7 +6,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 artifact_dir="${ARTIFACT_DIR:-$root/artifacts/p2c-x11}"
 app="${1:-$artifact_dir/memreduct-zamak-production}"
 mkdir -p "$artifact_dir"
-for cmd in Xvfb openbox xdotool xwininfo xprop import identify sha256sum xrdb; do
+for cmd in Xvfb openbox wmctrl xdotool xwininfo xprop import identify sha256sum xrdb; do
   command -v "$cmd" >/dev/null || { printf 'Missing X11 test command: %s\n' "$cmd" >&2; exit 2; }
 done
 [[ -x "$app" ]] || { printf 'Production executable missing.\n' >&2; exit 2; }
@@ -260,8 +260,8 @@ geometry "$window_id" 337 369 "$artifact_dir/geometry-main-after-close.txt"
 xdotool key --clearmodifiers F2
 window_id="$(window_by_title 'Settings - Mem Reduct')"
 settings_id="$window_id"
-xdotool windowactivate --sync "$settings_id"
-xdotool key --clearmodifiers Alt+F4
+# Ask the isolated WM to send WM_DELETE_WINDOW; windowclose would use XDestroyWindow.
+wmctrl -ic "$settings_id"
 wait_marker 'CI_SETTINGS_CLOSE_REQUEST source=window_manager'
 wait_marker 'CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true'
 kill -0 "$app_pid"
