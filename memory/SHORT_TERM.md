@@ -2,7 +2,19 @@
 
 ## 当前续接：P2C-2 原版截图校准（2026-10-26）
 
-### Exact-head 验收（production source SHA `06be74b740e8906e64d837d8ac77e0255bea1081`）
+### 最新 exact-head 验收（production source SHA `20c8fbc8fc80c481965fecbde17aa507eb7247fe`）
+
+- PR #7 仍 OPEN / Draft，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`；本轮在同一分支更新导航选中区和对照器，没有修改 main 或其他 PR 分支。
+- 当前 Windows 3.5.2 native / Linux Xvfb / comparison run `40294897392` 成功；artifacts：Windows `12636924611`、Linux X11 `12638110426`、overlay/difference/geometry `12637747957`。所有原图和派生图的 SHA-256 manifest 在比较 artifact 中。
+- 导航复核结果：资源 `IDC_NAV=104` 的 5 页 × English/简中，共 10 个 selection bound 全部 PASS，`dx/dy/dw/dh` 均为 0；102/102 个树状点线像素为精确 `#6D6D6D`。选中色是原版 `#D9D9D9`，不再绘制整行焦点框。
+- 同次比较：172 项资源 ID 控件几何 PASS（≤2 px），0 FAIL；12 项 Linux 中间滚动状态在 Windows 未采集，标记 `NOT_COMPARABLE_NATIVE_STATE`。页面/控件 raster 12/12 PASS。changed pixels 6.8528%–16.8042%，所以 1:1 像素等价仍未通过。
+- 同 HEAD 的生产 Xvfb/XTEST + private Weston/Pixman run `40294897349` 成功，artifacts：X11 `12638002197`、Wayland `12637667843`。Xvfb 日志记录 GTK 3.24.41 targeted delete handler、单一已核验 holder、重复显示/关闭、主窗仍可用及退出码 0。Weston 客户端退出码 0，但日志保留 1 条 `gdk_seat_get_keyboard` critical 和 SIGTERM 关机期间的 layer 诊断；未屏蔽，也没有证据确认因果或 compositor crash。这不代表活动 Hyprland 实测或 Wayland 输入验收。
+- `build-and-test` PR run `40294897341` 与同 HEAD push run `40294892563` 均已完成并 PASS。
+- Windows 环境：Server 2022，1024×768，96 DPI / 100%，light，8 pt `Ms Shell Dlg`；设置外框 574×374，客户区 558×335。Linux：Ubuntu 24.04、GTK 3.24.41、Xvfb 1024×768×24、scale 1 / 96 DPI、Adwaita light、DejaVu Sans / Noto Sans CJK SC。字体基线、抗锯齿和原生控件 raster 仍不同；暗色 Windows 参考缺失。
+- 本机当前源码验证：Zamak `0.2.0`；`zam check .` PASS；`zam test .` 29/29 PASS（含双语导航几何测试）；`zam build .` PASS；治理检查 33/33、Python/C 安全测试 3/3、Shell 语法、比较脚本 `py_compile`、`scripts/build-arch.sh`、`git diff --check` 均 PASS。
+- 本机没有启动 GUI/Wayland/Xvfb，没有 Hyprland IPC、特权操作、Polkit、清缓存或 Swap/ZRAM 修改。历史 GroupBox、默认只读勾选/颜色预览、无底部固定提示、GTK 针对性 close handler 的已验证状态在下方旧 checkpoint 记录中保留。
+
+### Previous exact-head 验收（production source SHA `06be74b740e8906e64d837d8ac77e0255bea1081`）
 
 - PR #7 OPEN / Draft，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`；继续使用 `feat/issue-3-p2c-settings-ui`，未修改 main 或其他 PR 分支。
 - 修复 GroupBox 1 px 描边的半像素对齐。精确源截图对照 run `40290615170` 通过；artifacts：Windows native `12636291172`、Linux production X11 `12635727110`、overlay/diff/geometry `12635877774`。Windows 与 Linux 实际截图覆盖五页双语，所有原图 SHA-256、并排图、50% overlay、差异热图、RGB 样本及 CSV 几何表见 `docs/P2C-1_SETTINGS_UI_REPORT.md`。

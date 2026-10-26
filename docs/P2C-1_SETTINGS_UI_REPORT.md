@@ -1,8 +1,39 @@
 # P2C-1 — Five-page settings UI and Windows baseline
 
-## P2C-2 latest exact-head calibration (`06be74b740e8906e64d837d8ac77e0255bea1081`)
+## P2C-2 latest exact-head navigation calibration (`20c8fbc8fc80c481965fecbde17aa507eb7247fe`)
 
-The source correction was captured by isolated GitHub-hosted runners. The Windows reference is the official Mem Reduct `v.3.5.2` release, tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`; no image was scaled, stretched, shifted, or resampled. Windows capture: Server 2022, 1024×768, 96 DPI / 100%, light theme, 8 pt `Ms Shell Dlg`. Linux capture: Ubuntu 24.04, GTK 3.24.41, Xvfb 1024×768×24, scale 1 / 96 DPI, Adwaita light, DejaVu Sans and Noto Sans CJK SC. The measured Windows client crop starts at `(8,31)` and is 558×335; Linux Canvas is 558×335.
+PR #7 remains OPEN / Draft, based on `feat/issue-3-p2b-main-window` at `911a3d0b99b05f15bd0109dca475b0b5174e7888`. This exact-head update calibrates the production settings navigation against the official Windows Mem Reduct `v.3.5.2` tag `2f5c55d15f69a2c88859e036b16c6f4c971e1968`.
+
+The production Canvas now draws the native selected TreeView row in `#D9D9D9`, to the measured label width for each English and Simplified Chinese item, without the previous full-row focus outline. The dotted branch guide uses the sampled native `#6D6D6D` pixels. `src/ui_geometry.zm` centralizes the measured selection rectangles and has a bilingual geometry test; `scripts/ci/compare_p2c_visuals.py` compares Windows and Linux selection bounds and checks dotted guide pixels independently of broader control geometry and text raster comparison.
+
+The current head retains the earlier P2C-2 corrections: no added full-page frame (resource-defined GroupBoxes remain), source-default Appearance swatches (`#FFFFFF`, `#008040`, `#FF8040`, `#EC1C24`) are read-only, checked defaults are drawn but remain disabled, and the non-original permanent footer is absent. The limitation remains available through disabled-control feedback rather than an extra permanent layout row.
+
+| Evidence | Run / artifact | Result |
+|---|---|---|
+| Windows 3.5.2 native captures and Win32 geometry | [run 40294897392](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40294897392), artifact [12636924611](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40294897392/artifacts/12636924611) | PASS; Windows Server 2022 interactive runner, original release, 96 DPI / 100%, light theme, 8 pt `Ms Shell Dlg`; settings window 574×374 outer and 558×335 client |
+| Production settings Xvfb/XTEST and pixel comparison | [run 40294897392](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40294897392), Linux artifact [12638110426](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40294897392/artifacts/12638110426), comparison artifact [12637747957](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40294897392/artifacts/12637747957) | PASS; five settings pages in both locales; comparison images, heatmaps, metrics, Win32 geometry, navigation geometry, and PNG SHA-256 manifest generated |
+| Production Xvfb/XTEST plus private Weston/Pixman lifecycle | [run 40294897349](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40294897349), X11 artifact [12638002197](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40294897349/artifacts/12638002197), Weston artifact [12637667843](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40294897349/artifacts/12637667843) | PASS; isolated runner GUI and private compositor only; this is not Hyprland or physical Wayland input acceptance |
+| Zamak / project PR build-and-test | [PR run 40294897341](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40294897341), matching push run [40294892563](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40294892563) | PASS on both events; all jobs completed successfully at this exact source HEAD |
+
+Both sides used the same 558×335 client area at 96 DPI / scale 1. Windows source images were cropped only at measured client origin `(8,31)`; no source or Linux screenshot was resized, stretched, shifted, or resampled. Runner metadata and raw/derived PNG SHA-256 entries are retained in the linked artifacts, including `windows-environment.txt`, `p2c-environment.txt`, and `visual-sha256.csv`. Linux production executable SHA-256: `882bc18ca76c3b494802e4a1614f0558e4b4c8a41b87dc88c3eff1c3f67a7b61`; production source commit is the run head above.
+
+| Comparison | Result |
+|---|---|
+| Resource-ID keyed control geometry | 172 PASS within ≤2 px; 12 `NOT_COMPARABLE_NATIVE_STATE` for the intermediate Windows-uncollected memory-list scroll state; 0 FAIL |
+| Page / control raster samples | 12 PASS, 0 FAIL |
+| `IDC_NAV=104` selected rows | 10/10 PASS, all `dx/dy/dw/dh = 0` for five pages × two locales |
+| Dotted navigation guide | 102/102 exact native `#6D6D6D` pixel samples PASS |
+| Full-page changed pixels | 6.8528%–16.8042%; comparison only, not pixel equivalence |
+
+Text baselines, font metrics, antialiasing, and remaining native-control raster differences are still visible in the overlays. Windows uses `Ms Shell Dlg` at 8 pt; Linux uses DejaVu Sans and Noto Sans CJK SC under GTK 3.24.41. Geometry passes do not convert these raster differences into a 1:1 result. Dark-theme native references and uncollected intermediate Windows scroll-state evidence remain missing; pixel-equivalence remains NOT PASS.
+
+The production settings Xvfb log records GTK 3.24.41, `delete-event` signal id 66, only the single pre-existing unblocked handler id 70 blocked before installing the targeted handler, and one verified direct `GtkBox` holder. XTEST exercised repeated settings show/close, delete-event handling, return to the visible main window, and final application exit 0. The matching private Weston/Pixman client also exited 0; its retained log still contains one `gdk_seat_get_keyboard` critical and a Weston `finalizing a layer with views still on it` message during SIGTERM shutdown. These diagnostics are not suppressed, and the available evidence does not establish a causal link or compositor crash.
+
+The production CI is isolated from the user's desktop. No Hyprland IPC, local GUI launch, privileged memory action, Polkit authorization, or Swap/ZRAM mutation was used for this calibration.
+
+## P2C-2 previous exact-head calibration (`06be74b740e8906e64d837d8ac77e0255bea1081`)
+
+The source correction was captured by isolated GitHub-hosted runners. The Windows reference is the official Mem Reduct `v.3.5.2` release, tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`; no image was scaled, stretched, shifted, or resampled. Windows capture: Server 2022, 1024×768, 96 DPI / 100%, light theme, 8 pt `Ms Shell Dlg`. Linux capture: Ubuntu 24.04, GTK 3.24.41, Xvfb 1024×768×24, scale 1 / 96 DPI, Adwaita light, DejaVu Sans and Noto Sans CJK SC. The measured Windows client crop starts at `(8,31)` and is 558×335; Linux Canvas is 558×335. This is the earlier GroupBox calibration checkpoint; the later navigation calibration above supersedes it for current-head evidence.
 
 | Evidence | Run / artifact | Result |
 |---|---|---|
@@ -110,9 +141,9 @@ Upstream: Henry++ Mem Reduct `v.3.5.2`, source tag commit `2f5c55d15f69a2c88859e
 PR: [#7 — P2C-1 five-page settings UI](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7), OPEN / Draft
 Base: `feat/issue-3-p2b-main-window` at `911a3d0b99b05f15bd0109dca475b0b5174e7888`
 Production code tested: `d4f1ca97ac42bc1516a484163b9d4536ea9194b2`
-Latest full PR validation: documentation-only head `b473700f0513e91fc6f171fa2b0a8fc3abd3f7df`; production source files are unchanged from the tested code checkpoint.
+P2C-1 full PR validation at that documentation checkpoint: head `b473700f0513e91fc6f171fa2b0a8fc3abd3f7df`; production source files were unchanged from the tested code checkpoint.
 
-## Current result
+## P2C-1 initial result (production code checkpoint `d4f1ca97ac42bc1516a484163b9d4536ea9194b2`)
 
 The production Zamak settings window presents all five upstream pages, source resource IDs, and independent English / 简体中文 selection. Xvfb/XTEST confirms navigation, keyboard actions, Reset and Close flows. Controls for features that have no safe Linux implementation remain visibly disabled and do not write settings, start cleanup, invoke Polkit, or modify kernel state.
 
