@@ -1,5 +1,15 @@
 # 短期记忆 / Latest Handoff
 
+## P2C-1 最新续接（2026-10-26）
+
+- PR #7 仍 OPEN / Draft；base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。生产源码测试 head `d4f1ca97ac42bc1516a484163b9d4536ea9194b2`，分支 `feat/issue-3-p2c-settings-ui`。未合并或改写任何其他分支。
+- 已修正 libui-ng settings content holder 的 12 px border。最新 X11 artifact `12627741039` 记录 `CI_SETTINGS_CONTENT_BORDER old=12 new=0`，Canvas 与 Windows 原生 client area 均为 `558×335`（固定 Windows Server 2022 / 96 DPI / 100% 条件）。此前 Linux `523×321` / `547×345` 数值不再作为当前尺寸。
+- 首次从隔离 Windows Server 2022 interactive runner 获得实际原版 `v.3.5.2` Native 截图。固定 upstream SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`；release archive、setup SHA、setup detached PGP signer、portable executable 3.5.2 及 SHA 均通过核验。环境/几何/PNG SHA-256 与 5 页双语索引在 `docs/P2C-1_SETTINGS_UI_REPORT.md`；Windows artifact `12626872531`，Linux settings X11 artifact `12627741039`。
+- Windows 捕获 1024×768、96 DPI、100% scale、light theme、8pt Ms Shell Dlg，时间 `2026-10-26T04:16:04Z`。Settings 外框 574×374、客户区 558×335；IDC_NAV `(12,10) 132×312`，页面 `(156,10) 390×273`，Reset `(153,299) 75×23`，Close `(471,299) 75×23`。Windows 主窗 352×407。采集只在临时 runner 执行，未触发内存清理。
+- 当前 code head 本机验证：Zamak 0.2.0 check/build PASS、test 22/22；`verify_project.py` 33 项、C safety 3/3、Arch build、两份变更 shell `bash -n`、`git diff --check` 均 PASS。未启动本机 GUI、Xvfb、Weston 或活动 Hyprland；未执行 Polkit/内核写入、Swap/ZRAM 修改。
+- Actions 对该 code head 的 push GUI `40268142444`、build `40268142555`、Windows native baseline `40268142370` 均 PASS；Artifacts: X11 `12627741039`, Weston `12626827840`, Windows `12626872531`。对应 PR Windows `40268148017` 与 build `40268148055` PASS；PR GUI `40268148013` 的 Xvfb 作业 PASS，Weston 作业在本记录时仍运行。
+- 实测客户区几何相同不等于视觉 1:1。尚未对齐窗口客户区后生成 overlay/diff 或验证 2 px；深色主题、主菜单/托盘/清理对话框截图未取得；设置项持久化、托盘服务、自动/手动真实清理仍未实现/启用。Weston artifact 保留一次 `gdk_seat_get_keyboard` GTK critical、无 `wl_seat` 和 shutdown layer diagnostic，因果未定。
+
 ## 最近记录：P2C-1 五页设置 UI 与原版截图 runner（2026-10-26）
 
 - P2C-1 在独立分支 `feat/issue-3-p2c-settings-ui`，Draft PR #7 base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。实现五个设置页与 English/简体中文切换；PR #7 仍 OPEN / Draft，不合并。
