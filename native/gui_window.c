@@ -7,6 +7,7 @@
 /* Stable GTK3/GLib ABI declarations keep this bridge independent of Gtk headers. */
 typedef struct _GtkWidget GtkWidget;
 typedef struct _GtkWindow GtkWindow;
+typedef struct _GtkContainer GtkContainer;
 typedef struct _GList GList;
 struct _GList {
     void *data;
@@ -18,6 +19,7 @@ extern GList *gtk_window_list_toplevels(void);
 extern const char *gtk_window_get_title(GtkWindow *window);
 extern void gtk_widget_show(GtkWidget *widget);
 extern void gtk_widget_hide(GtkWidget *widget);
+extern void gtk_container_set_border_width(GtkContainer *container, unsigned int border_width);
 extern void gtk_window_present(GtkWindow *window);
 extern unsigned long gtk_widget_get_type(void);
 extern unsigned int g_signal_lookup(const char *name, unsigned long type);
@@ -42,6 +44,7 @@ static int settings_close_requested;
 static GtkWindow *settings_window;
 static int settings_close_handler_connected;
 static unsigned long settings_close_handler_id;
+static int settings_geometry_prepared;
 
 static int on_settings_delete(GtkWidget *widget, void *event, void *data)
 {
@@ -110,6 +113,16 @@ int64_t mr_gui_window_mode(int64_t show_settings)
         if (settings_close_handler_id != 0) {
             settings_window = settings_window_found;
             settings_close_handler_connected = 1;
+        }
+    }
+
+    if (settings_window_found != NULL && !settings_geometry_prepared) {
+        /* Let the Canvas occupy the complete measured client surface. */
+        gtk_container_set_border_width((GtkContainer *)settings_window_found, 0);
+        settings_geometry_prepared = 1;
+        if (getenv("MEMREDUCT_CI") != NULL) {
+            fputs("CI_SETTINGS_CONTAINER_BORDER_WIDTH=0\n", stderr);
+            fflush(stderr);
         }
     }
 

@@ -121,12 +121,15 @@ using System;
 using System.Runtime.InteropServices;
 public static class P2CWin32 {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
   public sealed class WindowInfo {
     public IntPtr Handle; public uint ProcessId; public string Title; public string ClassName;
-    public bool Visible; public int Width; public int Height; public int ControlId;
+    public bool Visible; public int Left; public int Top; public int Width; public int Height; public int ControlId;
   }
   private delegate bool EnumWindowsCallback(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+  [DllImport("user32.dll", SetLastError=true)] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
+  [DllImport("user32.dll", SetLastError=true)] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetFocus(IntPtr hWnd);
@@ -152,7 +155,7 @@ public static class P2CWin32 {
         var title = new System.Text.StringBuilder(512); GetWindowText(hWnd, title, title.Capacity);
         var className = new System.Text.StringBuilder(256); GetClassName(hWnd, className, className.Capacity);
         windows.Add(new WindowInfo { Handle=hWnd, ProcessId=owner, Title=title.ToString(), ClassName=className.ToString(),
-          Visible=IsWindowVisible(hWnd), Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top, ControlId=GetDlgCtrlID(hWnd) });
+          Visible=IsWindowVisible(hWnd), Left=rect.Left, Top=rect.Top, Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top, ControlId=GetDlgCtrlID(hWnd) });
       }
       return true;
     }, IntPtr.Zero);
@@ -165,7 +168,7 @@ public static class P2CWin32 {
       var title = new System.Text.StringBuilder(512); GetWindowText(hWnd, title, title.Capacity);
       var className = new System.Text.StringBuilder(256); GetClassName(hWnd, className, className.Capacity);
       windows.Add(new WindowInfo { Handle=hWnd, Title=title.ToString(), ClassName=className.ToString(), Visible=IsWindowVisible(hWnd),
-        Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top, ControlId=GetDlgCtrlID(hWnd) });
+        Left=rect.Left, Top=rect.Top, Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top, ControlId=GetDlgCtrlID(hWnd) });
       return true;
     }, IntPtr.Zero);
     return windows.ToArray();
@@ -276,7 +279,12 @@ public static class P2CWin32 {
                 if (-not $settingsElement) { throw 'The settings window was created, but UI Automation could not attach to its native handle.' }
                 $settingsRect = [P2CWin32+RECT]::new()
                 if (-not [P2CWin32]::GetWindowRect([IntPtr]$settingsHwnd, [ref]$settingsRect)) { throw 'Unable to read native settings-window bounds.' }
+                $settingsClientRect = [P2CWin32+RECT]::new()
+                if (-not [P2CWin32]::GetClientRect([IntPtr]$settingsHwnd, [ref]$settingsClientRect)) { throw 'Unable to read native settings client bounds.' }
+                $settingsClientOrigin = [P2CWin32+POINT]::new()
+                if (-not [P2CWin32]::ClientToScreen([IntPtr]$settingsHwnd, [ref]$settingsClientOrigin)) { throw 'Unable to locate native settings client origin.' }
                 $settingsDpi = [P2CWin32]::GetDpiForWindow([IntPtr]$settingsHwnd)
+                Write-Status "Windows Native settings geometry outer=$($settingsRect.Right-$settingsRect.Left)x$($settingsRect.Bottom-$settingsRect.Top) client=$($settingsClientRect.Right)x$($settingsClientRect.Bottom) dpi=$settingsDpi client_origin_screen=$($settingsClientOrigin.X),$($settingsClientOrigin.Y)"
                 $settingsBitmap = [System.Drawing.Bitmap]::new(($settingsRect.Right - $settingsRect.Left), ($settingsRect.Bottom - $settingsRect.Top))
                 $settingsGraphics = [System.Drawing.Graphics]::FromImage($settingsBitmap)
                 $settingsGraphics.CopyFromScreen($settingsRect.Left, $settingsRect.Top, 0, 0, $settingsBitmap.Size)
@@ -285,7 +293,7 @@ public static class P2CWin32 {
                 Write-Status "CAPTURED Windows Native settings initial page geometry=$($settingsRect.Right-$settingsRect.Left)x$($settingsRect.Bottom-$settingsRect.Top) dpi=$settingsDpi screenshot=windows-native-settings-initial-en.png"
 
                 foreach ($child in @([P2CWin32]::GetChildWindows($settingsHwnd))) {
-                    Write-Status "Native settings control id=$($child.ControlId) hwnd=$($child.Handle) visible=$($child.Visible) size=$($child.Width)x$($child.Height) class=$($child.ClassName) text=$($child.Title)"
+                    Write-Status "Native settings control id=$($child.ControlId) hwnd=$($child.Handle) visible=$($child.Visible) rect_client=$($child.Left-$settingsClientOrigin.X),$($child.Top-$settingsClientOrigin.Y),$($child.Width)x$($child.Height) class=$($child.ClassName) text=$($child.Title)"
                 }
                 try {
                     $uiaControls = $settingsElement.FindAll([System.Windows.Automation.TreeScope]::Descendants,

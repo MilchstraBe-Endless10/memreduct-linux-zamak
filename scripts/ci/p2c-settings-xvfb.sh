@@ -63,7 +63,7 @@ export HOME="$runtime_dir/home" XDG_CONFIG_HOME="$runtime_dir/config"
   fc-match 'sans-serif:lang=zh-cn' | head -n 1
   xdpyinfo | awk '/dimensions:/{print "X11_dimensions=" $2; exit}'
   printf 'Windows source=Mem Reduct v.3.5.2 tag 2f5c55d15f69a2c88859e036b16c6f4c971e1968\n'
-  printf 'Settings child=260x168 DLU; shell=374x214 DLU / 547x345 top-level at provisional 96-DPI conversion\n'
+  printf 'Windows reference: 574x374 outer settings screenshot; Linux target: 547x345 compact client. The settings Canvas uses the full client surface. Child template=260x168 DLU measured at 390x273 px on Windows Server 2022, 96 DPI.\n'
   printf 'Theme=Adwaita:light; Xft.dpi=96; X11 server screenshots include the client window, not Openbox decorations.\n'
   printf 'Canvas geometry is read from production draw markers; no Windows pixel claim.\n'
 } | tee "$artifact_dir/p2c-environment.txt"
@@ -148,7 +148,8 @@ wait_new_marker "$menu_marker" "$menu_before"
 click "$window_id" 45 49
 wait_marker 'CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true'
 window_id="$(window_by_title 'Settings - Mem Reduct')"
-wait_marker 'CI_SETTINGS_PAGE idd=101 page=General locale=en controls=116,117,118,120,119,121,122,123 child_dlu=260x168 provisional_canvas=523.0x321.0'
+wait_marker 'CI_SETTINGS_CONTAINER_BORDER_WIDTH=0'
+wait_marker 'CI_SETTINGS_PAGE idd=101 page=General locale=en controls=116,117,118,120,119,121,122,123 child_dlu=260x168 provisional_canvas=547.0x345.0'
 geometry "$window_id" 547 345 "$artifact_dir/geometry-settings-en.txt"
 capture "$window_id" 'production-settings-general-en.png' '547x345'
 main_id="$(window_by_title 'Mem Reduct')"
@@ -157,7 +158,7 @@ geometry "$main_id" 337 369 "$artifact_dir/geometry-main-while-settings-open.txt
 # Every child page is selected through the production navigation widget and captured.
 page_names=("General" "Memory cleaning" "Appearance" "Tray icon" "Advanced")
 for index in 0 1 2 3 4; do
-  y=$((41 + 30 * index))
+  y=$((23 + 20 * index))
   click "$window_id" 60 "$y"
   page_id=$((101 + index))
   wait_marker "CI_SETTINGS_NAV resource=104 page_idd=$page_id page=${page_names[$index]}"
@@ -166,16 +167,16 @@ for index in 0 1 2 3 4; do
 done
 
 # Select Simplified Chinese in the real IDC_LANGUAGE combo and capture the same five pages.
-click "$window_id" 60 41
+click "$window_id" 60 23
 wait_marker 'CI_SETTINGS_NAV resource=104 page_idd=101 page=General'
-click "$window_id" 400 180
+click "$window_id" 400 190
 wait_marker 'CI_SETTINGS_LANGUAGE resource=123 popup_open=true'
 click "$window_id" 400 234
 wait_marker 'CI_LOCALE locale=zh-CN source=IDC_LANGUAGE_123'
 wait_marker 'CI_SETTINGS_PAGE idd=101 page=常规 locale=zh-CN'
 capture "$window_id" 'production-settings-0-zh.png' '547x345'
 for index in 1 2 3 4; do
-  y=$((41 + 30 * index))
+  y=$((23 + 20 * index))
   click "$window_id" 60 "$y"
   page_id=$((101 + index))
   page_name="${page_names[$index]}"
@@ -192,11 +193,11 @@ for index in 1 2 3 4; do
 done
 
 # Verify unsupported rows explain the boundary and have no action/state change.
-click "$window_id" 60 71
+click "$window_id" 60 43
 wait_marker 'CI_SETTINGS_NAV resource=104 page_idd=102 page=内存清理'
-click "$window_id" 210 50
+click "$window_id" 210 40
 wait_marker 'CI_SETTINGS_DISABLED resource=124 row=0 action=none'
-click "$window_id" 210 177
+click "$window_id" 210 186
 wait_marker 'CI_SETTINGS_DISABLED resource=125 action=none'
 if grep -Eiq 'drop_caches|pkexec|swapoff|zramctl' "$artifact_dir/p2c-client.log"; then
   printf 'Forbidden privileged operation marker found in settings UI run.\n' >&2
@@ -204,19 +205,19 @@ if grep -Eiq 'drop_caches|pkexec|swapoff|zramctl' "$artifact_dir/p2c-client.log"
 fi
 
 # Reset confirmation is real UI feedback only; both paths guarantee no stored state/system change.
-click "$window_id" 410 318
+click "$window_id" 190 330
 wait_marker 'CI_RESET_CONFIRMATION resource=105 resource_string=83'
 capture "$window_id" 'production-settings-reset-confirmation-zh.png' '547x345'
 click "$window_id" 450 201
 wait_marker 'CI_RESET_CANCELLED no_system_change=true'
-click "$window_id" 410 318
+click "$window_id" 190 330
 wait_marker 'CI_RESET_CONFIRMATION resource=105 resource_string=83'
 click "$window_id" 370 201
 wait_marker 'CI_RESET_CONFIRMED no_system_change=true'
 
 # Keyboard focus, language selection, Reset cancellation, Escape return, and
 # both keyboard and mouse IDC_CLOSE paths are separate production checks.
-click "$window_id" 60 41
+click "$window_id" 60 23
 for _ in {1..5}; do xdotool key --clearmodifiers Tab; done
 wait_marker 'CI_SETTINGS_KEY name=Tab page_idd=101 focus=105'
 xdotool key --clearmodifiers Return
@@ -251,7 +252,7 @@ xdotool key --clearmodifiers F2
 wait_marker 'CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true'
 window_id="$(window_by_title 'Settings - Mem Reduct')"
 wait_marker 'CI_SETTINGS_PAGE idd=101 page=General locale=en'
-click "$window_id" 485 318
+click "$window_id" 507 330
 wait_marker 'CI_SETTINGS_CLOSE resource=106 action=return_to_main'
 window_id="$(window_by_title 'Mem Reduct')"
 geometry "$window_id" 337 369 "$artifact_dir/geometry-main-after-close.txt"
