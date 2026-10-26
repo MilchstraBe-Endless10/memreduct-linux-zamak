@@ -68,7 +68,9 @@ fn checkbox(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, 
     if s.dark: bg = ui.rgb(0x303030)
     p.fill_rect(&box, &bg)
     outline(p, &box, border)
-    p.text(r.x + 14.0, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, size=8.0)
+    let mut text_size = 8.0
+    if id == 153: text_size = 7.0
+    p.text(r.x + 14.0, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, size=text_size)
     if s.focus == id: outline(p, &r, focus)
 
 fn frame(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, fg: &ui.Color, border: &ui.Color):
