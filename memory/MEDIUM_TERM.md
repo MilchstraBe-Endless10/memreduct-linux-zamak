@@ -1,8 +1,10 @@
 # 中期记忆 / Roadmap State
 
-更新时间：2026-10-26；仅已见到的证据，未经推测。
+更新时间：2026-10-27；仅已见到的证据，未经推测。
 
 ## 当前阶段
+
+本次 P2C-4 exact-head 复核时间：2026-10-27。
 **P1：Zamak 编译验收** — 本机 Zamak 0.2.0 check/test/build、Arch 原生构建、Hyprland GUI 基础验收及 Draft PR Actions 均通过。PR #2 仍 OPEN / Draft，等待 ChatGPT 复审和用户合并决定。
 
 **P2A：源码规格与隔离 UI 测试** — 源码规格位于独立 Draft PR #5；CI 测试位于 PR #4。PR #5 R7 修正 head `d89d74fde433da1863b4de0223f974c824fb590e`，checks 2/2 PASS；R6 几何说明、最终 CI 证据与候选实现门槛已修正。PR #4 最终 head `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1` 的 GUI PR run `40192531809`、build PR run `40192531948` 均通过，push runs 分别为 `40192528601`、`40192528611`；保留原 9 项事件路由测试并新增 3 项探针测试，12/12 PASS。P2C Windows-hosted run 后续取得 v3.5.2 主窗及五个设置页的双语 Native 截图和设置窗实测尺寸；完整菜单/托盘/清理对话框/深色主题截图、Hyprland 输入、全套几何对照和 2 px 验收仍 BLOCKED / NOT RUN。`IDD_MAIN=224×214 DLU` 是主窗模板；每个 `IDD_SETTINGS_* =260×168 DLU` 仅是设置子页模板，不是含导航和底部按钮的完整外框。
@@ -27,7 +29,9 @@ R3 中 Xvfb bulk APT 依赖在 Ubuntu Azure 镜像下载 108 MB 用时 31:18（5
 
 暗色 10 组双语页面在固定 558×335 客户区全部完成采集、Overlay/Difference/Heatmap 对照；全页 changed pixels 为 5.9434%–73.2932%，全部 `PIXEL_IDENTITY_NOT_PASS`。Win32 控件几何 184/184、导航 10/10、树线 102/102、栅格样本 36/36 PASS，最大几何偏差 1.5 px；这些局部 PASS 不等于全页一致。GTK runner 是 Adwaita light，暗色由 app Canvas palette 单独切换。Windows 原生字体仍是未解析物理文件的 `MS Shell Dlg 2` alias；Linux 默认 DejaVu Sans + Noto Sans CJK SC。Liberation Sans 仅隔离候选，英文 64/66 样本改善、中文 12/54 改善且 12/54 退化，全页英文改善小、中文基本不变；未更改生产字体/字号，无字体文件进入仓库。Linux 四菜单双语和安全清理 dropdown 通过 XTEST；Windows tray/安全清理 popup/确认结果对话框仍 BLOCKED。12 项简中来源差异保持 `DECISION_REQUIRED`；整体 1:1 NOT PASS。完整指标及 artifact SHA 在 P2C-4 报告。
 
-下方保留的旧 P2C-4 条目记录初次 APT 超时阶段，是历史快照；不代表当前状态。
+**P2C-4 exact-branch-head CI 复核（2026-10-27）** — PR #7 branch HEAD `dc1e112ba27bb1b89bcdd4b3c55ddf1465695e10` 只把 P2B/P2C Actions concurrency group 分开，生产代码及视觉阈值不变。P2C run `40382203136` 3/3 PASS，artifacts Windows `12679133143`、Linux `12677879049`、比较 `12679860675`；几何 184/184、raster 36/36、导航 10/10、树线 102/102、中段滚动 2/2 均 PASS，完整像素 1:1 仍 NOT PASS。P2B run `40382203135` 首次 Xvfb APT attempt 1 在下载 `fonts-noto-cjk` 61.2 MB 时超时 `124`；无 DNS/锁/缺包证据，网络/镜像原因未确认。仅重跑失败 job 后 attempt 2 的 P2B Xvfb 与 Weston 均 PASS，artifacts `12681997882` / `12681398424`。P2B 重复的设置页步骤按条件 SKIPPED，由同 head P2C run 覆盖。Build/governance/safety run `40382203131` PASS；APT details、artifact digest 和 SHA manifest 见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
+
+下方保留的旧 P2C-4 条目记录早期 APT 超时阶段，是历史快照；不代表当前状态。
 
 ### P2C-4 早期进度快照（历史记录；由上方完成状态覆盖）
 

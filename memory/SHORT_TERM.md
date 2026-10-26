@@ -1,6 +1,13 @@
 # 短期记忆 / Latest Handoff
 
-## 最新核对：P2C-4 字体/控件绘制/深色主题校准（2026-10-27）
+## 最新核对：P2C-4 exact-head Actions 闭环（2026-10-27）
+
+- 当前 PR #7 branch HEAD `dc1e112ba27bb1b89bcdd4b3c55ddf1465695e10`，Base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；PR OPEN / Draft。Head 仅隔离 P2B/P2C concurrency group，未改生产代码、基准图片或阈值。
+- P2C run `40382203136`：Windows v3.5.2 来源、Linux production Xvfb/XTEST、视觉/暗色比较 3/3 PASS。Artifacts Windows `12679133143` (`sha256:1417e252b1d837c509670b73524ea9b9058eec0055104cfe5da478beb242e66a`)，Linux `12677879049` (`sha256:26fbc176837d7bce5fde49256f8d0f6744ddd235d1adfe13ea3a3e0972019805`)，comparison `12679860675` (`sha256:72d78940a992fae4c60efd0157bc4f7d9d9c4fcc702ed097b577e5e4ff5e6d8d`)。比较日志确认 558×335、10 screenshots、184/184 geometry、36/36 control raster、10/10 navigation selection、102/102 tree pixels、2/2 middle scroll；暗色图 10/10 配对，整页像素同一性 NOT PASS。比较 artifact 含逐图 SHA-256 manifest 及 Overlay/Difference/Heatmap。
+- P2B run `40382203135` 首次 Xvfb APT install attempt 1 以 `124` 超时；只重跑失败 job 后 attempt 2，P2B Xvfb 和 Weston 两 job 均 PASS。首跑日志：Ubuntu 24.04.5 / image `20261012.334.1`，APT update 成功；`fonts-noto-cjk` 61.2 MB 下载出现 `Ign`/重试并达到 38 分钟硬时限。未见 DNS、APT 锁、缺包，底层网络原因未确认。attempt 2 同包随 101 MB 安装下载 4 秒完成；X11 artifact `12681997882` (`sha256:eb2ec95f941c81e179787a72dc6c1f9368ddd2fb7b6a75574b0c314cf285d5fd`)，Weston artifact `12681398424` (`sha256:e9a57f49ccf67ba376b703d6e0e4d1db548aaea2d1b872c251aa572e1966c801`)，APT diagnostics `12681383785` / `12680778845`。P2B 上重复设置页 step 按条件 SKIPPED；完整五页由同 head P2C 已执行。
+- Build/governance/safety run `40382203131` PASS。本机非 GUI：Zamak `0.2.0` version/check/test (30/30)/build、`scripts/build-arch.sh`、治理 33 项、Python/C tests 3/3、`bash -n scripts/*.sh`、`git diff --check` 全 PASS。没有启动本机 GUI、触碰活动桌面/Hyprland、输入注入、执行清理、Polkit、Swap/ZRAM 或内核写入。
+
+## P2C-4 字体/控件绘制/深色主题实施记录（2026-10-27）
 
 - PR #7 仍 OPEN / Draft；Base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；P2C 生产代码/工作流 head `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。Windows v.3.5.2 tag SHA 固定 `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。
 - P2C run `40373093546` Windows 来源、生产 Xvfb/XTEST 与比较 3/3 PASS；P2B run `40373092535` 的主窗 Xvfb/XTEST、Weston Headless/Pixman 两 job PASS；build/governance/safety PR run `40373092652` 与 push run `40373081011` PASS。P2B 重复设置页 step 按条件 skipped，完整设置页交互在同 head P2C run 已执行。
@@ -10,7 +17,7 @@
 - GDI/Pango ascent+descent 总和均为 13 px，但 ascent/descent 分配不同 1 px；Linux text origin 不是 GDI baseline 的直接等价测量。GDI 字符串宽度/平均字宽已记；当前证据没有独立且可对齐的 character-spacing/tracking 量，未添加字距补偿。
 - XTEST 双语验证 File/View/Settings/Help、语言子菜单、键盘 Enter/方向/Esc、分隔区跳过、暗色 5 页、safe clean dropdown 均通过；清理项禁用。Windows tray、原生清理 popup、安全确认/结果对话框仍 BLOCKED。简中 12 项来源差异维持 DECISION_REQUIRED。
 - 不操作本机 GUI/Hyprland；无内存清理、Polkit、root GUI、内核写入或 Swap/ZRAM 变化。日志中的 Weston GTK seat critical 未屏蔽、未推断根因。
-- 文档/记忆首轮提交 `6d5f4d4b8212913ea12b59c20f0916b62219aeea` 已推送。该 head 的 PR/push build `40376732590` / `40376726820` PASS；P2B Xvfb 和 Weston run `40376732484` 于 18:45 UTC 前均 PASS，重复设置页 step 按条件 SKIPPED（由 P2C 覆盖）。P2C run `40376732711` 的 Windows native 与 Linux Xvfb jobs 正在运行，Linux APT 安装于 18:45:42 UTC 开始。该 head 的 P2C 截图/比较尚未闭环；未宣称 PASS。
+- 文档/记忆首轮提交 `6d5f4d4b8212913ea12b59c20f0916b62219aeea` 的 P2C run 状态及早期 APT 超时记录转入历史快照；当前状态以本文件顶部 `dc1e112` exact-head 核验和 P2C-4 报告为准。
 
 ## 先前未完成状态记录（已被上方 2026-10-27 核对覆盖）
 

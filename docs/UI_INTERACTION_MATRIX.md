@@ -4,7 +4,7 @@
 
 状态含义：NATIVE=Linux 上实现原生相同动作；EQUIVALENT=语义受限的 Linux 等价；UNSUPPORTED=没有安全/准确的 Linux 等价；NOT_IMPLEMENTED=可评估但项目当前未实现。状态描述当前 Linux 项目，不代表上游 Windows 功能状态。
 
-P2C-4 的隔离 Xvfb/XTEST 套件覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图分别记录 GTK `Adwaita:light` 与应用自己的 Canvas 暗色调色板，不更改桌面主题。精确 head `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 的 P2C run `40373093546` Windows、Linux Xvfb/XTEST、视觉比较三项全 PASS；P2B run `40373092535` Xvfb 与 Weston 生命周期两项 PASS，build/safety run `40373092652` PASS。细节和限制见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`；这些检查不构成完整像素 1:1 或活动 Hyprland 输入验收。
+P2C-4 的隔离 Xvfb/XTEST 套件覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图分别记录 GTK `Adwaita:light` 与应用自己的 Canvas 暗色调色板，不更改桌面主题。最新 PR branch head `dc1e112ba27bb1b89bcdd4b3c55ddf1465695e10` 的 P2C run `40382203136` Windows、Linux Xvfb/XTEST、视觉比较三项全 PASS；P2B run `40382203135` 的失败 Xvfb APT job 经 attempt 2 重跑后与 Weston 生命周期均 PASS；build/governance/safety run `40382203131` PASS。P2B 中重复的设置页步骤按条件 SKIPPED，五页双语设置测试在同 head P2C run 实际执行。细节和限制见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`；这些检查不构成完整像素 1:1 或活动 Hyprland 输入验收。
 
 ## 1. 主窗口、菜单、快捷键
 
