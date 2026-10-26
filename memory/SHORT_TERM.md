@@ -2,11 +2,16 @@
 
 ## 最新核对：P2C-4 exact-head Actions 证据（2026-10-27）
 
-- PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；下列逐文件核验的 evidence snapshot head 为 `f4c107b5ef6bbc34a4a78fd3600dbfe4c4e81161`，生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`，P2C-4 没有变更生产 UI。后续报告/记忆同步仍不改产品源码。
-- P2C run [40406877107](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40406877107) Windows + Linux Xvfb/XTEST + comparison 3/3 PASS；artifacts Windows `12691453162` (`sha256:e0186164c67325c2607585a554282c3bf6b8c4a56ebccba76d2260bcc774ebbf`)，Linux `12691688156` (`sha256:0f95f45130bf191764706b6732063adf21032034b807c7f9639a0b2ee6780c7d`)，visual `12690699316` (`sha256:533900b7f323afd2e1738581946a0b799c35f311835333142ea6ea26b98b2361`)。
-- P2B run [40406877396](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40406877396) 主窗 Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；X11 artifact `12690432596`，Wayland artifact `12691687733`。重复设置页步骤按条件跳过，由同 head P2C 完整覆盖。PR build [40406877378](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40406877378) 与 push build [40406867272](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40406867272) PASS，PR checks 7/7。
-- Artifact SHA-256 核对：Windows PNG 41/41、Linux PNG 44/44、visual 83/83、dark 70/70、source 10/10、source+binary 8/8。几何 184/184（最大 1.5 px）、导航 10/10、tree 102/102、raster 36/36、scroll 2/2 PASS。Light changed-pixel 5.0741%–14.8853%；dark 5.9434%–73.2932%；整页 pixel identity NOT PASS。
-- Windows 3.5.2 tag 与官方资产来源/PGP 核验通过；Linux XTEST 采集五页双语明暗主题及菜单，清理保持禁用。Liberation Sans 隔离候选未进入生产：英文 64/66 指标改善，但简中 12 改善、12 退化。Weston 客户端退出 0，保留 `gdk_seat_get_keyboard` critical（1 次，`wl_seat` 未公布），根因未证实；Wayland 鼠标/键盘 NOT RUN。12 项来源差异 DECISION_REQUIRED；Windows tray、clean popup/confirmation/result BLOCKED。没有真实清理、特权操作或本机桌面输入。详见 [P2C-4 report](../docs/P2C-4_FONT_THEME_MENU_REPORT.md)。
+- PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`，核验 head `33367f3c15273f3e817bba27e9272a19663ea829`；生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。本轮未改生产字体/字号/UI 源码或比较阈值。
+- P2C run [40408926862](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40408926862) 的 Windows、Linux production Xvfb/XTEST、比较 jobs 3/3 PASS；artifacts Windows `12691828080` (`sha256:ca0e98ec99ce5332956c037271fb91fbcb7cb4ac11fa086e050eedabaf6b4542`)，Linux `12692965976` (`sha256:9171f0ca79938f360cc36b4937744f65c1f4b42b874ed7ec7244be27c4c88f3f`)，visual/dark/font `12692891146` (`sha256:115c23d9d3d1d90cce265cab20a68176d5fbd104bd76e59728cb59a0d1b186bd`)。
+- P2B run [40408926842](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40408926842) Xvfb/XTEST 和 Weston Headless/Pixman 2/2 PASS；X11 artifact `12694248993` (`sha256:5f14c003ca627693f928e1d54384afeafa683cb66ceba14f7ab6728327cdf7ac`)，Wayland artifact `12690409508` (`sha256:58cf6b8da7c450ad0374892282d444e92869a1f042f0810d6ae1efcc0ba305d9`)。P2B 五页重复 step 条件 `SKIPPED`，由 P2C 同 head 覆盖。PR build `40408926778`、push build `40408920155` PASS；PR checks 7/7。
+- 首次 Xvfb APT update 成功；install 于 `fonts-noto-cjk` 61.2 MB 下载阶段触发 38 分钟硬超时，exit `124` / `command timeout`。未见 DNS、锁或缺包证据，底层网络/镜像原因未确认。只重跑失败 job 后安装 exit `0`。attempt 1/2 diagnostics artifacts `12693989271` / `12693778915`；本次成功不证明长期网络稳定。
+- 哈希覆盖核验：Windows PNG 41/41、Linux PNG 44/44、visual 83/83、dark 70/70、P2C source 10/10、P2B source/binary 8/8。主程序/helper SHA-256：`fa13bc97526e97debd189ef09dacffc31ebf085d168ffe520856d00cdbd30404` / `30cac693f610cd0bec92de495f6c6e4ab352f8a6ec43bc807d08a2d27f2acf08`。几何 184/184（max 1.5 px）、导航 10/10、tree 102/102、raster 36/36、scroll 2/2 PASS；light changed-pixel 5.0741%–14.8853%，dark 5.9434%–73.2932%，full-page pixel identity NOT PASS。
+- Windows 官方 v3.5.2 provenance 已验证；Linux XTEST 覆盖五页双语及菜单，清理仍禁用。Liberation Sans 未进入生产；Weston 仅验收隔离生命周期，保留 GTK seat critical，Wayland 输入 NOT RUN。12 项语言差异 `DECISION_REQUIRED`；Windows tray 与安全条件不满足的 clean popup/confirmation/result `BLOCKED`。没有真实清理、Polkit、Swap/ZRAM、root GUI、活动 Hyprland 或本机桌面输入。详见 [P2C-4 report](../docs/P2C-4_FONT_THEME_MENU_REPORT.md)。
+
+### 前一 exact-head 核对（f4c107b）
+
+`f4c107b5ef6bbc34a4a78fd3600dbfe4c4e81161` 的早先 P2C/P2B 运行、artifact 与 metrics 已由 P2C-4 报告保留；它不是当前最新的 Actions evidence snapshot。
 
 ### 前一 exact-head 核对（d238649）
 
