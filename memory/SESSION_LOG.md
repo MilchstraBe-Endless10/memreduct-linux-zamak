@@ -83,3 +83,12 @@
 - Artifact digest/SHA 和指标同步至 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`、`docs/UI_INTERACTION_MATRIX.md`、三层记忆。几何 184/184（最大分量 1.5 px）、导航 10/10、树线 102/102、控件栅格 36/36、滚动 2/2 PASS；亮色差异率 5.0741%–14.8853%，暗色 5.9434%–73.2932%，整页 1:1 NOT PASS。
 - 生产 UI 保持源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；没有生产字体/UI/阈值改动。Windows 专有字体未打包，12 项简中来源差异仍 `DECISION_REQUIRED`；托盘和无安全路径的清理弹窗仍 BLOCKED；Wayland 仅生命周期通过，输入 NOT RUN。
 - PR #7 保持 OPEN / Draft。没有合并 PR、真实清理、Polkit/Swap/ZRAM 写入、root GUI、活动 Hyprland IPC 或本机桌面输入。
+
+## 2026-10-27 — P2C-4 最终 artifact 与 APT 诊断复核（105d71d）
+
+- PR #7 仍 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`，head `105d71d567d7ba096e8b928c072ceb4af15bfe6f`；最新正式 ChatGPT review 仍为 P2C-3R1，接受 CI gate，但整体 1:1 NOT PASS。未发现更新 review；无新的行内 review。
+- exact-head P2C run `40416882722` Windows native / production Xvfb-XTEST / visual compare 3/3 PASS；P2B run `40416882708` Xvfb-XTEST / Weston Headless-Pixman 2/2 PASS；PR build `40416882739`、push build `40416873128` PASS，7/7 PR checks 成功。P2B 重复五页步骤按条件跳过，P2C 同 head 作业已完整执行。
+- APT artifact 核验：Ubuntu 24.04.5、runner image `ubuntu24 20261023.334.3`、APT 2.8.3。P2B Xvfb update 12.6 MB / 1 秒成功；install 101 MB / 36m11s（作业步骤 36m23s），`fonts-noto-cjk` 61.2 MB，镜像为 `azure.archive.ubuntu.com`，APT exit 0。没有观察到 DNS、锁、缺包或仓库错误；慢速已证实，根因未证实。
+- P2C Artifacts: Windows `12695303623`, Linux X11 `12694879677`, visual/dark/font `12694609240`; P2B: X11 `12696373914`, Weston `12695762656`;诊断附件和每个 ZIP digest 记录在 P2C-4 report。复核 P2B X11 10/10 screenshot SHA、6 个源码 SHA 及 production/helper 二进制 SHA；生产窗口正常关闭 exit 0。P2C PNG 清单 Windows 41/41、Linux 44/44、visual 83/83、dark 70/70、source 10/10 匹配。
+- 几何/局部栅格保持 184/184、导航 10/10、tree 102/102、raster 36/36、中段滚动 2/2 PASS；明/暗全页差异率范围仍分别 5.0741%–14.8853% / 5.9434%–73.2932%，1:1 NOT PASS。12 项来源差异 `DECISION_REQUIRED`；Windows tray 和没有无副作用获取路径的 clean popup/confirmation/result 仍 BLOCKED。
+- 无生产源代码改动；本次提交仅同步 exact-head 报告/交互矩阵/记忆。未执行清理、Polkit、Swap/ZRAM、root GUI、活动 Hyprland IPC 或主机桌面输入；推送后按 PR 页面核对新文档 head 的 Actions。

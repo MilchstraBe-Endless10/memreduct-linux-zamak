@@ -2,13 +2,13 @@
 
 更新时间：2026-10-27；仅已见到的证据，未经推测。
 
-## P2C-4 最新 exact-head 证据
+## P2C-4 最近完整审计的 artifact 证据
 
-PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；最新已核验 Actions head `516e824cf4bbb840650bccdbbfdedb2d352d9090`。P2C run `40415153443` Windows native + Linux production Xvfb/XTEST + visual comparison 3/3 PASS；P2B run `40415153555` production Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build `40415153495`、push build `40415146990` PASS，PR checks 7/7。Artifacts、digest、PNG/source SHA 与明暗 metrics 见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。生产 UI source checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；本轮未改生产字体/字号/UI 源码或比较阈值。184/184 resource geometry（最大 1.5 px）、nav 10/10、tree 102/102、raster 36/36、scroll 2/2 PASS；light changed-pixel 5.0741%–14.8853%，dark 5.9434%–73.2932%，整页 1:1 NOT PASS。当前 exact-head APT 更新/安装 jobs PASS；此前 `fonts-noto-cjk` 下载阶段的 exit 124 保留为历史，底层网络原因未确认。P2B 重复五页步骤跳过，由同 head P2C 覆盖。字体候选未应用生产；Wayland 仅生命周期通过、无 Wayland 输入验收；Windows tray/安全 clean 弹窗/确认结果仍 BLOCKED；12 项简中来源差异仍待决定。无真实清理、特权操作或活动桌面输入。
+PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；最近完成逐文件审计的 artifact/source snapshot 为 head `105d71d567d7ba096e8b928c072ceb4af15bfe6f`。P2C run `40416882722` Windows native + Linux production Xvfb/XTEST + visual comparison 3/3 PASS；P2B run `40416882708` production Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build `40416882739`、push build `40416873128` PASS，PR checks 7/7。Artifacts、digest、PNG/source SHA 与明暗 metrics 见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`；PR 页面用于核对后续报告/记忆同步 head 的实时 checks。生产 UI source checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；本轮未改生产字体/字号/UI 源码或比较阈值。184/184 resource geometry（最大 1.5 px）、nav 10/10、tree 102/102、raster 36/36、scroll 2/2 PASS；light changed-pixel 5.0741%–14.8853%，dark 5.9434%–73.2932%，整页 1:1 NOT PASS。P2B Xvfb APT install 获取 101 MB 用时 36m11s（`fonts-noto-cjk` 61.2 MB），退出码 0；无 DNS/锁/缺包错误证据，底层慢速根因未确认。P2B 重复五页步骤跳过，由同 head P2C 覆盖。字体候选未应用生产；Wayland 仅生命周期通过、无 Wayland 输入验收；Windows tray/安全 clean 弹窗/确认结果仍 BLOCKED；12 项简中来源差异仍待决定。无真实清理、特权操作或活动桌面输入。
 
 ## 当前阶段
 
-本次 P2C-4 exact-head 复核时间：2026-10-27；上述 P2C/P2B/build/push runs 均对应 `516e824cf4bbb840650bccdbbfdedb2d352d9090` 且成功。此 head 是本次报告、矩阵和记忆同步前的证据 checkpoint；产品源码和比较阈值没有改动。后续文档同步提交触发的 PR checks 需以 PR 页面当前 SHA 核实，不能把该 checkpoint 误称为之后提交的 SHA。
+本次 P2C-4 artifact audit 时间：2026-10-27；上述 P2C/P2B/build/push runs 均对应 `105d71d567d7ba096e8b928c072ceb4af15bfe6f` 且成功。该代码/截图 evidence snapshot 的产品源码未变；报告/矩阵/记忆后续同步只改文档。任何新的文档 head 都需按 PR 页面复核自己的 checks，不能把该 snapshot SHA 冒称为后续 head。
 **P1：Zamak 编译验收** — 本机 Zamak 0.2.0 check/test/build、Arch 原生构建、Hyprland GUI 基础验收及 Draft PR Actions 均通过。PR #2 仍 OPEN / Draft，等待 ChatGPT 复审和用户合并决定。
 
 **P2A：源码规格与隔离 UI 测试** — 源码规格位于独立 Draft PR #5；CI 测试位于 PR #4。PR #5 R7 修正 head `d89d74fde433da1863b4de0223f974c824fb590e`，checks 2/2 PASS；R6 几何说明、最终 CI 证据与候选实现门槛已修正。PR #4 最终 head `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1` 的 GUI PR run `40192531809`、build PR run `40192531948` 均通过，push runs 分别为 `40192528601`、`40192528611`；保留原 9 项事件路由测试并新增 3 项探针测试，12/12 PASS。P2C Windows-hosted run 后续取得 v3.5.2 主窗及五个设置页的双语 Native 截图和设置窗实测尺寸；完整菜单/托盘/清理对话框/深色主题截图、Hyprland 输入、全套几何对照和 2 px 验收仍 BLOCKED / NOT RUN。`IDD_MAIN=224×214 DLU` 是主窗模板；每个 `IDD_SETTINGS_* =260×168 DLU` 仅是设置子页模板，不是含导航和底部按钮的完整外框。
