@@ -164,6 +164,7 @@ public static class P2CWin32 {
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetFocus(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
   [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)] private static extern IntPtr SendMessageTimeoutValue(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageTimeoutW", SetLastError=true)] private static extern IntPtr SendMessageTimeoutText(IntPtr hWnd, uint message, IntPtr wParam, System.Text.StringBuilder lParam, uint flags, uint timeout, out IntPtr result);
   [DllImport("kernel32.dll", SetLastError=true)] private static extern IntPtr OpenProcess(uint access, bool inherit, uint processId);
   [DllImport("kernel32.dll", SetLastError=true)] private static extern IntPtr VirtualAllocEx(IntPtr process, IntPtr address, UIntPtr size, uint allocationType, uint protect);
   [DllImport("kernel32.dll", SetLastError=true)] private static extern bool VirtualFreeEx(IntPtr process, IntPtr address, UIntPtr size, uint freeType);
@@ -281,6 +282,19 @@ public static class P2CWin32 {
       items.Add(text.ToString());
     }
     return items.ToArray();
+  }
+  public static string GetControlText(IntPtr control) {
+    const uint WM_GETTEXT=0x000D, WM_GETTEXTLENGTH=0x000E, SMTO_ABORTIFHUNG=0x0002, MESSAGE_TIMEOUT_MS=3000;
+    IntPtr result;
+    if (SendMessageTimeoutValue(control, WM_GETTEXTLENGTH, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out result) == IntPtr.Zero)
+      throw new TimeoutException("Win32 WM_GETTEXTLENGTH failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
+    int length=result.ToInt32();
+    if (length < 0 || length > 512) throw new InvalidOperationException("Unexpected Win32 control text length: " + length);
+    if (length == 0) return String.Empty;
+    var text=new System.Text.StringBuilder(length + 1);
+    if (SendMessageTimeoutText(control, WM_GETTEXT, new IntPtr(text.Capacity), text, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out result) == IntPtr.Zero)
+      throw new TimeoutException("Win32 WM_GETTEXT failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
+    return text.ToString();
   }
   public static string[] GetListItemTexts(IntPtr list, uint processId) {
     const uint LVM_GETITEMCOUNT=0x1004, LVM_GETITEMTEXTW=0x1073, SMTO_ABORTIFHUNG=0x0002, MESSAGE_TIMEOUT_MS=3000;
@@ -734,6 +748,18 @@ public static class P2CWin32 {
                         $samples = @()
                         if (-not [string]::IsNullOrWhiteSpace($control.Title)) {
                             $samples += [pscustomobject]@{ kind='native-control-text'; text=$control.Title; text_source='Win32GetWindowText' }
+                        }
+                        if ($control.ClassName -eq 'ComboBox') {
+                            $items = @([P2CWin32]::GetComboItems($control.Handle))
+                            $selected = [P2CWin32]::GetComboSelection($control.Handle)
+                            if ($selected -ge 0 -and $selected -lt $items.Count) {
+                                $samples += [pscustomobject]@{ kind='value'; text=$items[$selected]; text_source='Win32CB_GETCURSEL+CB_GETLBTEXT' }
+                            }
+                        } elseif ($control.ClassName -eq 'Edit' -or $control.ClassName -eq 'msctls_hotkey32') {
+                            $displayText = [P2CWin32]::GetControlText($control.Handle)
+                            if (-not [string]::IsNullOrWhiteSpace($displayText)) {
+                                $samples += [pscustomobject]@{ kind='value'; text=$displayText; text_source='Win32WM_GETTEXT' }
+                            }
                         }
                         if ($control.ControlId -eq 124 -and $control.ClassName -eq 'SysListView32') {
                             $listItems = @([P2CWin32]::GetListItemTexts([IntPtr]$control.Handle, [uint32]$appProcess.Id))

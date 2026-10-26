@@ -40,16 +40,25 @@ EXPECTED_ZH_SOURCE_DIVERGENCES = {
     *((102, "zh", 124, f"row-{index}") for index in range(8)),
     (105, "zh", 153, "label"),
     (105, "zh", 154, "label"),
+    (104, "zh", 147, "label"),
 }
 EXPECTED_ZH_LOCAL_TEXT = {
     **{(102, "zh", 124, f"row-{index}"): REGION_LABELS_ZH[index] for index in range(8)},
     (105, "zh", 153, "label"): "允许自动清理备用列表和已修改页列表",
     (105, "zh", 154, "label"): "将清理结果写入调试日志",
+    (104, "zh", 147, "label"): "单击：",
 }
 EXPECTED_ZH_ENGLISH_TEXT = {
     **{(102, "zh", 124, f"row-{index}"): REGION_LABELS_EN[index] for index in range(8)},
     (105, "zh", 153, "label"): "Allow \"Standby lists\" and \"Modified page list\" cleanup on autoreduct",
     (105, "zh", 154, "label"): "Log cleaning results into a debug log",
+    (104, "zh", 147, "label"): "Single click:",
+}
+EXPECTED_ZH_TEXT_EVIDENCE = {
+    **{(102, "zh", 124, f"row-{index}"): "Win32LVM_GETITEMTEXTW" for index in range(8)},
+    (105, "zh", 153, "label"): "Win32GetWindowText",
+    (105, "zh", 154, "label"): "Win32GetWindowText",
+    (104, "zh", 147, "label"): "Win32GetWindowText",
 }
 NAV_SELECTED = (217, 217, 217)
 NAV_GUIDE = (109, 109, 109)
@@ -645,12 +654,15 @@ def write_text_metrics_comparison(windows_dir: Path, linux_dir: Path, output_dir
             if not windows_row or not linux_row:
                 status = "MISSING_CAPTURE_OR_METRIC"
             elif (actual_windows != source_english or actual_linux != local_translation
-                  or windows_row.get("sample_text_source") != "Win32LVM_GETITEMTEXTW"):
+                  or windows_row.get("sample_text_source") != EXPECTED_ZH_TEXT_EVIDENCE[key]):
                 status = "UNEXPECTED_TEXT_DOES_NOT_MATCH_DOCUMENTED_MATRIX"
                 unexpected_divergences += 1
             else:
                 status = "EXPECTED_UPSTREAM_TRANSLATION_GAP"
-            writer.writerow((page_idd, locale, resource_id, part, source_english, "No Simplified Chinese resource; upstream text is hard-coded English", actual_windows, windows_row.get("sample_text_source", "MISSING") if windows_row else "MISSING", actual_linux, "DECISION_REQUIRED; retain project Simplified Chinese translation pending product decision", status))
+            upstream_zh = "No Simplified Chinese resource; upstream text is hard-coded English"
+            if key == (104, "zh", 147, "label"):
+                upstream_zh = "IDS_TRAYACTIONSC_HINT=66 exists; Simplified Chinese value remains English"
+            writer.writerow((page_idd, locale, resource_id, part, source_english, upstream_zh, actual_windows, windows_row.get("sample_text_source", "MISSING") if windows_row else "MISSING", actual_linux, "DECISION_REQUIRED; retain project Simplified Chinese translation pending product decision", status))
 
         for key in sorted(set(native) & set(linux)):
             if native[key]["sample_text"] == linux[key]["text"] or key in EXPECTED_ZH_SOURCE_DIVERGENCES:
