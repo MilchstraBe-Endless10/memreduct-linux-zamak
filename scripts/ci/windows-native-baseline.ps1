@@ -141,7 +141,8 @@ public static class P2CWin32 {
   [DllImport("user32.dll", SetLastError=true)] public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetFocus(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
-  [DllImport("user32.dll", EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageRect(IntPtr hWnd, uint message, IntPtr wParam, ref RECT lParam);
+  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)] private static extern IntPtr SendMessageTimeoutValue(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+  [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)] private static extern IntPtr SendMessageTimeoutRect(IntPtr hWnd, uint message, IntPtr wParam, ref RECT lParam, uint flags, uint timeout, out IntPtr result);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageText(IntPtr hWnd, uint message, IntPtr wParam, System.Text.StringBuilder lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool IsWindowVisible(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
@@ -220,17 +221,30 @@ public static class P2CWin32 {
     return GetComboSelection(combo) == index;
   }
   public static RECT[] GetListItemRects(IntPtr list) {
-    const uint LVM_GETITEMCOUNT=0x1004, LVM_GETITEMRECT=0x100E;
-    int count=SendMessage(list, LVM_GETITEMCOUNT, IntPtr.Zero, IntPtr.Zero).ToInt32();
+    const uint LVM_GETITEMCOUNT=0x1004, LVM_GETITEMRECT=0x100E, SMTO_ABORTIFHUNG=0x0002, MESSAGE_TIMEOUT_MS=3000;
+    IntPtr messageResult;
+    if (SendMessageTimeoutValue(list, LVM_GETITEMCOUNT, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out messageResult) == IntPtr.Zero)
+      throw new TimeoutException("Win32 LVM_GETITEMCOUNT failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
+    int count=messageResult.ToInt32();
     var rects=new System.Collections.Generic.List<RECT>();
     for (int index=0; index<count; index++) {
       var rect=new RECT(); rect.Left=0; // LVIR_BOUNDS
-      if (SendMessageRect(list, LVM_GETITEMRECT, new IntPtr(index), ref rect) != IntPtr.Zero) rects.Add(rect);
+      if (SendMessageTimeoutRect(list, LVM_GETITEMRECT, new IntPtr(index), ref rect, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out messageResult) == IntPtr.Zero)
+        throw new TimeoutException("Win32 LVM_GETITEMRECT item " + index + " failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
+      if (messageResult != IntPtr.Zero) rects.Add(rect);
     }
     return rects.ToArray();
   }
   public static int GetListTopIndex(IntPtr list) {
-    return SendMessage(list, 0x1027, IntPtr.Zero, IntPtr.Zero).ToInt32(); // LVM_GETTOPINDEX
+    IntPtr messageResult;
+    if (SendMessageTimeoutValue(list, 0x1027, IntPtr.Zero, IntPtr.Zero, 0x0002, 3000, out messageResult) == IntPtr.Zero)
+      throw new TimeoutException("Win32 LVM_GETTOPINDEX failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
+    return messageResult.ToInt32(); // LVM_GETTOPINDEX
+  }
+  public static void EnsureListItemVisible(IntPtr list, int index) {
+    IntPtr messageResult;
+    if (SendMessageTimeoutValue(list, 0x1013, new IntPtr(index), new IntPtr(1), 0x0002, 3000, out messageResult) == IntPtr.Zero)
+      throw new TimeoutException("Win32 LVM_ENSUREVISIBLE item " + index + " failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
   }
 }
 '@
@@ -402,7 +416,7 @@ public static class P2CWin32 {
                             }
                             & $writeStatusClosure "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$initialState count=$itemIndex"
                             if ($control.ControlId -eq 124) {
-                                [void][P2CWin32]::SendMessage($control.Handle, 0x1013, [IntPtr]7, [IntPtr]1) # LVM_ENSUREVISIBLE, final row
+                                [P2CWin32]::EnsureListItemVisible($control.Handle, 7) # LVM_ENSUREVISIBLE, final row
                                 Start-Sleep -Milliseconds 100
                                 $topIndex = [P2CWin32]::GetListTopIndex($control.Handle)
                                 if ($topIndex -ne 2) { throw "IDC_REGIONS expected bottom scroll top index 2, got $topIndex." }
@@ -416,7 +430,7 @@ public static class P2CWin32 {
                                     $itemIndex++
                                 }
                                 & $writeStatusClosure "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$bottomState count=$itemIndex"
-                                [void][P2CWin32]::SendMessage($control.Handle, 0x1013, [IntPtr]0, [IntPtr]1) # restore top before leaving the page
+                                [P2CWin32]::EnsureListItemVisible($control.Handle, 0) # restore top before leaving the page
                                 if ([P2CWin32]::GetListTopIndex($control.Handle) -ne 0) { throw 'IDC_REGIONS failed to restore top scroll position.' }
                             }
                         }
