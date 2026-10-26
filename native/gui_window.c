@@ -36,6 +36,16 @@ extern GtkWidget *gtk_widget_get_parent(GtkWidget *widget);
 extern unsigned int gtk_get_major_version(void);
 extern unsigned int gtk_get_minor_version(void);
 extern unsigned int gtk_get_micro_version(void);
+extern unsigned long g_signal_handler_find(
+    void *instance,
+    unsigned int mask,
+    unsigned int signal_id,
+    unsigned int detail,
+    void *closure,
+    void *func,
+    void *data);
+extern void g_signal_handler_block(void *instance, unsigned long handler_id);
+extern void g_signal_handler_unblock(void *instance, unsigned long handler_id);
 extern unsigned long g_signal_connect_data(
     GtkWidget *instance,
     const char *detailed_signal,
@@ -49,6 +59,8 @@ static int settings_close_requested;
 static GtkWindow *settings_window;
 static int settings_close_handler_connected;
 static unsigned long settings_close_handler_id;
+static unsigned long settings_preexisting_close_handler_id;
+static unsigned int settings_delete_signal_id;
 static int settings_geometry_prepared;
 static int gtk_version_logged;
 
@@ -63,6 +75,54 @@ static int on_settings_delete(GtkWidget *widget, void *event, void *data)
     }
     settings_close_requested = 1;
     return 1; /* Keep the reusable secondary window alive; Zamak returns to main. */
+}
+
+/*
+ * Zamak 0.2.0's GTK std/ui creates one delete-event callback with each window.
+ * Its callback destroys that window and returns TRUE, stopping later handlers.
+ * Verify the GTK 3.24 runtime and the single pre-existing unblocked handler,
+ * then block only that handler on the reusable settings window. The main
+ * window and every other signal keep the UI library's lifecycle untouched.
+ */
+static int install_settings_delete_handler(GtkWindow *window, unsigned int signal_id)
+{
+    if (gtk_get_major_version() != 3 || gtk_get_minor_version() < 24) {
+        return 0;
+    }
+
+    const unsigned int match_unblocked_id = (1u << 0) | (1u << 5);
+    const unsigned long existing_close_handler = g_signal_handler_find(
+        window, match_unblocked_id, signal_id, 0, NULL, NULL, NULL);
+    if (existing_close_handler == 0) {
+        return 0;
+    }
+
+    g_signal_handler_block(window, existing_close_handler);
+    const unsigned long additional_handler = g_signal_handler_find(
+        window, match_unblocked_id, signal_id, 0, NULL, NULL, NULL);
+    if (additional_handler != 0) {
+        g_signal_handler_unblock(window, existing_close_handler);
+        return 0;
+    }
+
+    const unsigned long handler_id = g_signal_connect_data(
+        (GtkWidget *)window,
+        "delete-event",
+        on_settings_delete,
+        NULL,
+        NULL,
+        0);
+    if (handler_id == 0) {
+        g_signal_handler_unblock(window, existing_close_handler);
+        return 0;
+    }
+
+    settings_preexisting_close_handler_id = existing_close_handler;
+    settings_delete_signal_id = signal_id;
+    settings_close_handler_id = handler_id;
+    settings_window = window;
+    settings_close_handler_connected = 1;
+    return 1;
 }
 
 /* Show/hide the independent settings top-level without resizing the main window. */
@@ -95,31 +155,26 @@ int64_t mr_gui_window_mode(int64_t show_settings)
     if (settings_window_found != NULL && !settings_close_handler_connected) {
         const unsigned int delete_signal_id =
             g_signal_lookup("delete-event", gtk_widget_get_type());
-        if (delete_signal_id == 0) {
+        if (delete_signal_id == 0 ||
+            !install_settings_delete_handler(settings_window_found, delete_signal_id)) {
             if (getenv("MEMREDUCT_CI") != NULL) {
-                fputs("CI_NATIVE_SETTINGS_DELETE_HANDLER signal_unavailable=true\n", stderr);
+                fprintf(stderr,
+                        "CI_NATIVE_SETTINGS_DELETE_HANDLER unsupported=true gtk=%u.%u.%u signal_id=%u\n",
+                        gtk_get_major_version(), gtk_get_minor_version(), gtk_get_micro_version(),
+                        delete_signal_id);
                 fflush(stderr);
             }
             g_list_free(windows);
             return 0;
         }
-        settings_close_handler_id = g_signal_connect_data(
-            (GtkWidget *)settings_window_found,
-            "delete-event",
-            on_settings_delete,
-            NULL,
-            NULL,
-            0); /* Run after the existing libui handler, before GTK's default close. */
         if (getenv("MEMREDUCT_CI") != NULL) {
             fprintf(stderr,
-                    "CI_NATIVE_SETTINGS_DELETE_HANDLER signal_id=%u phase=normal connected=%d\n",
+                    "CI_NATIVE_SETTINGS_DELETE_HANDLER signal_id=%u gtk=%u.%u.%u existing_handler=%lu single_preexisting_handler=1 blocked=1 connected=%d\n",
                     delete_signal_id,
+                    gtk_get_major_version(), gtk_get_minor_version(), gtk_get_micro_version(),
+                    settings_preexisting_close_handler_id,
                     settings_close_handler_id != 0);
             fflush(stderr);
-        }
-        if (settings_close_handler_id != 0) {
-            settings_window = settings_window_found;
-            settings_close_handler_connected = 1;
         }
     }
 
@@ -231,5 +286,6 @@ int64_t mr_gui_settings_window_exists(void)
 
 int64_t mr_gui_settings_close_handler_connected(void)
 {
-    return settings_close_handler_id != 0;
+    return settings_close_handler_id != 0 && settings_preexisting_close_handler_id != 0 &&
+           settings_delete_signal_id != 0;
 }

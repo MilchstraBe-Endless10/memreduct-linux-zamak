@@ -148,16 +148,19 @@ wait_new_marker "$menu_marker" "$menu_before"
 click "$window_id" 45 49
 wait_marker 'CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true'
 window_id="$(window_by_title 'Settings - Mem Reduct')"
+settings_window_xid="$window_id"
 wait_marker 'CI_GTK_RUNTIME version=3.'
 wait_marker 'CI_SETTINGS_WIDGET_TREE root_type=GtkBox'
 wait_marker 'holder_candidates=1'
 wait_marker 'CI_NATIVE_SETTINGS_DELETE_HANDLER signal_id='
-wait_marker 'phase=normal connected=1'
+wait_marker 'existing_handler='
+wait_marker 'blocked=1 connected=1'
 wait_marker 'CI_SETTINGS_CONTENT_BORDER old='
 wait_marker 'CI_SETTINGS_PAGE idd=101 page=General locale=en controls=116,117,118,120,119,121,122,123 child_dlu=260x168 provisional_canvas=558.0x335.0'
 geometry "$window_id" 558 335 "$artifact_dir/geometry-settings-en.txt"
 capture "$window_id" 'production-settings-general-en.png' '558x335'
 main_id="$(window_by_title 'Mem Reduct')"
+main_window_xid="$main_id"
 geometry "$main_id" 337 369 "$artifact_dir/geometry-main-while-settings-open.txt"
 
 # Every child page is selected through the production navigation widget and captured.
@@ -296,6 +299,10 @@ geometry "$window_id" 337 369 "$artifact_dir/geometry-main-after-close.txt"
 # ending the application's event loop.
 xdotool key --clearmodifiers F2
 window_id="$(window_by_title 'Settings - Mem Reduct')"
+[[ "$window_id" == "$settings_window_xid" ]] || {
+  printf 'Settings window was destroyed instead of reused after Close/Escape.\n' >&2
+  exit 1
+}
 request_marker='CI_SETTINGS_CLOSE_REQUEST source=delete_event'
 request_before="$(grep -Fc -- "$request_marker" "$artifact_dir/p2c-client.log" || true)"
 native_event_marker='CI_NATIVE_SETTINGS_DELETE_EVENT'
@@ -319,6 +326,10 @@ fi
 # avoiding any conversion between xdotool and wmctrl window ID formats.
 xdotool key --clearmodifiers F2
 window_id="$(window_by_title 'Settings - Mem Reduct')"
+[[ "$window_id" == "$settings_window_xid" ]] || {
+  printf 'Settings window was destroyed instead of reused after Alt+F4.\n' >&2
+  exit 1
+}
 settings_id="$window_id"
 xprop -id "$settings_id" WM_PROTOCOLS | tee "$artifact_dir/p2c-settings-wm-protocols.txt"
 grep -Fq 'WM_DELETE_WINDOW' "$artifact_dir/p2c-settings-wm-protocols.txt"
@@ -361,7 +372,13 @@ for title in 'Mem Reduct' 'Settings - Mem Reduct'; do
     exit 1
   fi
 done
-printf 'PASS all production toplevel windows destroyed after app exit.\n' | tee "$artifact_dir/p2c-window-resource-release.txt"
+for xid in "$main_window_xid" "$settings_window_xid"; do
+  if xwininfo -id "$xid" >/dev/null 2>&1; then
+    printf 'Production X11 window resource remained after application exit: %s\n' "$xid" >&2
+    exit 1
+  fi
+done
+printf 'PASS both production X11 windows released after app exit.\n' | tee "$artifact_dir/p2c-window-resource-release.txt"
 sha256sum "$artifact_dir"/production-settings-*.png | sed "s#$artifact_dir/##" | tee "$artifact_dir/p2c-screenshots-sha256.txt"
 (
   cd "$root"
