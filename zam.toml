@@ -6,4 +6,4 @@ entry = "src/main.zm"
 modules = "src"
 
 [native]
-sources = ["native/async_privileged.c", "native/gui_test.c"]
+sources = ["native/async_privileged.c", "native/gui_test.c", "native/gui_window.c"]

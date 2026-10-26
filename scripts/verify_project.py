@@ -4,7 +4,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parent.parent
 required=[
  'AGENTS.md','LICENSE','ATTRIBUTION.md','THIRD-PARTY-NOTICES.md','zam.toml',
- 'src/main.zm','src/memory.zm','src/policy.zm','native/async_privileged.c','native/memreduct_helper.c',
+ 'src/main.zm','src/settings_ui.zm','src/ui_geometry.zm','src/memory.zm','src/policy.zm','native/async_privileged.c','native/gui_test.c','native/gui_window.c','native/memreduct_helper.c',
  'docs/PRD.md','docs/ARCHITECTURE.md','docs/SECURITY.md','docs/TEST_PLAN.md','docs/ROADMAP.md',
  'docs/AI_COLLABORATION.md','docs/GITHUB_BOOTSTRAP.md',
  'docs/ADR/0001-zamak-platform.md','docs/ADR/0002-privileged-boundary.md','docs/ADR/0003-memory-and-collab.md',

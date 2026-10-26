@@ -5,13 +5,19 @@
 use std/ui
 use memory
 use ui_geometry
+use settings_ui
 
 extern fn mr_gui_test_mode() -> i64
 extern fn mr_gui_test_timeout_ms() -> i64
 extern fn mr_gui_test_fail_sample_after(elapsed_ms: i64) -> i64
+extern fn mr_gui_test_start_settings() -> i64
+extern fn mr_gui_window_mode(settings: i64) -> i64
+extern fn mr_gui_take_settings_close_request() -> i64
+extern fn mr_gui_settings_window_exists() -> i64
 
 struct MainWindow:
     canvas: ui.Canvas
+    settings_canvas: ui.Canvas
     width: f64
     height: f64
     zh: bool
@@ -34,6 +40,8 @@ struct MainWindow:
     test_timeout_ms: i64
     elapsed_ms: i64
     sample_failure_draw_logged: bool
+    settings_open: bool
+    settings: settings_ui.State
 
 fn label(zh: bool, en: string, cn: string) -> string:
     if zh: return cn
@@ -119,7 +127,7 @@ fn draw_root_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, disabled: &ui.C
     draw_outline(p, &r, border)
     let row1 = ui_geometry.root_menu_item_rect(&r, 0)
     if s.menu == 1:
-        draw_menu_item(s, p, &row1, 101.0, label(s.zh, "Settings...", "设置..."), false, fg, disabled, hot)
+        draw_menu_item(s, p, &row1, 101.0, label(s.zh, "Settings...", "设置..."), true, fg, disabled, hot)
         let row2 = ui_geometry.root_menu_item_rect(&r, 1)
         draw_menu_item(s, p, &row2, 102.0, label(s.zh, "Exit", "退出"), true, fg, disabled, hot)
     elif s.menu == 2:
@@ -294,8 +302,34 @@ fn sample_for_ui(s: &MainWindow) -> memory.Snapshot!string:
         fail "injected non-privileged CI sample failure"
     memory.sample()?
 
+fn set_settings_open(s: &mut MainWindow, open: bool):
+    if s.settings_open == open: return
+    let mode = if open: 1 else: 0
+    let changed = mr_gui_window_mode(mode)
+    if changed == 0 or (open and mr_gui_settings_window_exists() == 0):
+        s.status = label(s.zh, "Could not open the settings window", "无法打开设置窗口")
+        if s.test_mode: println(f"CI_SETTINGS_WINDOW mode={mode} action=failed")
+        return
+    s.settings_open = open
+    s.popup = 0
+    s.menu = 0
+    s.pressed = 0.0
+    if open:
+        s.settings = settings_ui.initial(s.test_mode)
+        s.settings_canvas.redraw()
+        if s.test_mode:
+            println(f"CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true close_handler={mr_gui_settings_window_exists() != 0} resource=IDD_SETTINGS_*:260x168_dlu shell={ui_geometry.settings_window_width_px()}x{ui_geometry.settings_window_height_px()}_provisional")
+    else:
+        s.status = ""
+        if s.test_mode: println("CI_SETTINGS_WINDOW mode=main settings_hidden=true")
+    s.canvas.redraw()
+
 fn tick(s: &mut MainWindow):
     s.elapsed_ms += 1000
+    if mr_gui_take_settings_close_request() != 0:
+        if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST source=window_manager")
+        set_settings_open(s, false)
+        if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true")
     if s.elapsed_ms % 3000 == 0: refresh(s)
     if not s.test_mode or s.test_timeout_ms <= 0: return
     if s.elapsed_ms >= s.test_timeout_ms:
@@ -327,8 +361,7 @@ fn activate(s: &mut MainWindow, target: f64):
         s.status = label(s.zh, "Cleaning is disabled pending safety review", "安全验收完成前，清理操作保持禁用")
         if s.test_mode: println("CI_CLEAN_DISABLED action=none")
     elif target == 101.0:
-        s.status = label(s.zh, "Settings are not implemented yet", "设置页面尚未实现")
-        s.popup = 0
+        set_settings_open(s, true)
     elif target == 102.0:
         if s.test_mode: println("CI_EXIT source=file_menu")
         ui.quit()
@@ -432,7 +465,7 @@ fn key(s: &mut MainWindow, event: &ui.Key):
     elif name == "F1":
         s.status = label(s.zh, "About page is not implemented yet", "关于页面尚未实现")
     elif name == "F2":
-        s.status = label(s.zh, "Settings page is not implemented yet", "设置页面尚未实现")
+        set_settings_open(s, true)
     elif name == "Down" or name == "Up":
         if s.popup == 0:
             if s.focus < 4.0:
@@ -475,8 +508,55 @@ fn key(s: &mut MainWindow, event: &ui.Key):
         if s.test_mode: println("CI_KEY_ACTION Enter")
     s.canvas.redraw()
 
+fn draw_settings(s: &mut MainWindow, p: &ui.Painter):
+    settings_ui.draw(&mut s.settings, p, s.zh, s.dark, p.width(), p.height())
+
+fn settings_mouse(s: &mut MainWindow, event: &ui.Mouse):
+    let width = f64(ui_geometry.settings_client_width_px())
+    let height = f64(ui_geometry.settings_client_height_px())
+    let target = settings_ui.hit(&s.settings, event.x(), event.y(), width, height)
+    if event.down() == 1:
+        settings_ui.pointer(&mut s.settings, target, true)
+        if s.test_mode: println(f"CI_SETTINGS_MOUSE_DOWN target={target}")
+        s.settings_canvas.redraw()
+    elif event.up() == 1:
+        let was_pressed = s.settings.pressed
+        settings_ui.pointer(&mut s.settings, target, false)
+        if s.test_mode: println(f"CI_SETTINGS_MOUSE_UP target={target}")
+        if was_pressed != 0.0 and was_pressed == target:
+            let action = settings_ui.click(&mut s.settings, target, s.zh)
+            if action == 1: set_settings_open(s, false)
+            elif action == 2:
+                s.zh = not s.zh
+                if s.test_mode:
+                    if s.zh: println("CI_LOCALE locale=zh-CN source=IDC_LANGUAGE_123")
+                    else: println("CI_LOCALE locale=en source=IDC_LANGUAGE_123")
+            if s.test_mode: println(f"CI_SETTINGS_MOUSE_ACTION target={target}")
+        s.settings_canvas.redraw()
+        s.canvas.redraw()
+    else:
+        let old_hover = s.settings.hover
+        settings_ui.pointer(&mut s.settings, target, false)
+        if old_hover != target: s.settings_canvas.redraw()
+
+fn settings_key(s: &mut MainWindow, event: &ui.Key):
+    if event.released(): return
+    let name = event.name()
+    if s.test_mode: println(f"CI_SETTINGS_KEY_EVENT name={name}")
+    let action = settings_ui.key(&mut s.settings, name, s.zh)
+    if action == 1:
+        set_settings_open(s, false)
+    elif action == 2:
+        s.zh = not s.zh
+        if s.test_mode:
+            if s.zh: println("CI_LOCALE locale=zh-CN source=IDC_LANGUAGE_123")
+            else: println("CI_LOCALE locale=en source=IDC_LANGUAGE_123")
+    s.settings_canvas.redraw()
+    s.canvas.redraw()
+
 fn close_window(s: &mut MainWindow):
     if s.test_mode: println("CI_WINDOW_CLOSE")
+    if s.settings_open: set_settings_open(s, false)
     ui.quit()
 
 fn main():
@@ -485,24 +565,35 @@ fn main():
     let window = ui.window("Mem Reduct", width, height)
     let canvas = ui.canvas()
     window.set_child(canvas)
+    let settings_width = ui_geometry.settings_window_width_px()
+    let settings_height = ui_geometry.settings_window_height_px()
+    let settings_window = ui.window("Settings - Mem Reduct", settings_width, settings_height)
+    let settings_canvas = ui.canvas()
+    settings_window.set_child(settings_canvas)
     let test_mode = mr_gui_test_mode() != 0
     let test_timeout = mr_gui_test_timeout_ms()
     if test_mode:
         println("CI_PRODUCTION_START")
         println(f"CI_GEOMETRY resource=IDD_MAIN:224x214_dlu provisional_window={width}x{height}")
+        println(f"CI_SETTINGS_GEOMETRY resource=IDD_SETTINGS_*:260x168_dlu provisional_shell={settings_width}x{settings_height} canvas={ui_geometry.settings_client_width_px()}x{ui_geometry.settings_client_height_px()}")
     let app: ui.App[MainWindow] = ui.app()
     app.on_draw(canvas, draw)
     app.on_mouse(canvas, mouse)
     app.on_key(canvas, key)
+    app.on_draw(settings_canvas, draw_settings)
+    app.on_mouse(settings_canvas, settings_mouse)
+    app.on_key(settings_canvas, settings_key)
     app.on_close(close_window)
     app.every(1000, tick)
     let mut state = MainWindow(
-        canvas: canvas, width: f64(width - 24), height: f64(height - 24),
+        canvas: canvas, settings_canvas: settings_canvas, width: f64(width - 24), height: f64(height - 24),
         zh: false, dark: false, menu: 0, popup: 0, hover: 0.0, pressed: 0.0,
         focus: 0.0, menu_focus: 0.0, status: "", mem_total: 0, mem_available: 0, swap_total: 0,
         swap_free: 0, cached_estimate: 0, sample_ok: false, draw_logged: false,
-        test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, sample_failure_draw_logged: false
+        test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, sample_failure_draw_logged: false,
+        settings_open: false, settings: settings_ui.initial(test_mode)
     )
+    if mr_gui_test_start_settings() != 0: set_settings_open(&mut state, true)
     refresh(&mut state)
     app.run(window, state)
     if test_mode: println("CI_APP_RETURNED")

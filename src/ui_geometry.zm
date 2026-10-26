@@ -109,6 +109,78 @@ pub fn clean_menu_item_rect(popup: &ui.Rect, row: i64) -> ui.Rect:
 pub fn clean_button_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
     dlu_rect(canvas_width, canvas_height, 8.0, 192.0, 208.0, 14.0)
 
+# Settings-page Dialog Units are fixed by the upstream 3.5.2 child templates.
+# The outer shell values below are provisional because upstream creates it
+# through a shared settings framework rather than a DIALOGEX resource.
+pub fn settings_shell_width_dlu() -> i64:
+    374
+
+pub fn settings_shell_height_dlu() -> i64:
+    214
+
+pub fn settings_page_width_dlu() -> i64:
+    260
+
+pub fn settings_page_height_dlu() -> i64:
+    168
+
+pub fn settings_client_width_px() -> i64:
+    x_dlu_to_logical_px(settings_shell_width_dlu())
+
+pub fn settings_client_height_px() -> i64:
+    y_dlu_to_logical_px(settings_shell_height_dlu())
+
+pub fn settings_window_width_px() -> i64:
+    settings_client_width_px() + 24
+
+pub fn settings_window_height_px() -> i64:
+    settings_client_height_px() + 24
+
+fn settings_x(value: f64, canvas_width: f64) -> f64:
+    value * 1.4 * canvas_width / f64(settings_client_width_px())
+
+fn settings_y(value: f64, canvas_height: f64) -> f64:
+    value * 1.5 * canvas_height / f64(settings_client_height_px())
+
+pub fn settings_dlu_rect(canvas_width: f64, canvas_height: f64, x: f64, y: f64, w: f64, h: f64) -> ui.Rect:
+    ui.rect(
+        settings_x(x, canvas_width),
+        settings_y(y, canvas_height),
+        settings_x(w, canvas_width),
+        settings_y(h, canvas_height)
+    )
+
+pub fn settings_page_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
+    settings_dlu_rect(canvas_width, canvas_height, 102.0, 8.0, 260.0, 168.0)
+
+pub fn settings_nav_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
+    settings_dlu_rect(canvas_width, canvas_height, 8.0, 8.0, 82.0, 104.0)
+
+pub fn settings_nav_item_rect(canvas_width: f64, canvas_height: f64, index: i64) -> ui.Rect:
+    settings_dlu_rect(canvas_width, canvas_height, 8.0, 10.0 + f64(index) * 20.0, 82.0, 18.0)
+
+pub fn settings_child_rect(canvas_width: f64, canvas_height: f64, x: f64, y: f64, w: f64, h: f64) -> ui.Rect:
+    let page = settings_page_rect(canvas_width, canvas_height)
+    let sx = canvas_width / f64(settings_client_width_px())
+    let sy = canvas_height / f64(settings_client_height_px())
+    ui.rect(page.x + x * 1.4 * sx, page.y + y * 1.5 * sy, w * 1.4 * sx, h * 1.5 * sy)
+
+pub fn settings_feedback_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
+    settings_dlu_rect(canvas_width, canvas_height, 102.0, 180.0, 260.0, 12.0)
+
+pub fn settings_reset_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
+    settings_dlu_rect(canvas_width, canvas_height, 260.0, 196.0, 46.0, 16.0)
+
+pub fn settings_close_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
+    settings_dlu_rect(canvas_width, canvas_height, 314.0, 196.0, 48.0, 16.0)
+
+pub fn settings_reset_modal_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
+    settings_dlu_rect(canvas_width, canvas_height, 112.0, 72.0, 252.0, 72.0)
+
+pub fn settings_modal_button_rect(canvas_width: f64, canvas_height: f64, confirm: bool) -> ui.Rect:
+    if confirm: return settings_dlu_rect(canvas_width, canvas_height, 226.0, 118.0, 58.0, 16.0)
+    settings_dlu_rect(canvas_width, canvas_height, 292.0, 118.0, 58.0, 16.0)
+
 pub fn menu_root_rect(canvas_width: f64, canvas_height: f64, menu: i64) -> ui.Rect:
     let mut x = 154.0
     let mut w = 156.0
@@ -196,3 +268,23 @@ fn test_resize_keeps_content_inside_compact_canvas():
     assert(list.x >= 0.0 and list.right() <= 260.0)
     assert(button.x >= 0.0 and button.right() <= 260.0)
     assert(button.bottom() <= 270.0)
+
+fn test_settings_child_template_and_shell_are_distinct():
+    assert(settings_page_width_dlu() == 260)
+    assert(settings_page_height_dlu() == 168)
+    assert(settings_window_width_px() == 547)
+    assert(settings_window_height_px() == 345)
+    assert(settings_window_width_px() != x_dlu_to_logical_px(260))
+
+fn test_settings_shell_contains_page_navigation_and_actions():
+    let w = f64(settings_client_width_px())
+    let h = f64(settings_client_height_px())
+    let nav = settings_nav_rect(w, h)
+    let page = settings_page_rect(w, h)
+    let reset = settings_reset_rect(w, h)
+    let close = settings_close_rect(w, h)
+    assert(nav.x >= 0.0 and nav.right() < page.x)
+    assert(page.right() <= w)
+    assert(page.bottom() < reset.y)
+    assert(reset.right() <= close.x)
+    assert(close.right() <= w)

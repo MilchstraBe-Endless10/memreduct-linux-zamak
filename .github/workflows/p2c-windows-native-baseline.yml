@@ -1,0 +1,31 @@
+name: P2C Windows native 3.5.2 baseline
+
+on:
+  push:
+    branches:
+      - feat/issue-3-p2c-settings-ui
+  pull_request:
+    branches:
+      - feat/issue-3-p2b-main-window
+
+permissions:
+  contents: read
+
+jobs:
+  windows-native-release:
+    name: Verify official Windows release and probe runner desktop
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Verify official 3.5.2 assets and attempt native screenshots
+        shell: pwsh
+        run: ./scripts/ci/windows-native-baseline.ps1
+      - name: Upload release provenance, desktop probe, and authentic screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p2c-windows-native-3.5.2
+          path: ${{ runner.temp }}/memreduct-windows-native
+          if-no-files-found: warn
+          retention-days: 14

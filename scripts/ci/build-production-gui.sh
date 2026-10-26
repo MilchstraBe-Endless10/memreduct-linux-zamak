@@ -37,13 +37,14 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
   printf 'GTK3=%s\n' "$(pkg-config --modversion gtk+-3.0)"
   printf 'Kernel=%s\n' "$(uname -srmo)"
   printf 'Layout source=Mem Reduct v3.5.2 IDD_MAIN 224x214 DLU\n'
+  printf 'Settings source=Mem Reduct v3.5.2 five child templates 260x168 DLU; shell 374x214 DLU is PROVISIONAL\n'
   printf 'Provisional conversion=X 1.4 logical px/DLU, Y 1.5 logical px/DLU at nominal 96 DPI; controls scale from this centralized model\n'
   printf 'Windows font/DPI calibration=NOT RUN; Linux X11 and Wayland surface geometries are recorded separately\n'
   printf 'The 336x348 CI canvas probe is not used as the production window default\n'
 } | tee "$artifact_dir/environment.txt"
 
 {
-  sha256sum src/main.zm src/ui_geometry.zm native/gui_test.c zam.toml \
+  sha256sum src/main.zm src/settings_ui.zm src/ui_geometry.zm native/gui_test.c native/gui_window.c zam.toml \
     | sed 's#  #  #'
   sha256sum "$artifact_dir/memreduct-zamak-production" \
     | awk '{print $1 "  memreduct-zamak-production"}'

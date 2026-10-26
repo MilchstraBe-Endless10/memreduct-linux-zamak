@@ -4,9 +4,10 @@ on:
   push:
     branches:
       - feat/issue-3-p2b-main-window
+      - feat/issue-3-p2c-settings-ui
   pull_request:
     branches:
-      - docs/issue-3-p2a-ui-spec
+      - feat/issue-3-p2b-main-window
 
 permissions:
   contents: read
@@ -37,6 +38,10 @@ jobs:
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/p2b-x11
         run: bash scripts/ci/p2b-production-xvfb.sh "$RUNNER_TEMP/p2b-x11/memreduct-zamak-production"
+      - name: Exercise production settings pages with isolated real X11 input
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2b-x11
+        run: bash scripts/ci/p2c-settings-xvfb.sh "$RUNNER_TEMP/p2b-x11/memreduct-zamak-production"
       - name: Upload X11 screenshots and logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 commit used by R6 CI

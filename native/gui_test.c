@@ -44,3 +44,9 @@ long long mr_gui_test_fail_sample_after(long long elapsed_ms)
     }
     return elapsed_ms >= parsed ? 1 : 0;
 }
+
+long long mr_gui_test_start_settings(void)
+{
+    const char *value = getenv("MEMREDUCT_CI_START_SETTINGS");
+    return mr_gui_test_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
+}
