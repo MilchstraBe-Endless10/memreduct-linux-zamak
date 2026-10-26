@@ -129,6 +129,9 @@ public static class P2CWin32 {
   [DllImport("user32.dll", SetLastError=true)] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetFocus(IntPtr hWnd);
+  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageText(IntPtr hWnd, uint message, IntPtr wParam, System.Text.StringBuilder lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool IsWindowVisible(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int maxCount);
@@ -165,6 +168,21 @@ public static class P2CWin32 {
       return true;
     }, IntPtr.Zero);
     return windows.ToArray();
+  }
+  public static string[] GetComboItems(IntPtr combo) {
+    const uint CB_GETCOUNT=0x0146, CB_GETLBTEXTLEN=0x0149, CB_GETLBTEXT=0x0148;
+    int count=SendMessage(combo, CB_GETCOUNT, IntPtr.Zero, IntPtr.Zero).ToInt32();
+    var items=new System.Collections.Generic.List<string>();
+    for (int index=0; index<count; index++) {
+      int length=SendMessage(combo, CB_GETLBTEXTLEN, new IntPtr(index), IntPtr.Zero).ToInt32();
+      var text=new System.Text.StringBuilder(Math.Max(length+1, 2));
+      SendMessageText(combo, CB_GETLBTEXT, new IntPtr(index), text);
+      items.Add(text.ToString());
+    }
+    return items.ToArray();
+  }
+  public static int GetComboSelection(IntPtr combo) {
+    return SendMessage(combo, 0x0147, IntPtr.Zero, IntPtr.Zero).ToInt32();
   }
 }
 '@
@@ -295,16 +313,43 @@ public static class P2CWin32 {
                     $g.Dispose(); $shot.Dispose()
                 }.GetNewClosure()
 
+                $pageSentinels = @('116,123', '124,125,131', '133,139,140', '141,148,152', '153,154')
+                $settingsChildren = @([P2CWin32]::GetChildWindows($settingsHwnd))
+                $navControl = $settingsChildren | Where-Object { $_.ControlId -eq 104 } | Select-Object -First 1
+                $selectPageByKeyboard = {
+                    param([int]$PageIndex, [string]$Language, [string]$Label)
+                    if (-not $navControl) { return $false }
+                    [void][P2CWin32]::SetForegroundWindow($settingsHwnd)
+                    [void][P2CWin32]::SetFocus($navControl.Handle)
+                    [System.Windows.Forms.SendKeys]::SendWait('{HOME}')
+                    for ($down = 0; $down -lt $PageIndex; $down++) { [System.Windows.Forms.SendKeys]::SendWait('{DOWN}') }
+                    Start-Sleep -Milliseconds 300
+                    $currentChildren = @([P2CWin32]::GetChildWindows($settingsHwnd))
+                    $visibleIds = @($currentChildren | Where-Object { $_.Visible } | ForEach-Object { $_.ControlId })
+                    $expectedIds = @($pageSentinels[$PageIndex].Split(',') | ForEach-Object { [int]$_ })
+                    $missing = @($expectedIds | Where-Object { $_ -notin $visibleIds })
+                    if ($missing.Count -gt 0) {
+                        Write-Status "BLOCKED Windows Native $Language page '$Label': IDC_NAV keyboard selection did not show expected resource IDs $($missing -join ',')."
+                        return $false
+                    }
+                    $shotName = "windows-native-settings-$PageIndex-$Language.png"
+                    & $captureWindow $settingsHwnd (Join-Path $artifactDir $shotName)
+                    Write-Status "CAPTURED Windows Native page=$Label language=$Language dpi=$settingsDpi screenshot=$shotName visible_resource_ids=$($pageSentinels[$PageIndex])"
+                    return $true
+                }.GetNewClosure()
+
                 $pageComplete = $true
                 foreach ($pageIndex in 0..4) {
                     if (-not (& $selectPage $settingsElement $pageLabelsEnglish[$pageIndex])) {
-                        Write-Status "BLOCKED Windows Native page navigation: English label '$($pageLabelsEnglish[$pageIndex])' not selectable via UI Automation."
-                        $pageComplete = $false; break
+                        if (-not (& $selectPageByKeyboard $pageIndex 'English' $pageLabelsEnglish[$pageIndex])) {
+                            $pageComplete = $false; break
+                        }
+                    } else {
+                        Start-Sleep -Milliseconds 250
+                        $shotName = "windows-native-settings-$pageIndex-en.png"
+                        & $captureWindow ([IntPtr]$settingsHwnd) (Join-Path $artifactDir $shotName)
+                        Write-Status "CAPTURED Windows Native page=$($pageLabelsEnglish[$pageIndex]) language=English dpi=$settingsDpi screenshot=$shotName"
                     }
-                    Start-Sleep -Milliseconds 250
-                    $shotName = "windows-native-settings-$pageIndex-en.png"
-                    & $captureWindow ([IntPtr]$settingsHwnd) (Join-Path $artifactDir $shotName)
-                    Write-Status "CAPTURED Windows Native page=$($pageLabelsEnglish[$pageIndex]) language=English dpi=$settingsDpi screenshot=$shotName"
                 }
 
                 if (-not $pageComplete) {
@@ -338,18 +383,47 @@ public static class P2CWin32 {
                             }
                         } catch { Write-Status "Chinese language selection through native UI Automation failed: $($_.Exception.Message)" }
                     }
-                    if (-not $languageCombo) {
+                    $nativeLanguageControl = $settingsChildren | Where-Object { $_.ControlId -eq 123 -and $_.ClassName -eq 'ComboBox' } | Select-Object -First 1
+                    if (-not $languageSelected -and $nativeLanguageControl) {
+                        $languageItems = @([P2CWin32]::GetComboItems($nativeLanguageControl.Handle))
+                        for ($itemIndex = 0; $itemIndex -lt $languageItems.Count; $itemIndex++) {
+                            Write-Status "Windows Native language item index=$itemIndex text=$($languageItems[$itemIndex])"
+                        }
+                        $chineseIndex = -1
+                        for ($itemIndex = 0; $itemIndex -lt $languageItems.Count; $itemIndex++) {
+                            if ($languageItems[$itemIndex] -match 'Chinese.*Simplified|Simplified Chinese|简体中文') { $chineseIndex = $itemIndex; break }
+                        }
+                        if ($chineseIndex -ge 0) {
+                            [void](& $selectPageByKeyboard 0 'English' $pageLabelsEnglish[0])
+                            [void][P2CWin32]::SetForegroundWindow($settingsHwnd)
+                            [void][P2CWin32]::SetFocus($nativeLanguageControl.Handle)
+                            [System.Windows.Forms.SendKeys]::SendWait('{F4}')
+                            [System.Windows.Forms.SendKeys]::SendWait('{HOME}')
+                            for ($down = 0; $down -lt $chineseIndex; $down++) { [System.Windows.Forms.SendKeys]::SendWait('{DOWN}') }
+                            [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+                            Start-Sleep -Milliseconds 500
+                            $selectedIndex = [P2CWin32]::GetComboSelection($nativeLanguageControl.Handle)
+                            $languageSelected = $selectedIndex -eq $chineseIndex
+                            Write-Status "Windows Native language selection requested_index=$chineseIndex selected_index=$selectedIndex"
+                        } else {
+                            Write-Status 'BLOCKED Windows Native Simplified Chinese screenshots: IDC_LANGUAGE has no Simplified Chinese choice.'
+                        }
+                    }
+                    if (-not $languageCombo -and -not $nativeLanguageControl) {
                         Write-Status 'BLOCKED Windows Native Simplified Chinese screenshots: IDC_LANGUAGE was not exposed to UI Automation.'
                     } elseif (-not $languageSelected) {
                         Write-Status 'BLOCKED Windows Native Simplified Chinese screenshots: no Simplified Chinese option was selectable through UI Automation.'
                     } else {
                         Start-Sleep -Milliseconds 500
                         foreach ($pageIndex in 0..4) {
-                            if (-not (& $selectPage $settingsElement $pageLabelsChinese[$pageIndex])) { $pageComplete = $false; break }
-                            Start-Sleep -Milliseconds 250
-                            $shotName = "windows-native-settings-$pageIndex-zh-CN.png"
-                            & $captureWindow ([IntPtr]$settingsHwnd) (Join-Path $artifactDir $shotName)
-                            Write-Status "CAPTURED Windows Native page=$($pageLabelsChinese[$pageIndex]) language=zh-CN dpi=$settingsDpi screenshot=$shotName"
+                            if (-not (& $selectPage $settingsElement $pageLabelsChinese[$pageIndex])) {
+                                if (-not (& $selectPageByKeyboard $pageIndex 'zh-CN' $pageLabelsChinese[$pageIndex])) { $pageComplete = $false; break }
+                            } else {
+                                Start-Sleep -Milliseconds 250
+                                $shotName = "windows-native-settings-$pageIndex-zh-CN.png"
+                                & $captureWindow ([IntPtr]$settingsHwnd) (Join-Path $artifactDir $shotName)
+                                Write-Status "CAPTURED Windows Native page=$($pageLabelsChinese[$pageIndex]) language=zh-CN dpi=$settingsDpi screenshot=$shotName"
+                            }
                         }
                         if ($pageComplete) {
                             [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
