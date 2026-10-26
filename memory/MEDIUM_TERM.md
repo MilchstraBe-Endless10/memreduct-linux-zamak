@@ -13,9 +13,9 @@
 
 **P2C-1：五页设置界面** — Draft PR #7，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。生产源码测试 checkpoint `d4f1ca97ac42bc1516a484163b9d4536ea9194b2`；完整 Actions 在文档 head `b473700f0513e91fc6f171fa2b0a8fc3abd3f7df` 全部 PASS（之后仅报告/记忆内容需再同步）。最近修复移除 libui-ng GTK 内容 holder 的 12 px border；Xvfb 实测设置 Canvas 558×335，与隔离 Windows v3.5.2 runner 实测 client area 558×335（Windows outer 574×374，96 DPI / 100%）一致。生产设置窗五页、English/简体中文、资源控件映射及禁用状态详见 `docs/P2C-1_SETTINGS_UI_REPORT.md`。PR GUI run `40269534094` 的 Xvfb/XTEST 与 Weston Headless/Pixman 作业均 PASS，Artifacts：X11 `12627279867`、Wayland `12627990285`；PR build run `40269534153` PASS；PR Windows provenance/native screenshot run `40269534205` PASS，artifact `12627309561`。Windows-hosted runner 采集主窗及五页×两种语言；release/tag/资产哈希、setup PGP 签名、binary version 均核验。本机对代码 checkpoint `d4f1ca9` 的 Zamak 0.2.0 `check/build`、22/22 test、33 项 project verify、3 项 C tests、Arch build、shell syntax 与 `git diff --check` PASS。Windows/Linux 截图客户区几何在指定环境匹配，但没有裁剪叠图和像素差异计算，1:1 / 2 px 仍 NOT RUN；深色主题、菜单/托盘/清理对话框仍未采集。设置持久化、托盘/SNI、自动清理、通知和特权功能未实现或禁用。
 
-**P2C-2：真实截图校准（进行中）** — PR #7 同一分支已推送 `f5c5488b4f4e0871311c52dfe4bde61d89be7b7a`。Windows/Xvfb/compare run `40284199572`、production Xvfb+Weston `40284199595`、build/test `40284199576`。Xvfb/XTEST、Wayland lifecycle、Windows provenance 和 build/test PASS；Windows/Xvfb/compare 采集作业 PASS，但比较器因 Memory checkbox crop 包含下一行像素而 FAIL 两个 raster 项。其余底色 6 项和 General checkbox 2 项 PASS；几何 172 PASS、0 FAIL，另有 12 项中间滚动状态 `NOT_COMPARABLE_NATIVE_STATE`。改变像素降至 7.9548%–18.6990%，仍不构成像素等价。已将 ROI 缩至单行范围，新的 exact-head CI 待提交后执行。Zamak 28/28、check/build、治理 33 项、C 安全测试 3 项、Arch build 与 `git diff --check` 本地通过；未在用户桌面启动 GUI。
+**P2C-2：真实截图校准（进行中）** — PR #7 同一分支源码 head `06be74b740e8906e64d837d8ac77e0255bea1081`。修正 GroupBox 1 px Cairo stroke 半像素路径后，Windows native + Xvfb + pixel comparison run `40290615170` PASS；artifacts：Windows `12636291172`、Linux X11 `12635727110`、对照/overlay/heatmap `12635877774`。几何表 172 PASS（≤2 px）、12 `NOT_COMPARABLE_NATIVE_STATE`、0 FAIL；Control/page raster 12/12 与源色样 8/8 PASS。原图 changed pixels 为 7.3958%–17.6612%，字体/抗锯齿和原生控件绘制仍阻止 1:1 结论。P2B production push run `40290609997` 的 Xvfb/Weston 均 PASS；P2B PR run `40290615331` 的 Xvfb PASS，而同一 source 的 PR-event Weston 依赖安装步骤在记录时仍 pending。Build/test PR/push runs `40290615246` / `40290610030` PASS。Zamak 28/28、check/build、治理 33 项、C safety 3/3、Shell、Arch build、`git diff --check` 本机 PASS；没有本机启动 GUI 或操作活动桌面。
 
-### P2C-2 最新验收状态（2026-10-26，source head `1d1d6562cb27ddb63fb38a2bf71756b5e88d63ee`）
+### P2C-2 历史验收状态（2026-10-26，source head `1d1d6562cb27ddb63fb38a2bf71756b5e88d63ee`）
 
 PR #7 的 Xvfb/XTEST + Weston run `40284909745` 两项通过，Windows native baseline `40284909821` 的 Windows job 通过，build/test `40284909782` 通过。对应 artifacts：X11 `12633129180`、Wayland `12633864035`、Windows `12633108874`。Windows/Linux artifacts 的本地对照由 bundled Pillow 12.3.0 运行：172 geometry PASS、10 control-raster PASS、8 source swatch PASS；12 个中间滚动行标记 `NOT_COMPARABLE_NATIVE_STATE`。像素 changed range 7.9548%–18.6990%，因此 1:1 仍未通过。Hosted PR run `40284909821` 与 push duplicate `40284904057` 的 Xvfb 作业均在 25 分钟 timeout 后取消，比较 job 被跳过；workflow 已改为只由 PR 事件触发，并将 Xvfb / comparison timeout 调至 45 / 20 分钟，待新 head Actions 验证。截图 SHA、Win32 控件映射和 GTK 日志在设置报告。本机 Zamak 28/28、33 项治理检查、C safety 3/3、Shell、Arch build 与 diff 检查通过；未启动本机 GUI或操作活动桌面。
 
@@ -30,7 +30,7 @@ PR #7 的 Xvfb/XTEST + Weston run `40284909745` 两项通过，Windows native ba
 
 ## 当前阻塞
 - 等待 ChatGPT 复审 PR #6/#7 的生产主窗和五页设置 UI、截图与诊断；PR #7 保持 OPEN / Draft，不合并。
-- Windows v3.5.2 主窗及五页双语 Native 截图已在隔离 Windows Server 2022 runner 取得，且设置 client-area 尺寸已有实测；像素 overlay/2 px、深色主题及菜单/托盘/清理对话框仍未完成。Hyprland 输入仍未验证。Weston 日志中的 GTK seat critical / shutdown layer diagnostic 保留为待解释观察，不推断根因。
+- Windows v3.5.2 主窗及五页双语 Native 截图已在隔离 Windows Server 2022 runner 取得；light-theme overlay/difference 与几何 2 px 比较已有 hosted evidence。全局像素等价仍未通过，字体/抗锯齿和原生控件视觉仍有差异；深色主题、托盘/菜单/清理对话框截图、Wayland 输入和未匹配的中间滚动状态仍缺。Weston 的 GTK seat critical / shutdown layer diagnostic 继续保留，不推断根因。
 - 五页设置界面已实现导航和显示；设置持久化、托盘/SNI、Polkit 授权端到端、真实缓存清理、Swap/ZRAM 写入均未执行或实现。除语言、Reset 确认和 Close 外的设置控件保持禁用。
 
 ## 阶段表
@@ -41,7 +41,7 @@ PR #7 的 Xvfb/XTEST + Weston run `40284909745` 两项通过，Windows native ba
 | P2A | 固定 Windows 3.5.2 UI/UX 规格、交互矩阵、Linux 能力映射及隔离测试 | 源码规格 PR #5 OPEN / Draft，PR #4 隔离 X11/Wayland CI PASS。Windows 源图缺失，像素验收 BLOCKED |
 | P2B | 主窗口 UI 高保真实现 | 首个待校准生产候选已在 Draft PR #6；待代码/截图复审；最终像素验收仍等真实 Windows 截图 |
 | P2C-1 | 五页设置窗口、双语页面、Reset/Close 与生产 UI 隔离验收 | Draft PR #7；production Xvfb/XTEST、Weston lifecycle、Windows native baseline、Win32 resource geometry 和 overlays 均有隔离 CI 证据；设置 Canvas 与 Windows client 均 558×335；像素级 1:1 未通过 |
-| P2C-2 | 基于 Windows 3.5.2 截图校准五页设置界面 | PR #7 同一功能分支；页面背景/checkbox 尺寸/列表行内缩已本地修正，Zamak 28/28 和 Arch build PASS；修改后 Xvfb/Weston/Windows exact-head Actions 与 raster/2 px 判断待运行 |
+| P2C-2 | 基于 Windows 3.5.2 截图校准五页设置界面 | PR #7 同一功能分支；半像素 GroupBox 校准、Windows/Xvfb overlays、12/12 raster、172/172 comparable geometry ≤2 px 已 PASS；12 个中间滚动行不可比较；全局像素等价未通过，PR-event Weston 作业待收尾 |
 | P2 | 可信指标显示/日志/只读探测，安全反馈 | 未开始；依赖 P1 与阶段审查 |
 | P3 | 手动一键缓存清理验收、特权隔离与回滚测试 | 未开始；依赖 P2 |
 | P4 | 有条件的自动策略、配置持久化、冷却与可观察性 | 未开始；依赖 P3 安全评审 |

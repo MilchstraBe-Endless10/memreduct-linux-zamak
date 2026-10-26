@@ -2,6 +2,16 @@
 
 ## 当前续接：P2C-2 原版截图校准（2026-10-26）
 
+### Exact-head 验收（production source SHA `06be74b740e8906e64d837d8ac77e0255bea1081`）
+
+- PR #7 OPEN / Draft，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`；继续使用 `feat/issue-3-p2c-settings-ui`，未修改 main 或其他 PR 分支。
+- 修复 GroupBox 1 px 描边的半像素对齐。精确源截图对照 run `40290615170` 通过；artifacts：Windows native `12636291172`、Linux production X11 `12635727110`、overlay/diff/geometry `12635877774`。Windows 与 Linux 实际截图覆盖五页双语，所有原图 SHA-256、并排图、50% overlay、差异热图、RGB 样本及 CSV 几何表见 `docs/P2C-1_SETTINGS_UI_REPORT.md`。
+- 184 个几何记录：172 PASS（偏差≤2 px）、12 `NOT_COMPARABLE_NATIVE_STATE`（Linux 中间滚动状态未在 Windows 捕获）、0 FAIL。Control/page raster 12/12 PASS；Appearance source-color samples 8/8 PASS。五页/两语言 changed pixels 为 7.3958%–17.6612%，故仍不等于 1:1。
+- Xvfb/XTEST exact-source PR run `40290615170` PASS，应用正常退出 0；P2B GUI push run `40290609997` 的 Weston Headless/Pixman 也 PASS，artifact `12635732860`。Wayland artifact 保留一条 GDK `gdk_seat_get_keyboard` critical 与 Weston shutdown `BUG: finalizing a layer with views still on it.`，没有证据确认因果；不宣称 Wayland 输入验收。PR 事件 GUI run `40290615331` 的 Xvfb PASS，Weston 依赖安装步骤在报告快照时仍运行。
+- GTK 3.24.41 日志记录 `delete-event` signal 66、唯一预存 unblocked handler 70 被单独 block 后连接目标 handler；运行时树确认唯一直接 GtkBox holder 且 border 12→0。XTEST 覆盖 Close/Escape/Alt+F4/WM_DELETE、重复隐藏/重开、主窗口继续可用及正常退出时释放窗口资源。
+- 本机：Zamak 0.2.0 check/build PASS、test 28/28 PASS；项目治理 33 项 PASS、C 安全单测 3/3 PASS、Shell 语法、比较脚本 py_compile、Arch build、`git diff --check` PASS。主机没有 Xvfb/Weston，故本机运行时截图 `NOT RUN`；GUI 证据来自隔离 runner。没有启动本地 GUI、访问 Hyprland、清理内存、Polkit 或修改 Swap/ZRAM。
+- 环境：Windows Server 2022 1024×768、96 DPI/100%、light、`Ms Shell Dlg` 8 pt；Linux Ubuntu 24.04、Xvfb 1024×768×24、GTK 3.24.41、DPI 96/scale 1、Adwaita light、DejaVu Sans/Noto Sans CJK SC。字体/抗锯齿仍可见；暗色 Windows 截图和 Windows 未采集的中间滚动几何仍是缺口。
+
 ### Exact-head 验收更新（源码 head `1d1d6562cb27ddb63fb38a2bf71756b5e88d63ee`）
 
 - PR #7 仍 OPEN / Draft，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`；PR review 无新行内结论。HEAD 与远端一致，工作树起初干净；未改 main、PR #2/#4/#5/#6，也未启动本机 GUI 或操作桌面。
@@ -12,10 +22,9 @@
 - 本机非 GUI：Zamak 0.2.0 `check`, `build`, `scripts/build-arch.sh` PASS，`test` 28/28；project verify 33 项、C safety 3/3、相关 Shell 语法和 `git diff --check` PASS。Pillow 比较使用 bundled runtime，未安装本机依赖。
 - 已调整 P2C Windows baseline workflow：仅由目标 PR 触发，避免同一提交同时启动 push/PR 两套重复截图任务；Xvfb timeout 45 分钟、比较 timeout 20 分钟。此工作流修正尚待当前提交的 Actions 验证。没有在本机启动 GUI、Xvfb、Wayland 或操作 Hyprland。
 
-### P2C-2 GroupBox 校准增量（待 hosted 验收）
+### P2C-2 GroupBox 校准记录
 
-- 从同一页未缩放截图在 client `(156,20)` 采样，Win32 GroupBox 边线为 RGB `(220,220,220)`，原 Linux 绘制为 `(187,187,187)`。`src/settings_ui.zm` 现将浅色 GroupBox 线改为测得值 `#DCDCDC`；暗色值仍标为临时，因为没有 Windows 暗色参考。比较脚本增加双语 GroupBox 边线色样检查。
-- 修改后 Zamak 0.2.0 check/test/build 通过（28/28）；项目治理 33 项、C safety 3/3、比较脚本 py_compile、全部 Shell 语法、Arch build、`git diff --check` 均通过。修正后生产 Xvfb 截图和 hosted comparator 尚待本次提交后的 Actions；没有本机 GUI/桌面操作。
+- 参考与首次未校准样本为 Windows `#DCDCDC`、Linux `#BBBBBB`。仅改颜色后的 CI 样本为 `#E5E5E5`，原因是 1 px Cairo stroke 在整数路径中心覆盖半像素。路径移至半像素并缩小矩形后，exact-head run `40290615170` 在双语均得到 `#DCDCDC`，相关几何与栅格检查通过。暗色值仍是临时值，没有真实 Windows 暗色参考。
 
 - 继续使用 PR #7 分支 `feat/issue-3-p2c-settings-ui`。开工时本地与远端 HEAD 均为 `90f5b31a9dede8896a44bd356c43f38862a005db`；PR #7 OPEN / Draft，base `feat/issue-3-p2b-main-window`，没有修改 main 或其他 PR 分支。
 - 已下载并核对该 HEAD 的 CI 证据：Windows 原生/几何 artifact `12632986603`、生产 Xvfb artifact `12632328288`、overlay/diff/几何 artifact `12632129496`；run `40282499292` Windows+Xvfb+comparison、`40282499286` Xvfb+Weston、`40282499313` build/test 均 PASS。该批证据只对应修正前的 `90f5b31`。
