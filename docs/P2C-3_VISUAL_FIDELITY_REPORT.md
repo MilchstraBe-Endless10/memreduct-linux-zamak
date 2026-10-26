@@ -22,7 +22,7 @@
 ## P2C-3 代码变化
 
 - 英文内存清理列表的两个版本后缀按 3.5.2 固定源码改为 `win8.1+`、`win10+`；简中保持项目已要求的独立本地化。
-- Windows runner 使用 `WM_GETFONT`、`LOGFONT`、GDI `TEXTMETRIC` 与文本测量导出实际控件字体和宽高；IDC_REGIONS / IDC_COLORS 行名由 Windows UI Automation 读取，避免在采集器里用硬编码文本冒充运行时显示。
+- Windows runner 使用 `WM_GETFONT`、`LOGFONT`、GDI `TEXTMETRIC` 与文本测量导出实际控件字体和宽高；IDC_REGIONS / IDC_COLORS 行名通过跨进程 `LVM_GETITEMTEXTW` 从真实 Win32 ListView 读取。该方法不依赖 UI Automation 为原生 ListView 提供 ListItem provider，也不以源码常量冒充运行时显示。
 - 隔离 Windows runner 采集 `IDC_REGIONS` 的顶部、中间、底部状态，并输出资源 ID 几何；Linux 生产 Xvfb 用同样的滚动偏移截屏并导出 Canvas 文本度量。
 - 比较器输出来源文案矩阵、字体/文本度量、中间滚动墨迹框、逐控件几何、overlay/热力图、P2C-2 全页变化率回归表及 SHA-256 清单。两端图像不做缩放或任意配准。
 - Windows runner 仅尝试打开原版菜单/分割按钮菜单、托盘上下文菜单和原版暗色主题命令。清理确认/结果弹窗若需执行真实清理才能触发，则保持 `BLOCKED`，不发送清理命令。

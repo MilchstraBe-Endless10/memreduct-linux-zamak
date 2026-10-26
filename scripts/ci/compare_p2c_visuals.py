@@ -499,7 +499,7 @@ def write_region_text_metrics(windows_dir: Path, linux_dir: Path, output_dir: Pa
                 if native_rect is None or linux_rect is None:
                     raise ValueError(f"Missing measured IDC_REGIONS text row geometry: {key}")
                 if (locale, index) not in windows_text:
-                    raise ValueError(f"Missing Windows UI Automation text for IDC_REGIONS {locale}/row-{index}")
+                    raise ValueError(f"Missing Windows native ListView text for IDC_REGIONS {locale}/row-{index}")
                 linux_text_row = linux_text.get((102, locale, 124, f"row-{index}"))
                 if linux_text_row is None:
                     raise ValueError(f"Missing Linux production text for IDC_REGIONS {locale}/row-{index}")
@@ -645,7 +645,7 @@ def write_text_metrics_comparison(windows_dir: Path, linux_dir: Path, output_dir
             if not windows_row or not linux_row:
                 status = "MISSING_CAPTURE_OR_METRIC"
             elif (actual_windows != source_english or actual_linux != local_translation
-                  or windows_row.get("sample_text_source") != "UIAutomationListItem"):
+                  or windows_row.get("sample_text_source") != "Win32LVM_GETITEMTEXTW"):
                 status = "UNEXPECTED_TEXT_DOES_NOT_MATCH_DOCUMENTED_MATRIX"
                 unexpected_divergences += 1
             else:

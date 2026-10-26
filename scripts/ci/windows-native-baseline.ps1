@@ -141,6 +141,11 @@ public static class P2CWin32 {
     public byte Italic, Underlined, StruckOut, PitchAndFamily, CharSet;
   }
   [StructLayout(LayoutKind.Sequential)] public struct SIZE { public int Width, Height; }
+  [StructLayout(LayoutKind.Sequential, CharSet=System.Runtime.InteropServices.CharSet.Unicode)] public struct LVITEMW {
+    public uint mask; public int iItem; public int iSubItem; public uint state; public uint stateMask;
+    public IntPtr pszText; public int cchTextMax; public int iImage; public IntPtr lParam;
+    public int iIndent; public int iGroupId; public uint cColumns; public IntPtr puColumns; public IntPtr piColFmt; public int iGroup;
+  }
   public sealed class FontTextMetrics {
     public string FaceName; public string ResolvedFaceName; public int LogFontHeight; public int LogFontWidth; public int LogFontWeight;
     public int LogFontCharSet; public int TextMetricHeight; public int TextMetricAscent; public int TextMetricDescent; public int TextMetricWeight;
@@ -164,6 +169,8 @@ public static class P2CWin32 {
   [DllImport("kernel32.dll", SetLastError=true)] private static extern bool VirtualFreeEx(IntPtr process, IntPtr address, UIntPtr size, uint freeType);
   [DllImport("kernel32.dll", SetLastError=true)] private static extern bool WriteProcessMemory(IntPtr process, IntPtr address, ref RECT buffer, UIntPtr size, out UIntPtr bytesWritten);
   [DllImport("kernel32.dll", SetLastError=true)] private static extern bool ReadProcessMemory(IntPtr process, IntPtr address, out RECT buffer, UIntPtr size, out UIntPtr bytesRead);
+  [DllImport("kernel32.dll", EntryPoint="WriteProcessMemory", SetLastError=true)] private static extern bool WriteProcessMemoryRaw(IntPtr process, IntPtr address, IntPtr buffer, UIntPtr size, out UIntPtr bytesWritten);
+  [DllImport("kernel32.dll", EntryPoint="ReadProcessMemory", SetLastError=true)] private static extern bool ReadProcessMemoryRaw(IntPtr process, IntPtr address, IntPtr buffer, UIntPtr size, out UIntPtr bytesRead);
   [DllImport("kernel32.dll", SetLastError=true)] private static extern bool CloseHandle(IntPtr handle);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageText(IntPtr hWnd, uint message, IntPtr wParam, System.Text.StringBuilder lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool IsWindowVisible(IntPtr hWnd);
@@ -255,6 +262,51 @@ public static class P2CWin32 {
       items.Add(text.ToString());
     }
     return items.ToArray();
+  }
+  public static string[] GetListItemTexts(IntPtr list, uint processId) {
+    const uint LVM_GETITEMCOUNT=0x1004, LVM_GETITEMTEXTW=0x1073, SMTO_ABORTIFHUNG=0x0002, MESSAGE_TIMEOUT_MS=3000;
+    const uint PROCESS_VM_OPERATION=0x0008, PROCESS_VM_READ=0x0010, PROCESS_VM_WRITE=0x0020;
+    const int LVIF_TEXT=0x0001, MAX_TEXT_CHARS=512;
+    IntPtr process=OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, false, processId);
+    if (process == IntPtr.Zero)
+      throw new InvalidOperationException("OpenProcess for Win32 list text failed; last-error=" + Marshal.GetLastWin32Error());
+    UIntPtr itemSize=new UIntPtr((uint)Marshal.SizeOf(typeof(LVITEMW)));
+    UIntPtr textSize=new UIntPtr((uint)(MAX_TEXT_CHARS * sizeof(char)));
+    IntPtr remoteItem=IntPtr.Zero, remoteText=IntPtr.Zero, localItem=IntPtr.Zero, localText=IntPtr.Zero;
+    try {
+      remoteItem=VirtualAllocEx(process, IntPtr.Zero, itemSize, 0x3000, 0x04);
+      remoteText=VirtualAllocEx(process, IntPtr.Zero, textSize, 0x3000, 0x04);
+      if (remoteItem == IntPtr.Zero || remoteText == IntPtr.Zero)
+        throw new InvalidOperationException("VirtualAllocEx for Win32 list text failed; last-error=" + Marshal.GetLastWin32Error());
+      localItem=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(LVITEMW)));
+      localText=Marshal.AllocHGlobal(MAX_TEXT_CHARS * sizeof(char));
+      IntPtr messageResult;
+      if (SendMessageTimeoutValue(list, LVM_GETITEMCOUNT, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out messageResult) == IntPtr.Zero)
+        throw new TimeoutException("Win32 LVM_GETITEMCOUNT failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
+      int count=messageResult.ToInt32();
+      if (count < 0 || count > 64) throw new InvalidOperationException("Unexpected Win32 ListView item count: " + count);
+      var items=new System.Collections.Generic.List<string>();
+      for (int index=0; index<count; index++) {
+        var item=new LVITEMW { mask=LVIF_TEXT, iItem=index, iSubItem=0, pszText=remoteText, cchTextMax=MAX_TEXT_CHARS };
+        Marshal.StructureToPtr(item, localItem, false);
+        UIntPtr bytesWritten;
+        if (!WriteProcessMemoryRaw(process, remoteItem, localItem, itemSize, out bytesWritten) || bytesWritten.ToUInt64() != itemSize.ToUInt64())
+          throw new InvalidOperationException("WriteProcessMemory for Win32 list item text " + index + " failed; last-error=" + Marshal.GetLastWin32Error());
+        if (SendMessageTimeoutValue(list, LVM_GETITEMTEXTW, new IntPtr(index), remoteItem, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out messageResult) == IntPtr.Zero)
+          throw new TimeoutException("Win32 LVM_GETITEMTEXTW item " + index + " failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
+        UIntPtr bytesRead;
+        if (!ReadProcessMemoryRaw(process, remoteText, localText, textSize, out bytesRead) || bytesRead.ToUInt64() != textSize.ToUInt64())
+          throw new InvalidOperationException("ReadProcessMemory for Win32 list item text " + index + " failed; last-error=" + Marshal.GetLastWin32Error());
+        items.Add(Marshal.PtrToStringUni(localText) ?? String.Empty);
+      }
+      return items.ToArray();
+    } finally {
+      if (localText != IntPtr.Zero) Marshal.FreeHGlobal(localText);
+      if (localItem != IntPtr.Zero) Marshal.FreeHGlobal(localItem);
+      if (remoteText != IntPtr.Zero) VirtualFreeEx(process, remoteText, UIntPtr.Zero, 0x8000);
+      if (remoteItem != IntPtr.Zero) VirtualFreeEx(process, remoteItem, UIntPtr.Zero, 0x8000);
+      CloseHandle(process);
+    }
   }
   public static int GetComboSelection(IntPtr combo) {
     return SendMessage(combo, 0x0147, IntPtr.Zero, IntPtr.Zero).ToInt32();
@@ -665,40 +717,30 @@ public static class P2CWin32 {
                             $samples += [pscustomobject]@{ kind='native-control-text'; text=$control.Title; text_source='Win32GetWindowText' }
                         }
                         if ($control.ControlId -eq 124 -and $control.ClassName -eq 'SysListView32') {
-                            $listElement = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$control.Handle)
-                            $listItemCondition = [System.Windows.Automation.PropertyCondition]::new(
-                                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-                                [System.Windows.Automation.ControlType]::ListItem
-                            )
-                            $listItems = @($listElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $listItemCondition))
-                            $emptyItems = @($listItems | Where-Object { [string]::IsNullOrWhiteSpace($_.Current.Name) })
+                            $listItems = @([P2CWin32]::GetListItemTexts([IntPtr]$control.Handle, [uint32]$appProcess.Id))
+                            $emptyItems = @($listItems | Where-Object { [string]::IsNullOrWhiteSpace($_) })
                             if ($listItems.Count -ne 8 -or $emptyItems.Count -ne 0) {
-                                throw "UI Automation exposed $($listItems.Count) IDC_REGIONS rows for page $pageId/$Locale; expected 8 visible source strings."
+                                throw "Win32 LVM_GETITEMTEXTW exposed $($listItems.Count) IDC_REGIONS rows for page $pageId/$Locale, empty=$($emptyItems.Count); expected 8 non-empty source strings."
                             }
                             foreach ($regionIndex in 0..7) {
                                 $samples += [pscustomobject]@{
                                     kind="IDC_REGIONS_row-$regionIndex"
-                                    text=$listItems[$regionIndex].Current.Name
-                                    text_source='UIAutomationListItem'
+                                    text=$listItems[$regionIndex]
+                                    text_source='Win32LVM_GETITEMTEXTW'
                                 }
                             }
                         }
                         if ($control.ControlId -eq 140 -and $control.ClassName -eq 'SysListView32') {
-                            $listElement = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$control.Handle)
-                            $listItemCondition = [System.Windows.Automation.PropertyCondition]::new(
-                                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-                                [System.Windows.Automation.ControlType]::ListItem
-                            )
-                            $listItems = @($listElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $listItemCondition))
-                            $emptyItems = @($listItems | Where-Object { [string]::IsNullOrWhiteSpace($_.Current.Name) })
+                            $listItems = @([P2CWin32]::GetListItemTexts([IntPtr]$control.Handle, [uint32]$appProcess.Id))
+                            $emptyItems = @($listItems | Where-Object { [string]::IsNullOrWhiteSpace($_) })
                             if ($listItems.Count -ne 4 -or $emptyItems.Count -ne 0) {
-                                throw "UI Automation exposed $($listItems.Count) IDC_COLORS rows for page $pageId/$Locale; expected 4 source strings."
+                                throw "Win32 LVM_GETITEMTEXTW exposed $($listItems.Count) IDC_COLORS rows for page $pageId/$Locale, empty=$($emptyItems.Count); expected 4 non-empty source strings."
                             }
                             foreach ($colorIndex in 0..3) {
                                 $samples += [pscustomobject]@{
                                     kind="IDC_COLORS_row-$colorIndex"
-                                    text=$listItems[$colorIndex].Current.Name
-                                    text_source='UIAutomationListItem'
+                                    text=$listItems[$colorIndex]
+                                    text_source='Win32LVM_GETITEMTEXTW'
                                 }
                             }
                         }
