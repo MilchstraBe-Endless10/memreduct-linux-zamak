@@ -1,8 +1,8 @@
 # 短期记忆 / Latest Handoff
 
-## 最新核对：P2C-4 exact-head Actions 闭环（2026-10-27）
+## 最新核对：P2C-4 exact-head Actions 证据（2026-10-27）
 
-- 当前 PR #7 branch HEAD `dc1e112ba27bb1b89bcdd4b3c55ddf1465695e10`，Base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；PR OPEN / Draft。Head 仅隔离 P2B/P2C concurrency group，未改生产代码、基准图片或阈值。
+- CI 验证的 PR #7 分支 head `dc1e112ba27bb1b89bcdd4b3c55ddf1465695e10`，Base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；head 只隔离 P2B/P2C concurrency group，未改生产代码、基准图片或阈值。以下文档/记忆同步提交发生在该 CI checkpoint 之后；其自身 Actions 状态以 PR #7 最新 Checks 为准。
 - P2C run `40382203136`：Windows v3.5.2 来源、Linux production Xvfb/XTEST、视觉/暗色比较 3/3 PASS。Artifacts Windows `12679133143` (`sha256:1417e252b1d837c509670b73524ea9b9058eec0055104cfe5da478beb242e66a`)，Linux `12677879049` (`sha256:26fbc176837d7bce5fde49256f8d0f6744ddd235d1adfe13ea3a3e0972019805`)，comparison `12679860675` (`sha256:72d78940a992fae4c60efd0157bc4f7d9d9c4fcc702ed097b577e5e4ff5e6d8d`)。比较日志确认 558×335、10 screenshots、184/184 geometry、36/36 control raster、10/10 navigation selection、102/102 tree pixels、2/2 middle scroll；暗色图 10/10 配对，整页像素同一性 NOT PASS。比较 artifact 含逐图 SHA-256 manifest 及 Overlay/Difference/Heatmap。
 - P2B run `40382203135` 首次 Xvfb APT install attempt 1 以 `124` 超时；只重跑失败 job 后 attempt 2，P2B Xvfb 和 Weston 两 job 均 PASS。首跑日志：Ubuntu 24.04.5 / image `20261012.334.1`，APT update 成功；`fonts-noto-cjk` 61.2 MB 下载出现 `Ign`/重试并达到 38 分钟硬时限。未见 DNS、APT 锁、缺包，底层网络原因未确认。attempt 2 同包随 101 MB 安装下载 4 秒完成；X11 artifact `12681997882` (`sha256:eb2ec95f941c81e179787a72dc6c1f9368ddd2fb7b6a75574b0c314cf285d5fd`)，Weston artifact `12681398424` (`sha256:e9a57f49ccf67ba376b703d6e0e4d1db548aaea2d1b872c251aa572e1966c801`)，APT diagnostics `12681383785` / `12680778845`。P2B 上重复设置页 step 按条件 SKIPPED；完整五页由同 head P2C 已执行。
 - Build/governance/safety run `40382203131` PASS。本机非 GUI：Zamak `0.2.0` version/check/test (30/30)/build、`scripts/build-arch.sh`、治理 33 项、Python/C tests 3/3、`bash -n scripts/*.sh`、`git diff --check` 全 PASS。没有启动本机 GUI、触碰活动桌面/Hyprland、输入注入、执行清理、Polkit、Swap/ZRAM 或内核写入。
