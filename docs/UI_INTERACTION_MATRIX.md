@@ -4,7 +4,7 @@
 
 状态含义：NATIVE=Linux 上实现原生相同动作；EQUIVALENT=语义受限的 Linux 等价；UNSUPPORTED=没有安全/准确的 Linux 等价；NOT_IMPLEMENTED=可评估但项目当前未实现。状态描述当前 Linux 项目，不代表上游 Windows 功能状态。
 
-P2C-4 的隔离 Xvfb/XTEST 套件覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图分别记录 GTK `Adwaita:light` 与应用自己的 Canvas 暗色调色板，不更改桌面主题。PR #7 exact-head checkpoint `37cefdb351b1cfcdacbc6ca24eb8b06fead93cc1` 的 P2C run `40390082314` 中 Windows 原版采集、Linux 五页双语生产 Xvfb/XTEST、视觉比较均 PASS（3/3）；P2B run `40390082510` 主窗 Xvfb/XTEST 与 Weston Headless/Pixman 客户端生命周期 PASS（2/2），其中重复设置页步骤按条件 SKIPPED，由 P2C 同 head 作业完整覆盖。Build/governance/safety PR run `40390082353` 与 push run `40390075275` 均 PASS。184/184 几何、36/36 raster、10/10 导航、102/102 树线及 2/2 中间滚动检查通过；全页 1:1 仍 NOT PASS。Weston 客户端退出码 0，但 compositor 在 SIGTERM 关闭期记录 layer 诊断，根因未确认。完整 artifacts、SHA、字体与暗色结果见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`；这些检查不构成活动 Hyprland 输入验收。
+P2C-4 的隔离 Xvfb/XTEST 套件覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图分别记录 GTK `Adwaita:light` 与应用自己的 Canvas 暗色调色板，不更改桌面主题。当前 PR #7 head `d23864905f7e841eb428135bb1da244abca5d1df` 的 P2C run `40393863774` 中 Windows 原版采集、Linux 五页双语生产 Xvfb/XTEST、视觉比较均 PASS（3/3）；P2B run `40393863850` 主窗 Xvfb/XTEST 与 Weston Headless/Pixman 客户端生命周期 PASS（2/2），重复设置页步骤按条件跳过，由 P2C 同 head 完整覆盖。Build/governance/safety PR run `40393863878` 与 push run `40393857503` 均 PASS。184/184 几何、36/36 raster、10/10 导航、102/102 树线及 2/2 中间滚动检查通过；全页 1:1 仍 NOT PASS。Weston 客户端退出码 0，但关闭期存在 seat/layer 诊断，根因未知。精确 artifacts、SHA、字体与暗色结果见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`；这些检查不构成活动 Hyprland 输入验收。
 
 ## 1. 主窗口、菜单、快捷键
 
@@ -166,3 +166,4 @@ Exact-head calibration at source `06be74b740e8906e64d837d8ac77e0255bea1081` samp
 - 同 head 对照回归：Win32 资源矩形 `184/184 PASS`，最大分量偏差 `1.5 px`；导航当前选中区域 `10/10 PASS`；树状点线像素 `102/102 PASS`；离散控件栅格 `36/36 PASS`。这几类局部验收不表示全页像素一致；总体暗色变化率仍超过像素相等目标。
 - XTEST 实际展开 Linux File / View / Settings / Help 英中菜单及 View 语言子菜单，执行键盘导航、Enter/Escape、分隔槽跳过和安全的 clean dropdown 外观测试；清理菜单项保持禁用。Windows runner 只采集到四个英文主菜单；tray menu 未被 UI Automation 暴露，清理 popup 没有安全展开路径，确认/结果弹窗需要真实清理才能打开，均保持 `BLOCKED`。
 - 当前截图 artifact 和哈希清单在 [P2C-4 报告](P2C-4_FONT_THEME_MENU_REPORT.md) 索引；`12` 项简中来源差异仍 `DECISION_REQUIRED`，不擅自替换 Linux 当前完整中文翻译。没有执行清理、Polkit、Swap/ZRAM、root GUI 或活动桌面操作。
+- 最新 exact-head 回归：P2C run 40393863774 的轻/暗五页 EN/简中截图及比较均实际执行；资源几何 184/184、最大 1.5 px，导航 10/10、树线 102/102、raster 36/36、中段滚动 2/2 通过。暗色全页差异 5.9434%–73.2932%，整体 1:1 NOT PASS。五类 changed-pixel、字体度量、资源语言与安全禁用状态继续分别分类。

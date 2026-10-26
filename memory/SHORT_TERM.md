@@ -2,6 +2,16 @@
 
 ## 最新核对：P2C-4 exact-head Actions 证据（2026-10-27）
 
+- PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`，当前核验 head `d23864905f7e841eb428135bb1da244abca5d1df`；生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。最新 ChatGPT review 仍是 P2C-3R1 对 `2c745710...` 的审查：CI gate accepted，整体 1:1 NOT PASS。
+- P2C run [40393863774](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40393863774) Windows native、Linux Xvfb/XTEST、比较 3/3 PASS。artifacts：Windows `12687194357` (`sha256:39d347c00ab6cac66a155fcdd3c0c3b76ece305d49a3893872efc3e4239c82e0`)，Linux X11 `12690875520` (`sha256:880a6b11f3cf1555c082d511568ee6d486271b94ffbfdad79db910fc1622612d`)，comparison `12689194953` (`sha256:fa9abb4a9b835a231dfc288c73de6d1d3654e8bd636480977d532b4b93e89312`)。
+- P2B run [40393863850](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40393863850) Xvfb/XTEST 与 Weston Headless/Pixman 2/2 PASS；artifacts X11 `12688395963`、Wayland `12686999481`。PR build [40393863878](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40393863878) 和 push build `40393857503` PASS，PR checks 7 PASS / 0 FAIL。
+- 本轮下载核验 PNG/source hashes：Windows screenshots 41/41、Linux screenshots 44/44、visual 83/83、dark 70/70、P2C source 10/10、source+binary 8/8。几何 184/184（max 1.5 px）、nav 10/10、tree 102/102、raster 36/36、scroll 2/2 PASS。Light changed pixels 5.0741%–14.8853%；dark 5.9434%–73.2932%，均为 compare-only；全页像素 1:1 NOT PASS。
+- Windows tag/source/release provenance 与 detached PGP 验证成功；Windows native 菜单仅四项 English。Tray、clean popup 及真实 clean confirmation/result 保持 BLOCKED。字体候选没有达到双语全页收益，因此生产仍 Sans/DejaVu Sans + Noto Sans CJK SC，无 Windows 字体文件进入仓库。
+- Xvfb 使用 GitHub-hosted Ubuntu 24.04 / GTK 3.24.41 / Adwaita:light；暗色通过应用 Canvas palette。Weston 13.0.0 Headless/Pixman 客户端退出 0，但保留 `gdk_seat_get_keyboard` critical 和 SIGTERM 后 layer-finalization 诊断；根因未知，不声称有 Wayland 输入验收。当前 P2C APT 成功但下载 69.7 MB 用时 31m33s；旧超时底层原因未确认。
+- 没有本机 GUI、Hyprland IPC、用户桌面输入或真实内存/特权操作。证据索引见 [P2C-4 report](../docs/P2C-4_FONT_THEME_MENU_REPORT.md)。
+
+### 前一 exact-head 核对（37cefdb，历史）
+
 - PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；核验 head `37cefdb351b1cfcdacbc6ca24eb8b06fead93cc1`。生产源码 checkpoint 为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；之后调整 P2B/P2C workflow 并发组并同步报告/记忆，未修改 UI、goldens、依赖或验收阈值。最新 ChatGPT Review 仍是针对 `2c745710...` 的 P2C-3R1 评审：CI gate accepted，整体 1:1 仍未通过。
 - P2C run `40390082314` 在该 head 上 Windows 原版来源/截图、Linux 五页双语 Xvfb/XTEST、比较均 PASS（3/3）；artifacts Windows `12682119919` (`sha256:9a0463631da7bf4e049f5fe319afc9496f16b0fd2b940fae85363f6c2f845acc`)，Linux `12684755661` (`sha256:9bfb89a4bb10da11da9b42bc865627e36bc50c1e654ee3212ee14c7086ba0af2`)，comparison/dark/font `12683006399` (`sha256:8b765ec896abad794b91cbe80194c3959dc98a9c4fabb83cf2ffccdc276437b2`)。
 - P2B run `40390082510` 的生产主窗 Xvfb/XTEST 和 Weston Headless/Pixman jobs 2/2 PASS；重复的五页 step 按条件 SKIPPED，P2C 已在相同 head 完整覆盖。X11 artifact `12682830560` (`sha256:d5e4967f92c7feb51defd5623b08b0135abed00ace0a2d17d5a995b22e901fc4`)，Weston artifact `12682645763` (`sha256:1c68e2e22f6945514b14efb065da7001b3633d3266795895198c2846b5d86524`)。客户端退出码 0；Weston 收到测试清理 SIGTERM 后记录 `BUG: finalizing a layer with views still on it.`，根因未确认，不能称为无诊断的干净 compositor shutdown；没有把它归为应用崩溃。

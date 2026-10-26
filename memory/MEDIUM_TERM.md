@@ -4,11 +4,11 @@
 
 ## P2C-4 最新 exact-head 证据
 
-PR #7 保持 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`。2026-10-27 核验 branch head `37cefdb351b1cfcdacbc6ca24eb8b06fead93cc1`：P2C run `40390082314` Windows native + Linux production Xvfb/XTEST + visual comparison 3/3 PASS；P2B run `40390082510` production Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build/governance/safety `40390082353` 和 push build `40390075275` PASS。完整 P2C 截图和比较 artifact 摘要 SHA：Windows `12682119919` `9a046363…f845acc`，Linux `12684755661` `9bfb89a4…6ba0af2`，visual `12683006399` `8b765ec8…6437b2`；所有详细值见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。生产源码 checkpoint `6502342`，并发组调整在 `dc1e112`；未改产品代码或阈值。几何/局部栅格全通过但整体 1:1 NOT PASS。P2B 重复的设置页测试在条件下跳过，同 head P2C 完整执行；Weston 客户端退出 0，但测试 SIGTERM 后日志有 layer finalization 诊断，根因未知。Windows tray、危险清理弹窗仍 BLOCKED；12 项中文来源差异待产品决定。没有实际清理或活动桌面操作。
+PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`，当前 exact head `d23864905f7e841eb428135bb1da244abca5d1df`。P2C run `40393863774` Windows native + Linux production Xvfb/XTEST + visual comparison 3/3 PASS；P2B run `40393863850` production Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build `40393863878` 和 push build `40393857503` PASS，PR checks 7/7。Artifacts 与 digest、全部截图/source SHA、视觉差异率见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。生产源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；P2C-4 不改 UI 或阈值。资源几何 184/184、最大 1.5 px，nav 10/10、tree 102/102、raster 36/36、scroll 2/2 PASS，整体像素 1:1 NOT PASS。Weston 客户端退出 0，但 GTK seat 与 SIGTERM 关闭期 layer 诊断保留、根因未知。Windows tray、清理 popup/确认/结果仍 BLOCKED；12 项简中来源差异待产品决定。没有真实清理、特权操作或活动桌面操作。
 
 ## 当前阶段
 
-本次 P2C-4 exact-head 复核时间：2026-10-27。
+本次 P2C-4 exact-head 复核时间：2026-10-27；P2C run 40393863774、P2B run 40393863850 和 build run 40393863878 均在 d238649 exact head 完成。
 **P1：Zamak 编译验收** — 本机 Zamak 0.2.0 check/test/build、Arch 原生构建、Hyprland GUI 基础验收及 Draft PR Actions 均通过。PR #2 仍 OPEN / Draft，等待 ChatGPT 复审和用户合并决定。
 
 **P2A：源码规格与隔离 UI 测试** — 源码规格位于独立 Draft PR #5；CI 测试位于 PR #4。PR #5 R7 修正 head `d89d74fde433da1863b4de0223f974c824fb590e`，checks 2/2 PASS；R6 几何说明、最终 CI 证据与候选实现门槛已修正。PR #4 最终 head `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1` 的 GUI PR run `40192531809`、build PR run `40192531948` 均通过，push runs 分别为 `40192528601`、`40192528611`；保留原 9 项事件路由测试并新增 3 项探针测试，12/12 PASS。P2C Windows-hosted run 后续取得 v3.5.2 主窗及五个设置页的双语 Native 截图和设置窗实测尺寸；完整菜单/托盘/清理对话框/深色主题截图、Hyprland 输入、全套几何对照和 2 px 验收仍 BLOCKED / NOT RUN。`IDD_MAIN=224×214 DLU` 是主窗模板；每个 `IDD_SETTINGS_* =260×168 DLU` 仅是设置子页模板，不是含导航和底部按钮的完整外框。
