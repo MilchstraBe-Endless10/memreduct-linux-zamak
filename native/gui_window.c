@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Stable GTK3/GLib ABI declarations keep this bridge independent of Gtk headers. */
@@ -29,12 +31,17 @@ extern void g_list_free(GList *list);
 static int settings_close_requested;
 static GtkWindow *settings_window;
 static int settings_close_handler_connected;
+static unsigned long settings_close_handler_id;
 
 static int on_settings_delete(GtkWidget *widget, void *event, void *data)
 {
     (void)widget;
     (void)event;
     (void)data;
+    if (getenv("MEMREDUCT_CI") != NULL) {
+        fputs("CI_NATIVE_SETTINGS_DELETE_EVENT\n", stderr);
+        fflush(stderr);
+    }
     settings_close_requested = 1;
     return 1; /* Keep the reusable secondary window alive; Zamak returns to main. */
 }
@@ -60,17 +67,21 @@ int64_t mr_gui_window_mode(int64_t show_settings)
     }
 
     if (settings_window_found != NULL && !settings_close_handler_connected) {
-        g_signal_connect_data((GtkWidget *)settings_window_found,
-                              "delete-event",
-                              on_settings_delete,
-                              NULL,
-                              NULL,
-                              0);
-        settings_window = settings_window_found;
-        settings_close_handler_connected = 1;
+        settings_close_handler_id = g_signal_connect_data(
+            (GtkWidget *)settings_window_found,
+            "delete-event",
+            on_settings_delete,
+            NULL,
+            NULL,
+            0);
+        if (settings_close_handler_id != 0) {
+            settings_window = settings_window_found;
+            settings_close_handler_connected = 1;
+        }
     }
 
-    if (settings_window_found == NULL || main_window == NULL) {
+    if (settings_window_found == NULL || main_window == NULL ||
+        !settings_close_handler_connected) {
         g_list_free(windows);
         return 0;
     }
@@ -96,4 +107,9 @@ int64_t mr_gui_take_settings_close_request(void)
 int64_t mr_gui_settings_window_exists(void)
 {
     return settings_window != NULL;
+}
+
+int64_t mr_gui_settings_close_handler_connected(void)
+{
+    return settings_close_handler_id != 0;
 }

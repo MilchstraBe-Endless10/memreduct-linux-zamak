@@ -14,6 +14,7 @@ extern fn mr_gui_test_start_settings() -> i64
 extern fn mr_gui_window_mode(settings: i64) -> i64
 extern fn mr_gui_take_settings_close_request() -> i64
 extern fn mr_gui_settings_window_exists() -> i64
+extern fn mr_gui_settings_close_handler_connected() -> i64
 
 struct MainWindow:
     canvas: ui.Canvas
@@ -324,7 +325,7 @@ fn set_settings_open(s: &mut MainWindow, open: bool):
         s.settings = settings_ui.initial(s.test_mode)
         s.settings_canvas.redraw()
         if s.test_mode:
-            println(f"CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true close_handler={mr_gui_settings_window_exists() != 0} resource=IDD_SETTINGS_*:260x168_dlu shell={ui_geometry.settings_window_width_px()}x{ui_geometry.settings_window_height_px()}_provisional")
+            println(f"CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true close_handler={mr_gui_settings_close_handler_connected() != 0} resource=IDD_SETTINGS_*:260x168_dlu shell={ui_geometry.settings_window_width_px()}x{ui_geometry.settings_window_height_px()}_provisional")
     else:
         s.status = ""
         if s.test_mode: println("CI_SETTINGS_WINDOW mode=main settings_hidden=true")
