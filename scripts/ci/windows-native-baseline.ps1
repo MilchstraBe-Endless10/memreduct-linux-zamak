@@ -388,33 +388,34 @@ public static class P2CWin32 {
                             if (-not [P2CWin32]::ClientToScreen($control.Handle, [ref]$listOrigin)) { throw "Unable to locate list client origin for IDC_$($control.ControlId)." }
                             $listClient = [P2CWin32+RECT]::new()
                             if (-not [P2CWin32]::GetClientRect($control.Handle, [ref]$listClient)) { throw "Unable to read IDC_$($control.ControlId) client rect." }
-                            $writeVisibleRows = {
-                                param([string]$State)
-                                $itemIndex = 0
-                                $line = "Win32 geometry list item bounds begin page_idd=$pageId resource=$($control.ControlId) state=$State"
-                                Add-Content -LiteralPath $statusFile -Value $line -Encoding UTF8
-                                Write-Host $line
-                                foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle))) {
-                                    if ($itemRect.Top -ge $listClient.Top -and $itemRect.Bottom -le $listClient.Bottom) {
-                                        $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state=$State; resource_id=$control.ControlId; part="row-$itemIndex"; x=$listOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$listOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='ListViewItem' })
-                                    }
-                                    $itemIndex++
-                                }
-                                $line = "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$State count=$itemIndex"
-                                Add-Content -LiteralPath $statusFile -Value $line -Encoding UTF8
-                                Write-Host $line
-                            }.GetNewClosure()
                             $initialState = if ($control.ControlId -eq 124) { 'scroll-0' } else { 'default' }
                             if ($control.ControlId -eq 124 -and [P2CWin32]::GetListTopIndex($control.Handle) -ne 0) {
                                 throw 'IDC_REGIONS did not start at the top of its native list.'
                             }
-                            & $writeVisibleRows $initialState
+                            & $writeStatusClosure "Win32 geometry list item bounds begin page_idd=$pageId resource=$($control.ControlId) state=$initialState"
+                            $itemIndex = 0
+                            foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle))) {
+                                if ($itemRect.Top -ge $listClient.Top -and $itemRect.Bottom -le $listClient.Bottom) {
+                                    $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state=$initialState; resource_id=$control.ControlId; part="row-$itemIndex"; x=$listOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$listOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='ListViewItem' })
+                                }
+                                $itemIndex++
+                            }
+                            & $writeStatusClosure "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$initialState count=$itemIndex"
                             if ($control.ControlId -eq 124) {
                                 [void][P2CWin32]::SendMessage($control.Handle, 0x1013, [IntPtr]7, [IntPtr]1) # LVM_ENSUREVISIBLE, final row
                                 Start-Sleep -Milliseconds 100
                                 $topIndex = [P2CWin32]::GetListTopIndex($control.Handle)
                                 if ($topIndex -ne 2) { throw "IDC_REGIONS expected bottom scroll top index 2, got $topIndex." }
-                                & $writeVisibleRows 'scroll-2'
+                                $bottomState = 'scroll-2'
+                                & $writeStatusClosure "Win32 geometry list item bounds begin page_idd=$pageId resource=$($control.ControlId) state=$bottomState"
+                                $itemIndex = 0
+                                foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle))) {
+                                    if ($itemRect.Top -ge $listClient.Top -and $itemRect.Bottom -le $listClient.Bottom) {
+                                        $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state=$bottomState; resource_id=$control.ControlId; part="row-$itemIndex"; x=$listOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$listOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='ListViewItem' })
+                                    }
+                                    $itemIndex++
+                                }
+                                & $writeStatusClosure "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$bottomState count=$itemIndex"
                                 [void][P2CWin32]::SendMessage($control.Handle, 0x1013, [IntPtr]0, [IntPtr]1) # restore top before leaving the page
                                 if ([P2CWin32]::GetListTopIndex($control.Handle) -ne 0) { throw 'IDC_REGIONS failed to restore top scroll position.' }
                             }
