@@ -163,6 +163,8 @@ public static class P2CWin32 {
   [DllImport("user32.dll", SetLastError=true)] public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetFocus(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+  [DllImport("user32.dll", EntryPoint="MapVirtualKeyW", SetLastError=true)] private static extern uint MapVirtualKey(uint code, uint mapType);
+  [DllImport("user32.dll", EntryPoint="GetKeyNameTextW", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetKeyNameText(int lParam, System.Text.StringBuilder text, int count);
   [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)] private static extern IntPtr SendMessageTimeoutValue(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageTimeoutW", SetLastError=true)] private static extern IntPtr SendMessageTimeoutText(IntPtr hWnd, uint message, IntPtr wParam, System.Text.StringBuilder lParam, uint flags, uint timeout, out IntPtr result);
   [DllImport("kernel32.dll", SetLastError=true)] private static extern IntPtr OpenProcess(uint access, bool inherit, uint processId);
@@ -296,6 +298,24 @@ public static class P2CWin32 {
       throw new TimeoutException("Win32 WM_GETTEXT failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
     return text.ToString();
   }
+  public static string GetHotkeyText(IntPtr control) {
+    const uint HKM_GETHOTKEY=0x0402;
+    uint packed=(uint)SendMessage(control, HKM_GETHOTKEY, IntPtr.Zero, IntPtr.Zero).ToInt64() & 0xffff;
+    uint modifiers=packed & 0xff, virtualKey=(packed >> 8) & 0xff;
+    if (virtualKey == 0) return String.Empty;
+    uint scan=MapVirtualKey(virtualKey, 0);
+    if (scan == 0) throw new InvalidOperationException("MapVirtualKeyW failed for Win32 hotkey VK=" + virtualKey);
+    int keyNameLParam=unchecked((int)(scan << 16));
+    if ((scan & 0xff00) == 0xe000) keyNameLParam |= 1 << 24;
+    var keyName=new System.Text.StringBuilder(64);
+    if (GetKeyNameText(keyNameLParam, keyName, keyName.Capacity) <= 0)
+      throw new InvalidOperationException("GetKeyNameTextW failed for Win32 hotkey VK=" + virtualKey + "; last-error=" + Marshal.GetLastWin32Error());
+    string prefix=String.Empty;
+    if ((modifiers & 0x02) != 0) prefix += "Ctrl+";
+    if ((modifiers & 0x04) != 0) prefix += "Alt+";
+    if ((modifiers & 0x01) != 0) prefix += "Shift+";
+    return prefix + keyName.ToString();
+  }
   public static string[] GetListItemTexts(IntPtr list, uint processId) {
     const uint LVM_GETITEMCOUNT=0x1004, LVM_GETITEMTEXTW=0x1073, SMTO_ABORTIFHUNG=0x0002, MESSAGE_TIMEOUT_MS=3000;
     const uint PROCESS_VM_OPERATION=0x0008, PROCESS_VM_READ=0x0010, PROCESS_VM_WRITE=0x0020;
@@ -427,12 +447,16 @@ public static class P2CWin32 {
     $runnerTheme = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -ErrorAction SilentlyContinue).AppsUseLightTheme
     $scale = (Get-ItemProperty 'HKCU:\Control Panel\Desktop' -ErrorAction SilentlyContinue).LogPixels
     if (-not $scale) { $scale = 96 }
+    $fontSubstitution = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\FontSubstitutes' -ErrorAction SilentlyContinue).'MS Shell Dlg 2'
+    if ([string]::IsNullOrWhiteSpace([string]$fontSubstitution)) { $fontSubstitution = 'NOT_RECORDED' }
     @(
         "Windows=$($os.Caption) build=$($os.BuildNumber) version=$($os.Version)",
         "UserInteractive=$([Environment]::UserInteractive) session=$sessionId explorerCurrentSession=$([bool](Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $sessionId))",
         "InputDesktopAccessible=$desktopAccessible", "Resolution=$($runnerScreen.Width)x$($runnerScreen.Height)",
         "DPI=$scale scaling=$([math]::Round(100 * [double]$scale / 96))% ThemeAppsUseLightTheme=$runnerTheme",
-        'Resource font=8pt Ms Shell Dlg; capture date UTC=' + [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        'Resource font=8pt Ms Shell Dlg; GDI LOGFONT face and registry font substitution are recorded separately',
+        "FontSubstitutes[MS Shell Dlg 2]=$fontSubstitution",
+        'capture date UTC=' + [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
     ) | Set-Content -LiteralPath (Join-Path $artifactDir 'windows-environment.txt') -Encoding UTF8
     Write-Status "Windows runner desktop probe: interactive=$([Environment]::UserInteractive) session=$sessionId inputDesktop=$desktopAccessible screen=$($runnerScreen.Width)x$($runnerScreen.Height) dpi=$scale"
 
@@ -672,7 +696,7 @@ public static class P2CWin32 {
 
                 'page_idd,locale,state,resource_id,part,x,y,width,height,class' |
                     Set-Content -LiteralPath $geometryFile -Encoding UTF8
-                'page_idd,locale,resource_id,class,sample_kind,sample_text,sample_text_source,logical_face_name,resolved_face_name,font_source,logfont_height_px,point_size,logfont_weight,charset,textmetric_height_px,text_ascent_px,text_descent_px,textmetric_weight,average_char_width_px,text_width_px,text_height_px' |
+                'page_idd,locale,resource_id,class,sample_kind,sample_text,sample_text_source,logical_face_name,gdi_reported_face_name,font_substitution,font_source,logfont_height_px,point_size,logfont_weight,charset,textmetric_height_px,text_ascent_px,text_descent_px,textmetric_weight,average_char_width_px,text_width_px,text_height_px' |
                     Set-Content -LiteralPath $fontMetricsFile -Encoding UTF8
                 $writePageGeometry = {
                     param([int]$PageIndex, [string]$Locale)
@@ -755,9 +779,25 @@ public static class P2CWin32 {
                             if ($selected -ge 0 -and $selected -lt $items.Count) {
                                 $samples += [pscustomobject]@{ kind='value'; text=$items[$selected]; text_source='Win32CB_GETCURSEL+CB_GETLBTEXT' }
                             }
-                        } elseif ($control.ClassName -eq 'Edit' -or $control.ClassName -eq 'msctls_hotkey32') {
+                        } elseif ($control.ClassName -eq 'Edit') {
                             $displayText = [P2CWin32]::GetControlText($control.Handle)
                             if (-not [string]::IsNullOrWhiteSpace($displayText)) {
+                                $samples += [pscustomobject]@{ kind='value'; text=$displayText; text_source='Win32WM_GETTEXT' }
+                            }
+                        } elseif ($control.ClassName -eq 'msctls_hotkey32') {
+                            $displayText = [P2CWin32]::GetControlText($control.Handle)
+                            if ([string]::IsNullOrWhiteSpace($displayText)) {
+                                try {
+                                    $hotkey = [P2CWin32]::GetHotkeyText($control.Handle)
+                                } catch {
+                                    throw "Unable to read IDC_HOTKEY resource 132 with HKM_GETHOTKEY: $($_.Exception.Message)"
+                                }
+                                if ([string]::IsNullOrWhiteSpace($hotkey)) {
+                                    & $writeStatusClosure 'PASS Win32 IDC_HOTKEY resource=132 state=UNASSIGNED source=HKM_GETHOTKEY'
+                                } else {
+                                    $samples += [pscustomobject]@{ kind='value'; text=$hotkey; text_source='Win32HKM_GETHOTKEY+GetKeyNameTextW' }
+                                }
+                            } else {
                                 $samples += [pscustomobject]@{ kind='value'; text=$displayText; text_source='Win32WM_GETTEXT' }
                             }
                         }
@@ -799,7 +839,7 @@ public static class P2CWin32 {
                             $fontRows.Add([pscustomobject]@{
                                 page_idd=$pageId; locale=$Locale; resource_id=$control.ControlId; class=$control.ClassName
                                 sample_kind=$sample.kind; sample_text=$sample.text; sample_text_source=$sample.text_source
-                                logical_face_name=$metrics.FaceName; resolved_face_name=$metrics.ResolvedFaceName
+                                logical_face_name=$metrics.FaceName; gdi_reported_face_name=$metrics.ResolvedFaceName; font_substitution=$fontSubstitution
                                 font_source=$metrics.FontSource; logfont_height_px=$metrics.LogFontHeight; point_size=$pointSize; logfont_weight=$metrics.LogFontWeight
                                 charset=$metrics.LogFontCharSet; textmetric_height_px=$metrics.TextMetricHeight
                                 text_ascent_px=$metrics.TextMetricAscent; text_descent_px=$metrics.TextMetricDescent; textmetric_weight=$metrics.TextMetricWeight

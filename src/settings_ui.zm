@@ -93,6 +93,23 @@ fn outline(p: &ui.Painter, r: &ui.Rect, color: &ui.Color):
     p.add_rect(r)
     p.stroke(color, 1.0)
 
+fn raised_button(s: &State, p: &ui.Painter, r: &ui.Rect, pressed: bool):
+    # Match the measured Win32 button client: 1 px system-face inset, a 1 px
+    # #ADADAD frame, then a #E1E1E1 face. Keep the resource rectangle intact.
+    let mut outside = ui.rgb(0xf0f0f0)
+    let mut edge = ui.rgb(0xadadad)
+    let mut face_color = ui.rgb(0xe1e1e1)
+    if s.dark:
+        outside = ui.rgb(0x242424)
+        edge = ui.rgb(0x707070)
+        face_color = ui.rgb(0x3a3a3a)
+    if pressed and not s.dark: face_color = ui.rgb(0xc8c8c8)
+    p.fill_rect(r, &outside)
+    let frame = ui.rect(r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0)
+    p.fill_rect(&frame, &edge)
+    let face = ui.rect(r.x + 2.0, r.y + 2.0, r.w - 4.0, r.h - 4.0)
+    p.fill_rect(&face, &face_color)
+
 fn group(s: &State, p: &ui.Painter, r: &ui.Rect, id: i64, title: string, fg: &ui.Color):
     # Measured on the Win32 3.5.2 GroupBox edge in the pinned 96-DPI capture.
     let mut edge = ui.rgb(0xdcdcdc)
@@ -137,10 +154,7 @@ fn text_row(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, 
 fn button(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color):
     let r = child(s, w, h, x, y, width, height)
     emit_geometry(s, id, "control", &r)
-    let mut bg = ui.rgb(0xe7e7e7)
-    if s.dark: bg = ui.rgb(0x3a3a3a)
-    p.fill_rect(&r, &bg)
-    outline(p, &r, border)
+    raised_button(s, p, &r, s.pressed == f64(id))
     canvas_text(s, p, id, "label", r.x + 5.0, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, 8.0, false)
     if s.focus == id: outline(p, &r, focus)
 
@@ -368,14 +382,8 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
     emit_geometry(s, 106, "control", &close)
     let mut button_bg = ui.rgb(0xe7e7e7)
     if dark: button_bg = ui.rgb(0x3a3a3a)
-    p.fill_rect(&reset, &button_bg)
-    p.fill_rect(&close, &button_bg)
-    if s.hover == 105.0: p.fill_rect(&reset, &selected)
-    if s.hover == 106.0: p.fill_rect(&close, &selected)
-    if s.pressed == 105.0: p.fill_rect(&reset, &border)
-    if s.pressed == 106.0: p.fill_rect(&close, &border)
-    outline(p, &reset, &border)
-    outline(p, &close, &border)
+    raised_button(s, p, &reset, s.pressed == 105.0)
+    raised_button(s, p, &close, s.pressed == 106.0)
     canvas_text(s, p, 105, "label", reset.x + 12.0, reset.y + 5.0, text(zh, "Reset", "重置"), fg, 8.0, false)
     canvas_text(s, p, 106, "label", close.x + 12.0, close.y + 5.0, text(zh, "Close", "关闭"), fg, 8.0, false)
     if s.focus == 106: outline(p, &reset, &fg)

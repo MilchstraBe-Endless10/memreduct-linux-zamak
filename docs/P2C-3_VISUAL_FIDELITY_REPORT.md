@@ -1,45 +1,66 @@
 # P2C-3 — Mem Reduct 3.5.2 原生视觉差异收敛
 
-## 固定基准
+## 固定基准与当前证据
 
-- 上游：Henry++ Mem Reduct `v.3.5.2`，tag commit `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。
-- Windows 原生、Linux 生产截图及比较历史证据：run [40296808973](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40296808973)，artifacts [Windows 12638686728](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40296808973/artifacts/12638686728)、[Linux 12638048963](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40296808973/artifacts/12638048963)、[比较 12638282898](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40296808973/artifacts/12638282898)。
-- Windows：GitHub-hosted Windows Server 2022、96 DPI、100% 缩放；设置外框 574×374，客户区 558×335。Linux：GitHub-hosted Ubuntu 24.04、Xvfb 1024×768、GTK 3.24.41；Canvas 558×335。
-- 原图只按 Win32 实测客户区起点裁剪，不缩放、不拉伸、不平移、不重采样。
+- 上游唯一基准：Henry++ Mem Reduct `v.3.5.2`，tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。
+- 当前被测源码（本轮视觉微调前）：`b4b5de5c383bebab3c4ebb9e784cf56f577d5907`。本报告中的现有截图/像素率是这个源码 HEAD 的基准，不代表后续未提交绘制改动。
+- Windows 原生采集：[run 40312777621](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40312777621)，artifact `12645980196`。Windows job PASS；设置页及主菜单截图、字体/资源矩形记录和滚动状态来自该 artifact。
+- Linux 生产 X11：[run 40312777567](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40312777567)，artifact `12645029581`。Xvfb/XTEST 与生产窗口测试 PASS；同一源码 SHA `b4b5de5`。
+- Windows：GitHub-hosted Windows Server 2022，1024×768，96 DPI / 100% 缩放，light theme；设置外框 574×374，客户区 558×335，截图采集日期 2026-10-26 UTC。Linux：GitHub-hosted Ubuntu 24.04，GTK 3.24.41，Xvfb 1024×768×24，Adwaita light，96 DPI，设置 Canvas 558×335。
+- Windows 原始窗口图只依 Win32 实测客户区原点 `(8,31)` 裁剪为 558×335；没有拉伸、缩放、移位或重采样。源图及派生图 SHA-256 在比较器 `visual-sha256.csv` 中逐张记录。
+- 该轮 Windows 原生已采集五页 EN/zh-CN、五页双语 dark、主窗 light/dark 与 File/View/Settings/Help 菜单。托盘菜单因 Windows UI Automation 未暴露通知区按钮而 `BLOCKED`；清理区域菜单的安全展开路径未找到而 `BLOCKED`；确认/结果弹窗因必须触发真实清理而 `BLOCKED`，没有执行清理。
 
-## P2C-2 全页变化率历史基线
+## 几何与滚动状态
 
-这些值来自 exact-head 比较 artifact 12638282898。它们是原始变化像素比例，只用于回归比较，不代表像素验收。
+Windows 资源 ID 矩形与 Linux 生产 Canvas 矩形按当前同源截图逐项比较：**184/184 PASS**，每个 `x/y/w/h` 分量最大绝对偏差 1.5 px，0 FAIL。该 184 项包括此前未采集的 `IDC_REGIONS` 中间滚动行；不是控件光栅或整页像素通过。558×335 客户区及已有控件外框保持不变。
 
-| 页面 | English | 简体中文 |
-|---|---:|---:|
-| General | 13.8234% | 12.2297% |
-| Memory cleaning | 16.7341% | 16.6041% |
-| Appearance | 14.5183% | 13.8961% |
-| Tray icon | 16.8042% | 15.8268% |
-| Advanced | 7.3921% | 6.8528% |
+`IDC_REGIONS=124` 已在 EN/zh-CN 的 top / middle / bottom 三个滚动位置采集 Windows 行矩形及 Linux 对应滚动截图。中间位置英文文字墨迹框的 x 起点偏差为 +1 px，宽度差随字体而变（6–17 px）；简体中文对应位置还存在原版未翻译英文与 Linux 中文译文的文本/字形差异，部分 y 起点相差 2 px。不得把文字墨迹框误记为控件矩形差异。
 
-## P2C-3 代码变化
+## P2C-2 到本轮原始变化像素率
 
-- 英文内存清理列表的两个版本后缀按 3.5.2 固定源码改为 `win8.1+`、`win10+`；简中保持项目已要求的独立本地化。
-- Windows runner 使用 `WM_GETFONT`、`LOGFONT`、GDI `TEXTMETRIC` 与文本测量导出实际控件字体和宽高；IDC_REGIONS / IDC_COLORS 行名通过跨进程 `LVM_GETITEMTEXTW` 从真实 Win32 ListView 读取。该方法不依赖 UI Automation 为原生 ListView 提供 ListItem provider，也不以源码常量冒充运行时显示。
-- 隔离 Windows runner 采集 `IDC_REGIONS` 的顶部、中间、底部状态，并输出资源 ID 几何；Linux 生产 Xvfb 用同样的滚动偏移截屏并导出 Canvas 文本度量。
-- 比较器输出来源文案矩阵、字体/文本度量、中间滚动墨迹框、逐控件几何、overlay/热力图、P2C-2 全页变化率回归表及 SHA-256 清单。两端图像不做缩放或任意配准。
-- Windows runner 仅尝试打开原版菜单/分割按钮菜单、托盘上下文菜单和原版暗色主题命令。清理确认/结果弹窗若需执行真实清理才能触发，则保持 `BLOCKED`，不发送清理命令。
-- 测试中用 GTK/Pango 只读记录系统字体解析和度量；没有复制或提交 Windows 专有字体。Zamak Canvas 没有按调用指定字体家族的接口，故在新证据生成前不盲目改字号或基线。
+以下当前值是源码 `b4b5de5` 的 exact-source Windows/Linux 配对；全页变化率仅供前后回归，`COMPARE_ONLY; NOT PIXEL PASS`。
 
-## 首轮 exact-head CI 及修复
+| 页面 | 语言 | P2C-2 | 当前基准 | 变化百分点 | 趋势 |
+|---|---|---:|---:|---:|---|
+| General | EN | 13.8234% | 13.8234% | 0.0000 | 不变 |
+| General | zh-CN | 12.2297% | 12.4924% | +0.2627 | 回退 |
+| Memory cleaning | EN | 16.7341% | 16.7341% | 0.0000 | 不变 |
+| Memory cleaning | zh-CN | 16.6041% | 16.5565% | -0.0476 | 改善 |
+| Appearance | EN | 14.5183% | 14.5183% | 0.0000 | 不变 |
+| Appearance | zh-CN | 13.8961% | 14.0117% | +0.1156 | 回退 |
+| Tray icon | EN | 16.8042% | 16.5950% | -0.2092 | 改善 |
+| Tray icon | zh-CN | 15.8268% | 15.8396% | +0.0128 | 回退 |
+| Advanced | EN | 7.3921% | 7.3921% | 0.0000 | 不变 |
+| Advanced | zh-CN | 6.8528% | 6.8528% | 0.0000 | 不变 |
 
-- 首轮 P2C-3 head：`1f93abe75a3ba4dadf01860a79a44b62ccfdce0b`；PR #7 仍 OPEN / Draft。
-- Windows release 验证确认官方 tag、release SHA 与 setup PGP 签名均通过，但新增 C# Win32 类型在编译时失败：字段 `LOGFONTW.CharSet` 遮蔽 `CharSet` 类型。对应 Windows run [40307471183](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40307471183)。
-- 同一 head 的 Xvfb/Weston 在 GUI 启动前失败：测试探针直接包含 GTK/Pango 头，Zamak 生成编译单元没有 GTK include flags。对应 run [40307471104](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40307471104)；比较 job 因上游 job 失败而跳过。
-- 修复：将 Win32 结构布局限定为 `System.Runtime.InteropServices.CharSet.Unicode`；探针改为与现有桥接一致的 header-free GTK/Pango ABI 声明，保持项目原构建链路不新增 GTK include-path 要求。
-- 修复后的本机无 GUI 检查：`cc -fsyntax-only` PASS；Zamak 0.2.0 `check` PASS、`test` 29/29 PASS、`build` PASS。Python/C 安全单测 3/3 和 33 项项目治理检查在本轮变更前 PASS，最终 head 将再次运行。
-- 修复后 exact-head Windows/Xvfb/Weston Actions、截图 SHA、变化率、几何行数和字体数据：待重新推送和运行；首轮失败不能标作通过，也不将历史截图/哈希作为本轮结果。
+整体为 6.8528%–16.7341% 不同像素，仍明显不等价。P2C-2 数值与当前数值各来自其对应 run 的截图配对；只有相同采集条件可比，不能把某一个局部改善写成全页通过。
 
-## 仍需单独报告的差异
+## 字体与文本
 
-- P2C-2 的历史几何是 172 项 PASS、12 项中间滚动状态未比较；P2C-3 只有在 Windows 与 Linux 都采到中间状态并由资源 ID 匹配后，才可报告新增的 ≤2 px 结果。
-- Win32 与 GTK 的字体栅格化/控件绘制、Linux 安全禁用状态、Windows 原版简中未翻译的 8 个内存区域与 2 个 Advanced 标签，分别属于不同差异类别。
-- 语言差异逐资源记录于 [P2C-3_SOURCE_LANGUAGE_MATRIX.md](P2C-3_SOURCE_LANGUAGE_MATRIX.md)。在产品负责人确认前，Linux 简体中文仍保留翻译，不以视觉一致为由退回英文。
-- 像素变化率下降不等于全页像素相同；P2C-3 结束时仍需单独给出 `NOT PIXEL EQUIVALENCE` 或 `BLOCKED` 结论。
+Windows 可访问的原生控件 `WM_GETFONT` 返回逻辑 face `MS Shell Dlg 2`；克隆该 `LOGFONT` 后取得 8.25 pt、GDI 字高 -11 px、字重 400、`TEXTMETRIC` 高 13 px、ascent 11 / descent 2。`GetTextFaceW` 仍返回逻辑别名 `MS Shell Dlg 2`，不能据此声称已知实际字体文件。本轮本机化前 artifact 没有注册表替代映射字段；本地采集器改为把 GDI 返回别名与 `FontSubstitutes[MS Shell Dlg 2]` 分开记录，待新 Windows job 核验替代值。
+
+Linux GTK/Pango 为系统 `Sans`，英文解析为 DejaVu Sans，简中回退 Noto Sans CJK SC；生产 Canvas 调用字号 8 pt，Pango ascent 10 / descent 3。60 个英文相同文案宽度配对的 Linux/Windows 比值中位数为 1.146，范围 1.022–1.212。字体度量和文本抗锯齿仍是明确差异。没有复制、打包或提交 Windows 专有字体；Zamak Canvas `Painter.text` 没有按调用选择字体家族的参数，因此本轮不盲目减字号或全局换字体，避免破坏垂直度量和控件空间。
+
+Windows `IDC_HOTKEY=132` 空白是原生控件未分配快捷键的有效状态，采集器现通过 `HKM_GETHOTKEY` 区分 `UNASSIGNED`，API/键码映射失败则显式失败；不能把空值静默当作采集成功文本。
+
+## 控件外观与待验证增量
+
+几何通过项不再改动。本地候选改动只涉及外观/文字墨迹：
+
+- Reset/Close 使用原生截图实测的 system-face `(240,240,240)`、raised edge `(173,173,173)` 和 face `(225,225,225)` 绘制；对应 6 个采样点由当前 Win32 控件矩形定位，覆盖两按钮与两种语言。采样器必须同时核对 native 与 Linux 像素，整按钮光栅仍不作等价声明。
+- `IDC_REGIONS` 标签 inset 从 22 px 改为 21 px，对齐实测的英文墨迹框 +1 px 起点差；不改变列表控件矩形。
+- 比较器把 `IDC_LANGUAGE=123` 运行时当前项纳入来源矩阵，并分离 GDI alias、Windows 字体替代映射字段；Windows `IDC_HOTKEY=132` 采集错误不再静默吞掉。
+
+上述绘制/采集器增量尚未由新 HEAD 的 Xvfb 截图与 GitHub Actions 验证。对应代码合并前应以新 CI 输出核对按钮像素样本、五页双语 changed-pixel 率、文本度量和 SHA 清单；任何失败需保留为 FAIL 并修正，不能沿用本节基准代替新证据。
+
+## 中英文来源差异
+
+[P2C-3 来源语言矩阵](P2C-3_SOURCE_LANGUAGE_MATRIX.md) 当前记录 11 项简中界面文案（8 个内存区域、2 个 Advanced 标签、`Single click:`）与 Windows locale 名称 `Chinese (Simplified)` / Linux “简体中文”这一项显示差异。前 11 项的简中原版在 Windows 实际仍显示英文；不是字体问题。Linux 暂保留已要求的完整简中翻译。原版逐字忠实与完整简中本地化之间的选择需要产品决策，未暗自修改。
+
+## 测试 / 当前门槛
+
+- 当前本机未提交候选：Zamak 0.2.0 `check` PASS、29/29 tests PASS、`build` PASS；33 项项目治理检查 PASS；Python/C 安全测试 3/3 PASS；8 个 Shell 脚本 `bash -n` PASS；C bridge/test 源码 `cc -fsyntax-only` PASS；Arch build `scripts/build-arch.sh` PASS；`git diff --check` PASS。
+- 隔离 runner 对源码 `b4b5de5` 的生产 Xvfb/XTEST 与 Weston lifecycle run `40312777567` PASS（X11 artifact `12645029581`、Wayland artifact `12646550670`）；Weston 只验证 headless client 生命周期，不代表真实 Wayland 输入。保留 GTK seat critical 与 layer teardown 诊断，不臆断根因。
+- Windows run `40312777621` 原生采集 job PASS、artifact `12645980196`；该 run 的 Linux screenshot job在 apt 安装依赖阶段达到 45 分钟超时后 CANCELLED，截图步骤和 comparison job SKIPPED。不得称此 run 的全 workflow/比较 job PASS。另有相同源码 SHA 的独立生产 Xvfb artifact可供配对比对。
+- 当前本地按钮/文本微调还未截图测试；待推送后以 exact-head Windows、Xvfb、comparator、Weston 与 build/test workflows 重新验收并替换上文暂存状态。
+- 像素级整体 1:1：`NOT PASS`；Hyprland 输入、真实清理、Polkit、Swap/ZRAM 写入：`NOT RUN`。

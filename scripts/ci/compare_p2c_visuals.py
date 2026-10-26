@@ -37,24 +37,28 @@ P2C2_CHANGED_PERCENT = {
 P2C2_RUN_ID = "40296808973"
 P2C2_COMPARISON_ARTIFACT_ID = "12638282898"
 EXPECTED_ZH_SOURCE_DIVERGENCES = {
+    (101, "zh", 123, "value"),
     *((102, "zh", 124, f"row-{index}") for index in range(8)),
     (105, "zh", 153, "label"),
     (105, "zh", 154, "label"),
     (104, "zh", 147, "label"),
 }
 EXPECTED_ZH_LOCAL_TEXT = {
+    (101, "zh", 123, "value"): "简体中文",
     **{(102, "zh", 124, f"row-{index}"): REGION_LABELS_ZH[index] for index in range(8)},
     (105, "zh", 153, "label"): "允许自动清理备用列表和已修改页列表",
     (105, "zh", 154, "label"): "将清理结果写入调试日志",
     (104, "zh", 147, "label"): "单击：",
 }
 EXPECTED_ZH_ENGLISH_TEXT = {
+    (101, "zh", 123, "value"): "Chinese (Simplified)",
     **{(102, "zh", 124, f"row-{index}"): REGION_LABELS_EN[index] for index in range(8)},
     (105, "zh", 153, "label"): "Allow \"Standby lists\" and \"Modified page list\" cleanup on autoreduct",
     (105, "zh", 154, "label"): "Log cleaning results into a debug log",
     (104, "zh", 147, "label"): "Single click:",
 }
 EXPECTED_ZH_TEXT_EVIDENCE = {
+    (101, "zh", 123, "value"): "Win32CB_GETCURSEL+CB_GETLBTEXT",
     **{(102, "zh", 124, f"row-{index}"): "Win32LVM_GETITEMTEXTW" for index in range(8)},
     (105, "zh", 153, "label"): "Win32GetWindowText",
     (105, "zh", 154, "label"): "Win32GetWindowText",
@@ -305,7 +309,12 @@ def dark_pixel_bounds(image: Image.Image, region: tuple[int, int, int, int]) -> 
     )
 
 
-def validate_surface_and_checkbox_raster(windows_dir: Path, linux_dir: Path, output: Path) -> tuple[int, int]:
+def validate_surface_and_checkbox_raster(
+    windows_dir: Path,
+    linux_dir: Path,
+    windows_geometry: dict[GeometryKey, Geometry],
+    output: Path,
+) -> tuple[int, int]:
     """Check measured Windows page-face colors and checkbox outlines separately from text AA."""
     origin_x, origin_y = metadata(windows_dir / "result.txt")[4:6]
     surface_points = {
@@ -362,6 +371,30 @@ def validate_surface_and_checkbox_raster(windows_dir: Path, linux_dir: Path, out
                     passed += 1
                 else:
                     failed += 1
+
+            for resource_id, name in ((105, "IDC_RESET"), (106, "IDC_CLOSE")):
+                key = (101, locale, "default", resource_id, "control")
+                rect = windows_geometry.get(key)
+                if rect is None:
+                    raise ValueError(f"Missing native settings button geometry: {key}")
+                x, y, width, height = map(round, rect)
+                samples = (
+                    ("outer-face", 0, 0, (240, 240, 240)),
+                    ("raised-edge-top-left", 1, 1, (173, 173, 173)),
+                    ("button-face-left", 2, 2, (225, 225, 225)),
+                    ("button-face-right", width - 5, height // 2, (225, 225, 225)),
+                    ("raised-edge-bottom-right", width - 2, height - 2, (173, 173, 173)),
+                    ("outer-face-bottom-right", width - 1, height - 1, (240, 240, 240)),
+                )
+                for target, dx, dy, expected in samples:
+                    native = windows_images["general"].getpixel((x + dx, y + dy))
+                    actual = linux_images["general"].getpixel((x + dx, y + dy))
+                    status = "PASS" if native == expected and actual == native else "FAIL"
+                    writer.writerow((locale, f"{name}.{target}", native, actual, dx, dy, 0, 0, status))
+                    if status == "PASS":
+                        passed += 1
+                    else:
+                        failed += 1
     return passed, failed
 
 
@@ -550,10 +583,10 @@ def write_font_resolution_report(windows_dir: Path, linux_dir: Path, output_dir:
         if len(rows) < 10:
             raise ValueError(f"Win32 font metrics export has only {len(rows)} rows; expected multiple native controls")
         writer = csv.writer(output_stream)
-        writer.writerow(("page_idd", "locale", "resource_id", "class", "sample_kind", "sample_text", "windows_text_evidence", "windows_logical_face_name", "windows_resolved_face_name", "font_source", "windows_logfont_height_px", "windows_point_size", "windows_logfont_weight", "windows_textmetric_height_px", "windows_ascent_px", "windows_descent_px", "windows_textmetric_weight", "windows_text_width_px", "windows_text_height_px", "linux_gtk_style_family", "linux_gtk_resolved_family", "linux_gtk_base_font", "linux_canvas_size_pt", "linux_gtk_weight", "linux_pango_ascent_px", "linux_pango_descent_px", "linux_fontconfig_fallback_en", "linux_fontconfig_fallback_zh", "linux_painter_text_sizes", "family_selection_status"))
+        writer.writerow(("page_idd", "locale", "resource_id", "class", "sample_kind", "sample_text", "windows_text_evidence", "windows_logical_face_name", "windows_gdi_reported_face_name", "windows_font_substitution_registry", "font_source", "windows_logfont_height_px", "windows_point_size", "windows_logfont_weight", "windows_textmetric_height_px", "windows_ascent_px", "windows_descent_px", "windows_textmetric_weight", "windows_text_width_px", "windows_text_height_px", "linux_gtk_style_family", "linux_gtk_resolved_family", "linux_gtk_base_font", "linux_canvas_size_pt", "linux_gtk_weight", "linux_pango_ascent_px", "linux_pango_descent_px", "linux_fontconfig_fallback_en", "linux_fontconfig_fallback_zh", "linux_painter_text_sizes", "family_selection_status"))
         for row in rows:
             locale = canonical_locale(row["locale"])
-            writer.writerow((row["page_idd"], locale, row["resource_id"], row["class"], row["sample_kind"], row["sample_text"], row.get("sample_text_source", ""), row["logical_face_name"], row["resolved_face_name"], row.get("font_source", "WM_GETFONT"), row["logfont_height_px"], row["point_size"], row["logfont_weight"], row["textmetric_height_px"], row["text_ascent_px"], row["text_descent_px"], row["textmetric_weight"], row["text_width_px"], row["text_height_px"], *gtk_font, linux_fonts["en"], linux_fonts["zh"], ";".join(painter_sizes), "GTK system font; Painter.text has no family argument"))
+            writer.writerow((row["page_idd"], locale, row["resource_id"], row["class"], row["sample_kind"], row["sample_text"], row.get("sample_text_source", ""), row["logical_face_name"], row["gdi_reported_face_name"], row.get("font_substitution", "NOT_RECORDED"), row.get("font_source", "WM_GETFONT"), row["logfont_height_px"], row["point_size"], row["logfont_weight"], row["textmetric_height_px"], row["text_ascent_px"], row["text_descent_px"], row["textmetric_weight"], row["text_width_px"], row["text_height_px"], *gtk_font, linux_fonts["en"], linux_fonts["zh"], ";".join(painter_sizes), "GTK system font; Painter.text has no family argument"))
     manifest.append((output.name, sha256(output)))
 
 
@@ -576,6 +609,8 @@ def parse_linux_text_metrics(path: Path) -> dict[tuple[int, str, int, str], dict
 
 def windows_text_part(row: dict[str, str]) -> str:
     sample = row["sample_kind"]
+    if sample == "value":
+        return "value"
     if sample.startswith(("IDC_REGIONS_", "IDC_COLORS_")):
         return sample.rsplit("_", 1)[1]
     resource = int(row["resource_id"])
@@ -614,19 +649,23 @@ def write_text_metrics_comparison(windows_dir: Path, linux_dir: Path, output_dir
     unexpected_divergences = 0
     with output.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(("page_idd", "locale", "resource_id", "part", "windows_text", "windows_text_evidence", "linux_text", "windows_logical_face", "windows_resolved_face", "windows_font_source", "windows_logfont_height_px", "windows_point_size", "windows_weight", "windows_ascent_px", "windows_descent_px", "windows_text_width_px", "windows_text_height_px", "linux_gtk_style_family", "linux_gtk_resolved_family", "linux_gtk_base_font", "linux_canvas_size_pt", "linux_gtk_weight", "linux_pango_ascent_px", "linux_pango_descent_px", "linux_fontconfig_fallback", "linux_painter_size", "linux_bold", "linux_text_x", "linux_text_y", "linux_text_width_px", "linux_text_height_px", "delta_width_px", "delta_height_px", "verdict"))
+        writer.writerow(("page_idd", "locale", "resource_id", "part", "windows_text", "windows_text_evidence", "linux_text", "windows_logical_face", "windows_gdi_reported_face", "windows_font_substitution_registry", "windows_font_source", "windows_logfont_height_px", "windows_point_size", "windows_weight", "windows_ascent_px", "windows_descent_px", "windows_text_width_px", "windows_text_height_px", "linux_gtk_style_family", "linux_gtk_resolved_family", "linux_gtk_base_font", "linux_canvas_size_pt", "linux_gtk_weight", "linux_pango_ascent_px", "linux_pango_descent_px", "linux_fontconfig_fallback", "linux_painter_size", "linux_bold", "linux_text_x", "linux_text_y", "linux_text_width_px", "linux_text_height_px", "delta_width_px", "delta_height_px", "verdict"))
         for key in sorted(set(native) | set(linux)):
             win = native.get(key)
             current = linux.get(key)
             if win is None or current is None:
                 missing += 1
                 verdict = "MISSING_WINDOWS_METRIC" if win is None else "MISSING_LINUX_METRIC"
-                writer.writerow((*key, win["sample_text"] if win else "", win.get("sample_text_source", "") if win else "", current["text"] if current else "", win["logical_face_name"] if win else "", win["resolved_face_name"] if win else "", win.get("font_source", "") if win else "", win["logfont_height_px"] if win else "", win["point_size"] if win else "", win["logfont_weight"] if win else "", win["text_ascent_px"] if win else "", win["text_descent_px"] if win else "", *gtk_font, linux_fonts[key[1]] if current else "", current["size"] if current else "", current["bold"] if current else "", current["x"] if current else "", current["y"] if current else "", current["width"] if current else "", current["height"] if current else "", "", "", verdict))
+                writer.writerow((*key, win["sample_text"] if win else "", win.get("sample_text_source", "") if win else "", current["text"] if current else "", win["logical_face_name"] if win else "", win.get("gdi_reported_face_name", "") if win else "", win.get("font_substitution", "") if win else "", win.get("font_source", "") if win else "", win["logfont_height_px"] if win else "", win["point_size"] if win else "", win["logfont_weight"] if win else "", win["text_ascent_px"] if win else "", win["text_descent_px"] if win else "", *gtk_font, linux_fonts[key[1]] if current else "", current["size"] if current else "", current["bold"] if current else "", current["x"] if current else "", current["y"] if current else "", current["width"] if current else "", current["height"] if current else "", "", "", verdict))
                 continue
             if win["sample_text"] != current["text"]:
                 divergent += 1
                 if key in EXPECTED_ZH_SOURCE_DIVERGENCES:
-                    verdict = "UPSTREAM_TRANSLATION_GAP; PRODUCT_DECISION_REQUIRED"
+                    verdict = (
+                        "UPSTREAM_LOCALE_NAME_VARIANT; PRODUCT_DECISION_REQUIRED"
+                        if key == (101, "zh", 123, "value")
+                        else "UPSTREAM_TRANSLATION_GAP; PRODUCT_DECISION_REQUIRED"
+                    )
                 else:
                     unexpected_divergences += 1
                     verdict = "UNEXPECTED_SOURCE_TEXT_DIVERGENCE"
@@ -636,7 +675,7 @@ def write_text_metrics_comparison(windows_dir: Path, linux_dir: Path, output_dir
                 delta_width = round(float(current["width"]) - float(win["text_width_px"]), 2)
                 delta_height = round(float(current["height"]) - float(win["text_height_px"]), 2)
                 verdict = "TEXT_METRICS_WITHIN_2PX" if abs(delta_width) <= 2 and abs(delta_height) <= 2 else "TEXT_METRICS_DIFFER"
-            writer.writerow((*key, win["sample_text"], win.get("sample_text_source", ""), current["text"], win["logical_face_name"], win["resolved_face_name"], win.get("font_source", "WM_GETFONT"), win["logfont_height_px"], win["point_size"], win["logfont_weight"], win["text_ascent_px"], win["text_descent_px"], win["text_width_px"], win["text_height_px"], *gtk_font, linux_fonts[key[1]], current["size"], current["bold"], current["x"], current["y"], current["width"], current["height"], delta_width, delta_height, verdict))
+            writer.writerow((*key, win["sample_text"], win.get("sample_text_source", ""), current["text"], win["logical_face_name"], win.get("gdi_reported_face_name", ""), win.get("font_substitution", "NOT_RECORDED"), win.get("font_source", "WM_GETFONT"), win["logfont_height_px"], win["point_size"], win["logfont_weight"], win["text_ascent_px"], win["text_descent_px"], win["text_width_px"], win["text_height_px"], *gtk_font, linux_fonts[key[1]], current["size"], current["bold"], current["x"], current["y"], current["width"], current["height"], delta_width, delta_height, verdict))
     manifest.append((output.name, sha256(output)))
 
     language_path = output_dir / "source-language-diff.csv"
@@ -660,8 +699,12 @@ def write_text_metrics_comparison(windows_dir: Path, linux_dir: Path, output_dir
             else:
                 status = "EXPECTED_UPSTREAM_TRANSLATION_GAP"
             upstream_zh = "No Simplified Chinese resource; upstream text is hard-coded English"
-            if key == (104, "zh", 147, "label"):
+            if key == (101, "zh", 123, "value"):
+                upstream_zh = "Chinese (Simplified) is the locale label; the INI section header remains [Chinese (Simplified)]"
+            elif key == (104, "zh", 147, "label"):
                 upstream_zh = "IDS_TRAYACTIONSC_HINT=66 exists; Simplified Chinese value remains English"
+            if key == (101, "zh", 123, "value"):
+                status = "EXPECTED_LOCALE_NAME_VARIANT"
             writer.writerow((page_idd, locale, resource_id, part, source_english, upstream_zh, actual_windows, windows_row.get("sample_text_source", "MISSING") if windows_row else "MISSING", actual_linux, "DECISION_REQUIRED; retain project Simplified Chinese translation pending product decision", status))
 
         for key in sorted(set(native) & set(linux)):
@@ -801,7 +844,7 @@ def main() -> int:
     write_font_resolution_report(args.windows_dir, args.linux_dir, args.output_dir, manifest)
     raster_path = args.output_dir / "control-raster-diff.csv"
     raster_passed, raster_failed = validate_surface_and_checkbox_raster(
-        args.windows_dir, args.linux_dir, raster_path
+        args.windows_dir, args.linux_dir, windows_geometry, raster_path
     )
     navigation_path = args.output_dir / "nav-selection-geometry.csv"
     nav_passed, nav_failed, guide_passed, guide_failed = validate_navigation_raster(
@@ -819,7 +862,8 @@ def main() -> int:
         "Geometry verdicts use resource-ID keyed Win32 window/control rectangles and Linux Canvas logical rectangles. PASS requires |dx|, |dy|, |dw|, |dh| <= 2 px for each row. IDC_NAV is compared as one resource control; its non-HWND tree items are checked separately from native selected-row pixels, dotted guide pixels, and XTEST clicks.\n"
         "The memory-region list is compared in matching top (rows 0-5), middle (rows 1-6), and bottom (rows 2-7) states. Windows native screenshots and resource-ID row rectangles are collected at all three offsets for both locales; the middle-state raster comparison is emitted separately and remains compare-only.\n"
         "The navigation table derives selected-row bounds from the current native #D9D9D9 screenshot for each page and locale, compares that measurement to the pinned historical baseline, then compares Linux directly to the current native measurement. Dotted branch points are checked against native #6D6D6D samples.\n"
-        "Win32 WM_GETFONT/LOGFONT and GDI TEXTMETRIC/GDI text extents are exported per visible control. Linux Canvas text layout width/height and text origin are exported by the production test build through ui.text_width/ui.text_height; fontconfig family matches are recorded as fallback candidates because the Canvas API exposes the GTK system font, not a per-call family. Exact source strings and source-level language divergences are compared separately from text metric deltas. Middle-scroll label ink boxes are measured from unscaled screenshots, separately from control geometry and antialiasing.\n"
+        "Win32 WM_GETFONT/LOGFONT and GDI TEXTMETRIC/GDI text extents are exported per visible control. GDI GetTextFace is recorded as the reported face, while the Windows FontSubstitutes registry mapping is a separate field; neither field alone proves the physical font file selected by GDI. Linux Canvas text layout width/height and text origin are exported by the production test build through ui.text_width/ui.text_height; fontconfig family matches are recorded as fallback candidates because Painter.text has no per-call family argument. Exact source strings and source-level language divergences are compared separately from text metric deltas. Middle-scroll label ink boxes are measured from unscaled screenshots, separately from control geometry and antialiasing.\n"
+        "Reset and Close default client pixels are checked against measured IDC_RESET/IDC_CLOSE rectangles for the outer system-face pixel, raised edge, and button face. These small sample checks do not claim whole-button raster equivalence.\n"
         "Font, text, control raster and geometry are separate evidence categories. Pixel metrics are raw comparisons only and do not imply 1:1 equivalence.\n\n"
         "Windows environment metadata:\n" + windows_environment + "\nLinux environment metadata:\n" + linux_environment,
         encoding="utf-8",

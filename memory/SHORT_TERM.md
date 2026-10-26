@@ -2,11 +2,12 @@
 
 ## 当前续接：P2C-3 原版视觉差异收敛（2026-10-26）
 
-- PR #7 是 OPEN / Draft，继续使用 `feat/issue-3-p2c-settings-ui`，base `feat/issue-3-p2b-main-window`；首批代码已推至 head `1f93abe75a3ba4dadf01860a79a44b62ccfdce0b`，但该 exact-head CI 失败并已定位根因。
-- Windows run `40307471183`：官方 v3.5.2 tag、发布资产 SHA、setup PGP 签名通过；采集脚本 C# 类型因 `LOGFONTW.CharSet` 字段名遮蔽 `CharSet` 类型失败，未采到新截图。
-- 同 head 的 Xvfb/Weston run `40307471104` 及重复 push run `40307465078`：Zamak 编译在 `native/gui_test.c` 的 GTK/Pango include 阶段失败，生产窗口测试未启动；比较 job skipped。修复改用 header-free ABI 声明和限定 C# 类型名，待推送重跑。
-- 修复后的本机检查：Zamak 0.2.0 `check` PASS、29/29 test PASS、`build` PASS；独立 C11 语法检查 PASS。此前同一轮的治理检查 33 项、Python/C 单测 3/3、脚本语法、Python `py_compile`、`git diff --check` PASS；最终提交后重跑。
-- 无本机 GUI/Xvfb/Wayland/Hyprland 操作，无 GTK 安装、内存清理、Polkit、Swap/ZRAM 写入。首轮 Actions 失败不能计为 P2C-3 验收；等待修复后 exact-head run。
+- PR #7 `OPEN / Draft`，分支 `feat/issue-3-p2c-settings-ui`，Base `911a3d0b99b05f15bd0109dca475b0b5174e7888`。本次开始时本地/远端 HEAD 为 `b4b5de5c383bebab3c4ebb9e784cf56f577d5907`；保留该分支，未改 main 或其他 PR。
+- 该源码 HEAD 的真实来源：Windows run `40312777621` / artifact `12645980196`；同源码生产 Xvfb/XTEST + Weston run `40312777567` / artifacts `12645029581`, `12646550670`。Windows native job 与 production UI Xvfb/Weston jobs PASS；Windows run 的 Linux screenshot 子 job在 apt 安装依赖的 45 分钟 timeout 后 CANCELLED，截图和 comparison 没运行，workflow不能标 PASS。
+- 以同源码 Windows 与 Linux 原始图生成的当前基准：184/184 资源矩形 2 px 内 PASS，最大分量 1.5 px；12 个滚动状态缺口已采集；旧基础 raster 样本 12/12 PASS。五页双语 changed-pixel rate 6.8528%–16.7341%，不等于像素通过。P2C-2→当前差异率详见 `docs/P2C-3_VISUAL_FIDELITY_REPORT.md`。
+- 字体测量：Windows `WM_GETFONT`/GDI 为 `MS Shell Dlg 2` alias，8.25pt、400 weight、13 px height、ascent 11/descent 2；Linux Sans -> DejaVu Sans，中文 fallback Noto Sans CJK SC，8pt、Pango ascent 10/descent 3。60 个相同英文文本宽度比值中位数 1.146。物理 Windows 字体文件身份尚未独立证明；无专有字体复制。
+- 未提交增量在 `settings_ui.zm` / `ui_geometry.zm` 加入基于 Win32 像素证据的 Reset/Close 按钮边框及列表文本 1 px 对齐；Windows `IDC_HOTKEY=132` 使用 `HKM_GETHOTKEY`，将合法未分配与 API 失败分开；比较器增加原生按钮采样和 locale/字体字段。改后 Zamak 0.2.0 check PASS、test 29/29、build PASS；治理 33 项、Python/C 3/3、8 个 Shell 语法、C syntax、Arch build、diff check 均 PASS。尚未由新 HEAD GUI screenshot / Actions 验证。
+- 没有在主机启动 GUI、Xvfb、Wayland/Hyprland、访问桌面 IPC、GTK 安装、鼠标键盘注入、内存清理、Polkit、Swap/ZRAM 操作。Windows Dark/各菜单可截图；Tray menu、clean-region submenu、confirmation/result dialog 仍分别 BLOCKED，后者不执行实际清理。
 
 ## P2C-2 已核验历史证据（2026-10-26）
 

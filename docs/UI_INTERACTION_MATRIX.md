@@ -142,7 +142,7 @@
 
 默认值截图不宣称为 Linux 已保存配置。对应资源矩形、像素叠加、差异图与 2 px 判断以 [P2C-1 设置报告](P2C-1_SETTINGS_UI_REPORT.md) 中精确 Actions head 的证据为准；不同 CI runs 生成的截图不得混用。
 
-简体中文原版显示与 Linux 当前翻译不一致的 8 个内存清理区域及 2 个 Advanced 标签，已按资源 ID 记录于 [P2C-3 上游简中显示差异矩阵](P2C-3_SOURCE_LANGUAGE_MATRIX.md)。它们是原版未翻译项，不是字体误差；在产品负责人决定是否为截图忠实度保留英文前，Linux 维持已要求的简体中文译文，并将这些区域标为内容差异。
+简体中文原版显示与 Linux 当前翻译不同的内容包括 8 个内存清理区域、2 个 Advanced 标签、仍显示英文的 `Single click:`，以及语言下拉的 `Chinese (Simplified)` / `简体中文` 名称差异。它们按资源 ID 记录于 [P2C-3 上游简中显示差异矩阵](P2C-3_SOURCE_LANGUAGE_MATRIX.md)，作为内容差异而非字体误差；产品决定前保留独立简体中文界面。
 
 P2C-2 renderer verification at source head `20c8fbc8fc80c481965fecbde17aa507eb7247fe` confirms the page surface has no added child-dialog frame, resource-defined GroupBoxes remain, four Appearance swatches match the source defaults in both languages, and source-default checkmarks remain disabled/read-only. Disabled-option feedback does not alter saved state or trigger a system action. For `IDC_NAV=104`, the five native selected-row fills use `#D9D9D9`, selection bounds are measured separately per locale, and the tree guide uses native `#6D6D6D` pixels; the current Windows/Linux comparison passes all 10 selection bounds with 0 px delta and all 102 sampled guide pixels. Exact-head screenshots, SHA-256 manifest, overlays, heatmaps, and CI artifact IDs are indexed in [P2C-1/P2C-2 settings evidence](P2C-1_SETTINGS_UI_REPORT.md). The overall geometry comparison is 172 PASS within 2 px, 0 FAIL, with 12 intermediate memory-list scroll rows marked `NOT_COMPARABLE_NATIVE_STATE`; whole-image changed-pixel results still differ and do not establish pixel equivalence.
 
@@ -150,8 +150,8 @@ Exact-head calibration at source `06be74b740e8906e64d837d8ac77e0255bea1081` samp
 
 ## 9. P2C-3 原生视觉差异采集补充
 
-- 固定基准仍为 v3.5.2 tag `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。英文 `IDC_REGIONS=124` 后缀按固定源码保持 `win8.1+` / `win10+`；简中保留当前独立翻译，8 个清理行与 2 个 Advanced 标签的逐资源差异待产品决策，见 [P2C-3 来源语言矩阵](P2C-3_SOURCE_LANGUAGE_MATRIX.md)。
-- Windows 侧计划从 Win32 控件字体 API、GDI 文本度量及 UI Automation 的真实 ListItem.Name 获取证据；Linux 侧由生产 Canvas 导出 Pango 系统字体与文字布局度量。此证据将字体、文本、几何及控件绘制分别记录，不互相代替。
-- Windows 和 Linux 的 `IDC_REGIONS` 顶部/中间/底部状态均由相同资源 ID 与行索引关联；只有双端采集成功后，原有 12 项 `NOT_COMPARABLE_NATIVE_STATE` 才转成可比较的 ≤2 px 结果。
+- 固定基准仍为 v3.5.2 tag `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。英文 `IDC_REGIONS=124` 后缀按固定源码保持 `win8.1+` / `win10+`；简中差异见 [P2C-3 来源语言矩阵](P2C-3_SOURCE_LANGUAGE_MATRIX.md)。
+- Windows 侧从 `WM_GETFONT`/`LOGFONT`、GDI `TEXTMETRIC`/文本范围、`LVM_GETITEMTEXTW`、Win32 控件文本与 ComboBox 当前项读取实际值；Linux 生产 Canvas 导出 Pango/字体回退和布局度量。字体、文本、几何及控件绘制分开记录。Windows 的 `GetTextFaceW` 仍报告逻辑别名 `MS Shell Dlg 2`，不能将该值当作已证实的物理字体文件。
+- 源码 `b4b5de5` 的 exact-source 截图配对已将 `IDC_REGIONS` 顶部/中间/底部 EN/zh-CN 资源 ID 行纳入比较：184/184 控件/行几何 PASS，最大绝对分量偏差 1.5 px。文字墨迹框偏差单独归类；简中原版未翻译差异不算几何误差。
 - 主菜单、清理区域弹出菜单、尝试托盘上下文菜单及来源命令暗色主题截图由隔离 Windows runner 采集。真实清理确认/结果对话框若必须执行内存清理才能出现，保持 `BLOCKED`，不触发动作。
-- P2C-3 改动的 exact-head run 与几何/文字/变化率结果详见 [P2C-3 视觉报告](P2C-3_VISUAL_FIDELITY_REPORT.md)。全页 changed-pixel 比例仅作前后比较，不构成 1:1 验收。
+- 当前配对基准来自 Windows run `40312777621` artifact `12645980196` 与同源码 Xvfb run `40312777567` artifact `12645029581`；逐页变化率、字体宽度差、原生中文显示和截图状态见 [P2C-3 视觉报告](P2C-3_VISUAL_FIDELITY_REPORT.md)。P2C-3 候选按钮光栅/文字墨迹修正仍待新 HEAD CI 核验；全页 changed-pixel 比例只作前后比较，不构成 1:1 验收。

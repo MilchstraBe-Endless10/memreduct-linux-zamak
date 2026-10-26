@@ -6,6 +6,7 @@
 
 | 原版资源 / 位置 | 上游英文 | 3.5.2 简中资源 | Windows 简中实际显示 | Linux 当前简中显示 | 差异类型 | 决策状态 |
 |---|---|---|---|---|---|---|
+| `IDC_LANGUAGE=123`, General selected value | `Chinese (Simplified)` locale display name | INI section header `[Chinese (Simplified)]`；不是已翻译的显示字符串 | Chinese (Simplified) | 简体中文 | locale 名称本地化 | `DECISION_REQUIRED` |
 | `IDC_REGIONS=124`, row 0 / `IDM_CLEAN_WORKINGSET=183` | Working set | 无；`main.h` 硬编码 | Working set | 工作集 | 原版未翻译 | `DECISION_REQUIRED` |
 | `IDC_REGIONS=124`, row 1 / `IDM_CLEAN_SYSTEMFILECACHE=184` | System file cache | 无；`main.h` 硬编码 | System file cache | 系统文件缓存 | 原版未翻译 | `DECISION_REQUIRED` |
 | `IDC_REGIONS=124`, row 2 / `IDM_CLEAN_MODIFIEDLIST=186` | Modified page list* | 无；`main.h` 硬编码 | Modified page list* | 已修改页列表* | 原版未翻译 | `DECISION_REQUIRED` |
@@ -16,16 +17,18 @@
 | `IDC_REGIONS=124`, row 7 / `IDM_CLEAN_COMBINEMEMORYLISTS=190` | Combine memory lists (win10+) | 无；`main.h` 硬编码 | Combine memory lists (win10+) | 合并内存列表（Windows 10+） | 原版未翻译；后缀大小写按源码不同 | `DECISION_REQUIRED` |
 | `IDC_ALLOWSTANDBYLISTCLEANUP_CHK=153` | Allow “Standby lists” and “Modified page list” cleanup on autoreduct | 无；`SettingsProc` 硬编码 | Allow “Standby lists” and “Modified page list” cleanup on autoreduct | 允许自动清理备用列表和已修改页列表 | 原版未翻译 | `DECISION_REQUIRED` |
 | `IDC_LOGRESULTS_CHK=154` | Log cleaning results into a debug log | 无；`SettingsProc` 硬编码 | Log cleaning results into a debug log | 将清理结果写入调试日志 | 原版未翻译 | `DECISION_REQUIRED` |
+| `IDC_TRAYACTIONSC_HINT=147`, Tray icon / Single click | Single click: | 键 `IDS_TRAYACTIONSC_HINT=66` 存在，简中值仍为英文 `Single click:` | Single click: | 单击： | 上游已存在但未翻译的字符串 | `DECISION_REQUIRED` |
 
 ## 决策说明
 
-- 严格复刻原版时，简体中文 Windows 截图中的上述十项必须继续显示英文；将它们翻译为中文会降低对应页的截图相似度。
-- Linux 产品已被明确要求支持 English 与简体中文独立切换；当前 Linux 中文显示遵循该产品要求，不改变这十项现有翻译。
-- 因“复刻原版中文界面”与“完整简体中文”两项要求在这些资源上冲突，视觉验收将它们标记为内容差异，不能归为字体误差或计算像素一致。当前保留中文翻译是临时遵循完整本地化要求的行为；最终是否在该十项上优先逐字复刻，需要产品负责人明确决定。
+- 严格复刻原版时，简体中文 Windows 截图中的八个 Memory cleaning 区域、两个 Advanced 文案及 `Single click:` 共 11 项资源文案均显示英文；将它们翻译为中文会降低对应页的截图相似度。另有 1 项 locale 显示名差异：上游显示 `Chinese (Simplified)`，Linux 显示“简体中文”。
+- Linux 产品已被明确要求支持 English 与简体中文独立切换；当前 Linux 中文显示遵循该产品要求，不改变这 11 项资源文案翻译。另有 1 项 locale 显示名差异（`Chinese (Simplified)` / `简体中文`）。
+- 因“复刻原版中文界面”与“完整简体中文”两项要求在这 11 项文案及 1 项 locale 名称上冲突，视觉验收将它们标记为内容差异，不能归为字体误差。当前保留简体中文翻译和“简体中文”locale 名称是暂定本地化行为；是否改为逐字复刻原版，需要产品负责人明确决定。
 
 ## 证据边界
 
 - 上游英文及未翻译项：固定 tag `src/main.h`、`src/main.c` 与 `docs/UI_INTERACTION_MATRIX.md` 的逐资源记录。
 - Windows 中文显示：隔离 Windows runner 采集的 Mem Reduct 3.5.2 原生设置页截图；列表和 Advanced 页中这些字符串仍显示英文。
 - Linux 中文显示：生产 Zamak `src/settings_ui.zm`；中间滚动状态比较会另行测量 Windows/ Linux 行文字墨迹框。
+- `IDC_LANGUAGE=123` 当前项由 Windows `Win32CB_GETCURSEL+CB_GETLBTEXT` 与 Linux 生产 Canvas 文本日志独立读取；不会以源代码常量代替运行值。
 - 这张表描述文案差异，不意味着对应清理、自动清理或日志操作在 Linux 已实现。所有尚未审查的功能仍保持禁用。
