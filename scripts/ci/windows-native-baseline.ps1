@@ -60,10 +60,6 @@ try {
 
     $gpg = Get-Command gpg.exe -ErrorAction SilentlyContinue
     if (-not $gpg) {
-        $gpgCandidate = Join-Path $env:ProgramFiles 'Git\usr\bin\gpg.exe'
-        if (Test-Path -LiteralPath $gpgCandidate) { $gpg = Get-Item -LiteralPath $gpgCandidate }
-    }
-    if (-not $gpg) {
         Invoke-Checked 'choco.exe' @('install', 'gnupg', '-y', '--no-progress') | Out-Null
         $gpg = Get-Command gpg.exe -ErrorAction Stop
     }
