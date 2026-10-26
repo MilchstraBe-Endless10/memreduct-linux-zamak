@@ -2,12 +2,12 @@
 
 ## 当前续接：P2C-3 原版视觉差异收敛（2026-10-26）
 
-- PR #7 `OPEN / Draft`，分支 `feat/issue-3-p2c-settings-ui`，Base `911a3d0b99b05f15bd0109dca475b0b5174e7888`。本次开始时本地/远端 HEAD 为 `b4b5de5c383bebab3c4ebb9e784cf56f577d5907`；保留该分支，未改 main 或其他 PR。
-- 该源码 HEAD 的真实来源：Windows run `40312777621` / artifact `12645980196`；同源码生产 Xvfb/XTEST + Weston run `40312777567` / artifacts `12645029581`, `12646550670`。Windows native job 与 production UI Xvfb/Weston jobs PASS；Windows run 的 Linux screenshot 子 job在 apt 安装依赖的 45 分钟 timeout 后 CANCELLED，截图和 comparison 没运行，workflow不能标 PASS。
-- 以同源码 Windows 与 Linux 原始图生成的当前基准：184/184 资源矩形 2 px 内 PASS，最大分量 1.5 px；12 个滚动状态缺口已采集；旧基础 raster 样本 12/12 PASS。五页双语 changed-pixel rate 6.8528%–16.7341%，不等于像素通过。P2C-2→当前差异率详见 `docs/P2C-3_VISUAL_FIDELITY_REPORT.md`。
-- 字体测量：Windows `WM_GETFONT`/GDI 为 `MS Shell Dlg 2` alias，8.25pt、400 weight、13 px height、ascent 11/descent 2；Linux Sans -> DejaVu Sans，中文 fallback Noto Sans CJK SC，8pt、Pango ascent 10/descent 3。60 个相同英文文本宽度比值中位数 1.146。物理 Windows 字体文件身份尚未独立证明；无专有字体复制。
-- 未提交增量在 `settings_ui.zm` / `ui_geometry.zm` 加入基于 Win32 像素证据的 Reset/Close 按钮边框及列表文本 1 px 对齐；Windows `IDC_HOTKEY=132` 使用 `HKM_GETHOTKEY`，将合法未分配与 API 失败分开；比较器增加原生按钮采样和 locale/字体字段。改后 Zamak 0.2.0 check PASS、test 29/29、build PASS；治理 33 项、Python/C 3/3、8 个 Shell 语法、C syntax、Arch build、diff check 均 PASS。尚未由新 HEAD GUI screenshot / Actions 验证。
-- 没有在主机启动 GUI、Xvfb、Wayland/Hyprland、访问桌面 IPC、GTK 安装、鼠标键盘注入、内存清理、Polkit、Swap/ZRAM 操作。Windows Dark/各菜单可截图；Tray menu、clean-region submenu、confirmation/result dialog 仍分别 BLOCKED，后者不执行实际清理。
+- PR #7 仍 OPEN / Draft；分支 `feat/issue-3-p2c-settings-ui`，Base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。本轮生产源码 SHA `60be390eb0ff6c18564f35abcd23d36406c6d3f8`；随后本记忆/报告更新为文档提交，不改生产源码；未改 main 或其他 PR。
+- Exact-source Windows native + Linux Xvfb + comparison run `40319586672` 三个 job 均 PASS；artifacts：Windows `12648157361`、X11 `12648453073`、Overlay/heatmap/metrics/SHA `12648552362`。Windows 的 `IDC_HOTKEY=132` 经 `HKM_GETHOTKEY` 正确采到 `Ctrl+F1`（English/zh-CN），根因是旧采集器把返回值字节顺序反读。
+- 对照结果：184/184 控件/滚动行资源矩形 ≤2 px PASS，最大分量 1.5 px；原缺少的 12 个中间滚动状态现有真实双端截图和对应矩形。导航 selection 10/10、树状点线 102/102、raster 定点样本 36/36 PASS。与 P2C-2 相同条件下 10/10 五页双语变化像素率改善，当前范围 5.0420%–14.8853%，仍非 1:1。
+- Windows `WM_GETFONT`/GDI 实测 LOGFONT alias `MS Shell Dlg 2`, 8.25pt, weight 400, -11 px, text height 13/ascent 11/descent 2；注册表 substitute `Tahoma`，不能据此证明实际字体文件。Linux 8pt `Sans` / DejaVu Sans，简中 Noto Sans CJK SC fallback，Pango ascent 10/descent 3；英文文本宽度比中位数 1.1469。12 项简中运行时/资源差异矩阵维持 `DECISION_REQUIRED`，不私自选择弱化中文或偏离上游。
+- 本机：Zamak 0.2.0 check/test/build PASS（29/29）；治理 33 项、Python/C 安全 3/3、shell `bash -n` 8 个、比较器 py_compile、Arch build、`git diff --check` PASS。GitHub build-and-test run `40319586751` PASS。独立 production GUI run `40319586679` 截至 2026-10-26 12:19 UTC 仍 `IN_PROGRESS`：Weston Headless/Pixman PASS，Xvfb 停在依赖安装且 job 日志尚不可读，故不报告为 PASS。相同精确源码 `60be390` 的 native/Xvfb/comparison run `40319586672` 三项均 PASS。未在本机启动 GUI/Xvfb/Wayland，未访问桌面 IPC 或注入输入。
+- Windows 已捕获五页 EN/zh-CN light/dark、主菜单四项及主窗；dark Linux 对照未运行。Tray menu、clean-region menu、cleanup confirmation/result 仍 BLOCKED，不触发真实清理。整体像素 1:1 NOT PASS；没有清理、Polkit、Swap/ZRAM、root GUI 或活动 Hyprland 操作。
 
 ## P2C-2 已核验历史证据（2026-10-26）
 
