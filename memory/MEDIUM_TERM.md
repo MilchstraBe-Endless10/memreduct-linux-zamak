@@ -4,11 +4,11 @@
 
 ## P2C-4 最新 exact-head 证据
 
-PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`，本次 exact CI head `689211049a2028a8d740763d958d9b001c00c255`。P2C run `40405594197` Windows native + Linux production Xvfb/XTEST + visual comparison 3/3 PASS；P2B run `40405594177` production Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build `40405594170` 和 push build `40405588384` PASS，PR checks 7/7。Artifacts/digest、PNG/source SHA、明暗差异率见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。生产源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；本轮不改 UI 或阈值。资源几何 184/184（最大 1.5 px）、nav 10/10、tree 102/102、raster 36/36、scroll 2/2 PASS，整体像素 1:1 NOT PASS。Weston 客户端退出 0，但 GTK seat 与 SIGTERM 关闭期 layer 诊断保留、根因未知。Windows tray、clean popup/确认/结果仍 BLOCKED；12 项简中来源差异待决定。没有真实清理、特权操作或活动桌面操作。
+PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；本轮逐 artifact 核验 snapshot head `f4c107b5ef6bbc34a4a78fd3600dbfe4c4e81161`。P2C run `40406877107` Windows native + Linux production Xvfb/XTEST + visual comparison 3/3 PASS；P2B run `40406877396` production Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build `40406877378` 和 push build `40406867272` PASS，PR checks 7/7。Artifacts/digest、PNG/source SHA、明暗差异率见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。生产 UI 源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；本轮未改 UI 或比较阈值。资源几何 184/184（最大 1.5 px）、nav 10/10、tree 102/102、raster 36/36、scroll 2/2 PASS；light changed-pixel 5.0741%–14.8853%，dark 5.9434%–73.2932%，整体像素 1:1 NOT PASS。Liberation Sans 候选只做隔离试验，未应用生产；英文 64/66 项改善、简中 12 项改善和 12 项退化。Weston 客户端退出 0，但 GTK seat critical 保留且因果未知；未验收 Wayland 输入。Windows tray、clean popup/确认/结果仍 BLOCKED；12 项简中来源差异待决定。没有真实清理、特权操作或活动桌面操作。
 
 ## 当前阶段
 
-本次 P2C-4 exact-head 复核时间：2026-10-27；P2C run 40405594197、P2B run 40405594177 和 build run 40405594170 均在 6892110 exact head 完成。
+本次 P2C-4 exact-head 复核时间：2026-10-27；P2C run 40406877107、P2B run 40406877396、PR build 40406877378 与 push build 40406867272 均在 f4c107b evidence head 完成。随后提交的文档同步只改报告、交互矩阵和记忆；其 exact-head CI 结果以 PR #7 页面为准，生产源码 checkpoint 不变。
 **P1：Zamak 编译验收** — 本机 Zamak 0.2.0 check/test/build、Arch 原生构建、Hyprland GUI 基础验收及 Draft PR Actions 均通过。PR #2 仍 OPEN / Draft，等待 ChatGPT 复审和用户合并决定。
 
 **P2A：源码规格与隔离 UI 测试** — 源码规格位于独立 Draft PR #5；CI 测试位于 PR #4。PR #5 R7 修正 head `d89d74fde433da1863b4de0223f974c824fb590e`，checks 2/2 PASS；R6 几何说明、最终 CI 证据与候选实现门槛已修正。PR #4 最终 head `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1` 的 GUI PR run `40192531809`、build PR run `40192531948` 均通过，push runs 分别为 `40192528601`、`40192528611`；保留原 9 项事件路由测试并新增 3 项探针测试，12/12 PASS。P2C Windows-hosted run 后续取得 v3.5.2 主窗及五个设置页的双语 Native 截图和设置窗实测尺寸；完整菜单/托盘/清理对话框/深色主题截图、Hyprland 输入、全套几何对照和 2 px 验收仍 BLOCKED / NOT RUN。`IDD_MAIN=224×214 DLU` 是主窗模板；每个 `IDD_SETTINGS_* =260×168 DLU` 仅是设置子页模板，不是含导航和底部按钮的完整外框。

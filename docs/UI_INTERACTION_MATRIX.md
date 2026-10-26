@@ -4,7 +4,7 @@
 
 状态含义：NATIVE=Linux 上实现原生相同动作；EQUIVALENT=语义受限的 Linux 等价；UNSUPPORTED=没有安全/准确的 Linux 等价；NOT_IMPLEMENTED=可评估但项目当前未实现。状态描述当前 Linux 项目，不代表上游 Windows 功能状态。
 
-P2C-4 的隔离 Xvfb/XTEST 套件覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图分别记录 GTK `Adwaita:light` 与应用自己的 Canvas 暗色调色板，不更改桌面主题。当前验证 head `689211049a2028a8d740763d958d9b001c00c255` 的 P2C run `40405594197` 中 Windows 原版采集、Linux 五页双语生产 Xvfb/XTEST、视觉比较均 PASS（3/3）；P2B run `40405594177` 主窗 Xvfb/XTEST 与 Weston Headless/Pixman 客户端生命周期 PASS（2/2），重复设置页步骤按条件跳过，由 P2C 同 head 完整覆盖。Build/governance/safety PR run `40405594170` 与 push run `40405588384` 均 PASS。184/184 几何、36/36 raster、10/10 导航、102/102 树线及 2/2 中间滚动检查通过；全页 1:1 仍 NOT PASS。Weston 客户端退出码 0，但关闭期存在 seat/layer 诊断，根因未知。精确 artifacts、SHA、字体与暗色结果见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`；这些检查不构成活动 Hyprland 输入验收。
+P2C-4 的隔离 Xvfb/XTEST 套件覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图分别记录 GTK `Adwaita:light` 与应用自己的 Canvas 暗色调色板，不更改桌面主题。以生产证据 snapshot head `f4c107b5ef6bbc34a4a78fd3600dbfe4c4e81161` 运行的 P2C run `40406877107` 中 Windows 原版采集、Linux 五页双语生产 Xvfb/XTEST、视觉比较均 PASS（3/3）；P2B run `40406877396` 主窗 Xvfb/XTEST 与 Weston Headless/Pixman 客户端生命周期 PASS（2/2），重复设置页步骤按条件跳过，由 P2C 同 head 完整覆盖。Build/governance/safety PR run `40406877378` 与 push run `40406867272` 均 PASS。184/184 几何、36/36 raster、10/10 导航、102/102 树线及 2/2 中间滚动检查通过；全页 1:1 仍 NOT PASS。Weston 客户端退出码 0，但日志有一条 GTK seat critical，`wl_seat` 未公布；因果未知，且没有 Wayland 输入验收。精确 artifacts、SHA、字体与暗色结果见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`；这些检查不构成活动 Hyprland 输入验收。
 
 ## 1. 主窗口、菜单、快捷键
 
