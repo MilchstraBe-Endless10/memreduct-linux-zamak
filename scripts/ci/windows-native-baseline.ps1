@@ -301,7 +301,9 @@ public static class P2CWin32 {
   public static string GetHotkeyText(IntPtr control) {
     const uint HKM_GETHOTKEY=0x0402;
     uint packed=(uint)SendMessage(control, HKM_GETHOTKEY, IntPtr.Zero, IntPtr.Zero).ToInt64() & 0xffff;
-    uint modifiers=packed & 0xff, virtualKey=(packed >> 8) & 0xff;
+    // HKM_GETHOTKEY returns the virtual-key code in the low byte and the
+    // HOTKEYF_* modifier flags in the high byte.
+    uint virtualKey=packed & 0xff, modifiers=(packed >> 8) & 0xff;
     if (virtualKey == 0) return String.Empty;
     uint scan=MapVirtualKey(virtualKey, 0);
     if (scan == 0) throw new InvalidOperationException("MapVirtualKeyW failed for Win32 hotkey VK=" + virtualKey);
