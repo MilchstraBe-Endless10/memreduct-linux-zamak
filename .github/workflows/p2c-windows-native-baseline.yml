@@ -29,3 +29,71 @@ jobs:
           path: ${{ runner.temp }}/memreduct-windows-native
           if-no-files-found: warn
           retention-days: 14
+
+  linux-production-x11:
+    name: Capture production settings UI (Xvfb / XTEST)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Install runner-only build and X11 dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox wmctrl fonts-noto-cjk fonts-dejavu
+      - name: Install pinned Zamak 0.2.0
+        run: npm install --global @veyralux/zamak@0.2.0
+      - name: Build production GUI and helper
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2c-linux-production-x11
+        run: bash scripts/ci/build-production-gui.sh
+      - name: Verify Arch build entrypoint
+        run: bash scripts/build-arch.sh
+      - name: Capture and exercise the production settings window
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2c-linux-production-x11
+        run: bash scripts/ci/p2c-settings-xvfb.sh "$RUNNER_TEMP/p2c-linux-production-x11/memreduct-zamak-production"
+      - name: Upload production screenshots, geometry markers, and X11 logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p2c-linux-production-x11
+          path: ${{ runner.temp }}/p2c-linux-production-x11
+          if-no-files-found: warn
+          retention-days: 14
+
+  compare-windows-linux:
+    name: Compare native controls and client-area pixels
+    runs-on: ubuntu-24.04
+    needs: [windows-native-release, linux-production-x11]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Pillow for image comparison
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pil
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: p2c-windows-native-3.5.2
+          path: ${{ runner.temp }}/p2c-windows-native
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: p2c-linux-production-x11
+          path: ${{ runner.temp }}/p2c-linux-production-x11
+      - name: Generate standardized crops, overlays, heatmaps, hashes, and 2 px geometry verdicts
+        run: >-
+          python3 scripts/ci/compare_p2c_visuals.py
+          --windows-dir "$RUNNER_TEMP/p2c-windows-native"
+          --linux-dir "$RUNNER_TEMP/p2c-linux-production-x11"
+          --output-dir "$RUNNER_TEMP/p2c-comparison"
+      - name: Upload complete visual comparison evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p2c-windows-linux-visual-comparison
+          path: ${{ runner.temp }}/p2c-comparison
+          if-no-files-found: warn
+          retention-days: 14

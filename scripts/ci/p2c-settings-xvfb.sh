@@ -148,6 +148,11 @@ wait_new_marker "$menu_marker" "$menu_before"
 click "$window_id" 45 49
 wait_marker 'CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true'
 window_id="$(window_by_title 'Settings - Mem Reduct')"
+wait_marker 'CI_GTK_RUNTIME version=3.'
+wait_marker 'CI_SETTINGS_WIDGET_TREE root_type=GtkBox'
+wait_marker 'holder_candidates=1'
+wait_marker 'CI_NATIVE_SETTINGS_DELETE_HANDLER signal_id='
+wait_marker 'order=after connected=1'
 wait_marker 'CI_SETTINGS_CONTENT_BORDER old='
 wait_marker 'CI_SETTINGS_PAGE idd=101 page=General locale=en controls=116,117,118,120,119,121,122,123 child_dlu=260x168 provisional_canvas=558.0x335.0'
 geometry "$window_id" 558 335 "$artifact_dir/geometry-settings-en.txt"
@@ -164,6 +169,19 @@ for index in 0 1 2 3 4; do
   wait_marker "CI_SETTINGS_NAV resource=104 page_idd=$page_id page=${page_names[$index]}"
   wait_marker "CI_SETTINGS_PAGE idd=$page_id page=${page_names[$index]} locale=en"
   capture "$window_id" "production-settings-${index}-en.png" '558x335'
+  if [[ "$index" == 1 ]]; then
+    for offset in 1 2; do
+      before="$(grep -Fc "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$artifact_dir/p2c-client.log" || true)"
+      click "$window_id" 525 136
+      wait_new_marker "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$before"
+    done
+    capture "$window_id" 'production-settings-memory-en-scroll-2.png' '558x335'
+    for offset in 1 0; do
+      before="$(grep -Fc "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$artifact_dir/p2c-client.log" || true)"
+      click "$window_id" 525 42
+      wait_new_marker "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$before"
+    done
+  fi
 done
 
 # Select Simplified Chinese in the real IDC_LANGUAGE combo and capture the same five pages.
@@ -174,6 +192,10 @@ wait_marker 'CI_SETTINGS_LANGUAGE resource=123 popup_open=true'
 click "$window_id" 400 225
 wait_marker 'CI_LOCALE locale=zh-CN source=IDC_LANGUAGE_123'
 wait_marker 'CI_SETTINGS_PAGE idd=101 page=常规 locale=zh-CN'
+nav_marker='CI_SETTINGS_NAV resource=104 page_idd=101 page=常规'
+nav_before="$(grep -Fc -- "$nav_marker" "$artifact_dir/p2c-client.log" || true)"
+click "$window_id" 60 20
+wait_new_marker "$nav_marker" "$nav_before"
 capture "$window_id" 'production-settings-0-zh.png' '558x335'
 for index in 1 2 3 4; do
   y=$((23 + 20 * index))
@@ -190,6 +212,19 @@ for index in 1 2 3 4; do
   wait_marker "CI_SETTINGS_NAV resource=104 page_idd=$page_id page=$page_name"
   wait_marker "CI_SETTINGS_PAGE idd=$page_id page=$page_name locale=zh-CN"
   capture "$window_id" "production-settings-${index}-zh.png" '558x335'
+  if [[ "$index" == 1 ]]; then
+    for offset in 1 2; do
+      before="$(grep -Fc "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$artifact_dir/p2c-client.log" || true)"
+      click "$window_id" 525 136
+      wait_new_marker "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$before"
+    done
+    capture "$window_id" 'production-settings-memory-zh-scroll-2.png' '558x335'
+    for offset in 1 0; do
+      before="$(grep -Fc "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$artifact_dir/p2c-client.log" || true)"
+      click "$window_id" 525 42
+      wait_new_marker "CI_SETTINGS_REGION_SCROLL resource=124 offset=$offset" "$before"
+    done
+  fi
 done
 
 # Verify unsupported rows explain the boundary and have no action/state change.
@@ -257,6 +292,26 @@ wait_marker 'CI_SETTINGS_CLOSE resource=106 action=return_to_main'
 window_id="$(window_by_title 'Mem Reduct')"
 geometry "$window_id" 337 369 "$artifact_dir/geometry-main-after-close.txt"
 
+# Alt+F4 on the secondary top-level must return to the main window without
+# ending the application's event loop.
+xdotool key --clearmodifiers F2
+window_id="$(window_by_title 'Settings - Mem Reduct')"
+request_marker='CI_SETTINGS_CLOSE_REQUEST source=delete_event'
+request_before="$(grep -Fc -- "$request_marker" "$artifact_dir/p2c-client.log" || true)"
+handled_marker='CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true'
+handled_before="$(grep -Fc -- "$handled_marker" "$artifact_dir/p2c-client.log" || true)"
+xdotool windowactivate --sync "$window_id"
+xdotool key --clearmodifiers Alt+F4
+wait_new_marker "$request_marker" "$request_before"
+wait_new_marker "$handled_marker" "$handled_before"
+kill -0 "$app_pid"
+window_id="$(window_by_title 'Mem Reduct')"
+geometry "$window_id" 337 369 "$artifact_dir/geometry-main-after-settings-alt-f4.txt"
+if xdotool search --onlyvisible --name '^Settings - Mem Reduct$' >/dev/null 2>&1; then
+  printf 'Settings toplevel remained visible after Alt+F4.\n' >&2
+  exit 1
+fi
+
 # Ask the isolated Openbox instance to send WM_DELETE_WINDOW by unique title,
 # avoiding any conversion between xdotool and wmctrl window ID formats.
 xdotool key --clearmodifiers F2
@@ -264,12 +319,14 @@ window_id="$(window_by_title 'Settings - Mem Reduct')"
 settings_id="$window_id"
 xprop -id "$settings_id" WM_PROTOCOLS | tee "$artifact_dir/p2c-settings-wm-protocols.txt"
 grep -Fq 'WM_DELETE_WINDOW' "$artifact_dir/p2c-settings-wm-protocols.txt"
+request_before="$(grep -Fc -- "$request_marker" "$artifact_dir/p2c-client.log" || true)"
+handled_before="$(grep -Fc -- "$handled_marker" "$artifact_dir/p2c-client.log" || true)"
 printf 'requesting WM_DELETE_WINDOW by title: Settings - Mem Reduct\n' \
   | tee "$artifact_dir/p2c-wm-close-request.txt"
 wmctrl -v -c 'Settings - Mem Reduct' 2>&1 \
   | tee -a "$artifact_dir/p2c-wm-close-request.txt"
-wait_marker 'CI_SETTINGS_CLOSE_REQUEST source=delete_event'
-wait_marker 'CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true'
+wait_new_marker "$request_marker" "$request_before"
+wait_new_marker "$handled_marker" "$handled_before"
 kill -0 "$app_pid"
 window_id="$(window_by_title 'Mem Reduct')"
 geometry "$window_id" 337 369 "$artifact_dir/geometry-main-after-wm-close.txt"
@@ -293,11 +350,19 @@ printf 'production application exit status=%s\n' "$app_status" | tee "$artifact_
 [[ "$app_status" == 0 ]] || { cat "$artifact_dir/p2c-client.log" >&2; exit "$app_status"; }
 grep -Fq 'CI_APP_RETURNED' "$artifact_dir/p2c-client.log"
 ! grep -Eiq 'drop_caches|pkexec|swapoff|zramctl' "$artifact_dir/p2c-client.log"
+for title in 'Mem Reduct' 'Settings - Mem Reduct'; do
+  if xdotool search --onlyvisible --name "^${title}$" >/dev/null 2>&1; then
+    printf 'A production top-level window remained after the application exited: %s\n' "$title" >&2
+    exit 1
+  fi
+done
+printf 'PASS all production toplevel windows destroyed after app exit.\n' | tee "$artifact_dir/p2c-window-resource-release.txt"
 sha256sum "$artifact_dir"/production-settings-*.png | sed "s#$artifact_dir/##" | tee "$artifact_dir/p2c-screenshots-sha256.txt"
 (
   cd "$root"
   sha256sum src/main.zm src/settings_ui.zm src/ui_geometry.zm native/gui_window.c \
-    scripts/ci/p2c-settings-xvfb.sh
+    scripts/ci/p2c-settings-xvfb.sh scripts/ci/compare_p2c_visuals.py \
+    scripts/ci/windows-native-baseline.ps1
 ) | tee "$artifact_dir/p2c-source-sha256.txt"
-printf 'PASS: separate production settings toplevel; 5 pages x 2 locales; Reset no-op confirmation; keyboard language/navigation/Reset/Close; Escape, button Close, WM_DELETE_WINDOW protocol; main remains available and exits normally.\n' \
+printf 'PASS: separate production settings toplevel; 5 pages x 2 locales; Windows region list scroll-up/down; Reset no-op confirmation; keyboard language/navigation/Reset/Close; Escape, button Close, settings Alt+F4, WM_DELETE_WINDOW protocol; main remains available and all windows are destroyed on clean exit.\n' \
   | tee "$artifact_dir/p2c-result.txt"

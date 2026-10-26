@@ -8,6 +8,7 @@ $artifactDir = Join-Path $env:RUNNER_TEMP 'memreduct-windows-native'
 $workDir = Join-Path $env:RUNNER_TEMP 'memreduct-windows-native-work'
 New-Item -ItemType Directory -Force -Path $artifactDir, $workDir | Out-Null
 $statusFile = Join-Path $artifactDir 'result.txt'
+$geometryFile = Join-Path $artifactDir 'windows-settings-geometry.csv'
 $appProcess = $null
 
 function Write-Status([string]$Line) {
@@ -122,6 +123,11 @@ using System.Runtime.InteropServices;
 public static class P2CWin32 {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+  [StructLayout(LayoutKind.Explicit)] public struct TREE_RECT {
+    [FieldOffset(0)] public IntPtr Item;
+    [FieldOffset(0)] public int Left; [FieldOffset(4)] public int Top;
+    [FieldOffset(8)] public int Right; [FieldOffset(12)] public int Bottom;
+  }
   public sealed class WindowInfo {
     public IntPtr Handle; public uint ProcessId; public string Title; public string ClassName;
     public bool Visible; public int Left; public int Top; public int Width; public int Height; public int ControlId;
@@ -134,6 +140,8 @@ public static class P2CWin32 {
   [DllImport("user32.dll", SetLastError=true)] public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetFocus(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+  [DllImport("user32.dll", EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageRect(IntPtr hWnd, uint message, IntPtr wParam, ref RECT lParam);
+  [DllImport("user32.dll", EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageTreeRect(IntPtr hWnd, uint message, IntPtr wParam, ref TREE_RECT lParam);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageText(IntPtr hWnd, uint message, IntPtr wParam, System.Text.StringBuilder lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool IsWindowVisible(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
@@ -205,11 +213,35 @@ public static class P2CWin32 {
   public static bool SelectTreeItem(IntPtr tree, IntPtr item) {
     return SendMessage(tree, 0x110B, new IntPtr(9), item) != IntPtr.Zero;
   }
+  public static RECT[] GetTreeItemRects(IntPtr tree) {
+    const uint TVM_GETITEMRECT=0x1104;
+    var rects=new System.Collections.Generic.List<RECT>();
+    foreach (IntPtr item in GetTreeItems(tree)) {
+      var treeRect=new TREE_RECT(); treeRect.Item=item;
+      if (SendMessageTreeRect(tree, TVM_GETITEMRECT, IntPtr.Zero, ref treeRect) != IntPtr.Zero) {
+        rects.Add(new RECT { Left=treeRect.Left, Top=treeRect.Top, Right=treeRect.Right, Bottom=treeRect.Bottom });
+      }
+    }
+    return rects.ToArray();
+  }
   public static bool SelectComboItem(IntPtr combo, int index) {
     if (SendMessage(combo, 0x014E, new IntPtr(index), IntPtr.Zero).ToInt32() < 0) return false;
     int command=GetDlgCtrlID(combo) | (1 << 16);
     SendMessage(GetParent(combo), 0x0111, new IntPtr(command), combo);
     return GetComboSelection(combo) == index;
+  }
+  public static RECT[] GetListItemRects(IntPtr list) {
+    const uint LVM_GETITEMCOUNT=0x1004, LVM_GETITEMRECT=0x100E;
+    int count=SendMessage(list, LVM_GETITEMCOUNT, IntPtr.Zero, IntPtr.Zero).ToInt32();
+    var rects=new System.Collections.Generic.List<RECT>();
+    for (int index=0; index<count; index++) {
+      var rect=new RECT(); rect.Left=0; // LVIR_BOUNDS
+      if (SendMessageRect(list, LVM_GETITEMRECT, new IntPtr(index), ref rect) != IntPtr.Zero) rects.Add(rect);
+    }
+    return rects.ToArray();
+  }
+  public static int GetListTopIndex(IntPtr list) {
+    return SendMessage(list, 0x1027, IntPtr.Zero, IntPtr.Zero).ToInt32(); // LVM_GETTOPINDEX
   }
 }
 '@
@@ -284,7 +316,9 @@ public static class P2CWin32 {
                 $settingsClientOrigin = [P2CWin32+POINT]::new()
                 if (-not [P2CWin32]::ClientToScreen([IntPtr]$settingsHwnd, [ref]$settingsClientOrigin)) { throw 'Unable to locate native settings client origin.' }
                 $settingsDpi = [P2CWin32]::GetDpiForWindow([IntPtr]$settingsHwnd)
-                Write-Status "Windows Native settings geometry outer=$($settingsRect.Right-$settingsRect.Left)x$($settingsRect.Bottom-$settingsRect.Top) client=$($settingsClientRect.Right)x$($settingsClientRect.Bottom) dpi=$settingsDpi client_origin_screen=$($settingsClientOrigin.X),$($settingsClientOrigin.Y)"
+                $clientOffsetX = $settingsClientOrigin.X - $settingsRect.Left
+                $clientOffsetY = $settingsClientOrigin.Y - $settingsRect.Top
+                Write-Status "Windows Native settings geometry outer=$($settingsRect.Right-$settingsRect.Left)x$($settingsRect.Bottom-$settingsRect.Top) client=$($settingsClientRect.Right)x$($settingsClientRect.Bottom) dpi=$settingsDpi client_origin_screen=$($settingsClientOrigin.X),$($settingsClientOrigin.Y) client_origin_in_window=$clientOffsetX,$clientOffsetY"
                 $settingsBitmap = [System.Drawing.Bitmap]::new(($settingsRect.Right - $settingsRect.Left), ($settingsRect.Bottom - $settingsRect.Top))
                 $settingsGraphics = [System.Drawing.Graphics]::FromImage($settingsBitmap)
                 $settingsGraphics.CopyFromScreen($settingsRect.Left, $settingsRect.Top, 0, 0, $settingsBitmap.Size)
@@ -345,6 +379,63 @@ public static class P2CWin32 {
                     $g.Dispose(); $shot.Dispose()
                 }.GetNewClosure()
 
+                'page_idd,locale,state,resource_id,part,x,y,width,height,class' |
+                    Set-Content -LiteralPath $geometryFile -Encoding UTF8
+                $writePageGeometry = {
+                    param([int]$PageIndex, [string]$Locale)
+                    $pageId = 101 + $PageIndex
+                    $rows = [System.Collections.Generic.List[object]]::new()
+                    $current = @([P2CWin32]::GetChildWindows($settingsHwnd))
+                    $activePage = $current | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 } | Select-Object -First 1
+                    if (-not $activePage) { throw "Visible child page geometry is missing for page $pageId ($Locale)." }
+                    $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state='default'; resource_id=$pageId; part='page'; x=$activePage.Left-$settingsClientOrigin.X; y=$activePage.Top-$settingsClientOrigin.Y; width=$activePage.Width; height=$activePage.Height; class=$activePage.ClassName })
+                    foreach ($control in $current | Where-Object { $_.Visible -and $_.ControlId -ne 0 }) {
+                        $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state='default'; resource_id=$control.ControlId; part='control'; x=$control.Left-$settingsClientOrigin.X; y=$control.Top-$settingsClientOrigin.Y; width=$control.Width; height=$control.Height; class=$control.ClassName })
+                        if ($control.ControlId -eq 104 -and $control.ClassName -eq 'SysTreeView32') {
+                            $navOrigin = [P2CWin32+POINT]::new()
+                            if (-not [P2CWin32]::ClientToScreen($control.Handle, [ref]$navOrigin)) { throw 'Unable to locate IDC_NAV client origin.' }
+                            $navIndex = 0
+                            foreach ($itemRect in @([P2CWin32]::GetTreeItemRects($control.Handle))) {
+                                $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state='default'; resource_id=104; part="item-$navIndex"; x=$navOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$navOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='TreeViewItem' })
+                                $navIndex++
+                            }
+                            if ($navIndex -ne 5) { throw "Expected 5 IDC_NAV items; captured $navIndex." }
+                        }
+                        if (($control.ControlId -eq 124 -or $control.ControlId -eq 140) -and $control.ClassName -eq 'SysListView32') {
+                            $listOrigin = [P2CWin32+POINT]::new()
+                            if (-not [P2CWin32]::ClientToScreen($control.Handle, [ref]$listOrigin)) { throw "Unable to locate list client origin for IDC_$($control.ControlId)." }
+                            $listClient = [P2CWin32+RECT]::new()
+                            if (-not [P2CWin32]::GetClientRect($control.Handle, [ref]$listClient)) { throw "Unable to read IDC_$($control.ControlId) client rect." }
+                            $writeVisibleRows = {
+                                param([string]$State)
+                                $itemIndex = 0
+                                foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle))) {
+                                    if ($itemRect.Top -ge $listClient.Top -and $itemRect.Bottom -le $listClient.Bottom) {
+                                        $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state=$State; resource_id=$control.ControlId; part="row-$itemIndex"; x=$listOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$listOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='ListViewItem' })
+                                    }
+                                    $itemIndex++
+                                }
+                            }.GetNewClosure()
+                            $initialState = if ($control.ControlId -eq 124) { 'scroll-0' } else { 'default' }
+                            if ($control.ControlId -eq 124 -and [P2CWin32]::GetListTopIndex($control.Handle) -ne 0) {
+                                throw 'IDC_REGIONS did not start at the top of its native list.'
+                            }
+                            & $writeVisibleRows $initialState
+                            if ($control.ControlId -eq 124) {
+                                [void][P2CWin32]::SendMessage($control.Handle, 0x1013, [IntPtr]7, [IntPtr]1) # LVM_ENSUREVISIBLE, final row
+                                Start-Sleep -Milliseconds 100
+                                $topIndex = [P2CWin32]::GetListTopIndex($control.Handle)
+                                if ($topIndex -ne 2) { throw "IDC_REGIONS expected bottom scroll top index 2, got $topIndex." }
+                                & $writeVisibleRows 'scroll-2'
+                                [void][P2CWin32]::SendMessage($control.Handle, 0x1013, [IntPtr]0, [IntPtr]1) # restore top before leaving the page
+                                if ([P2CWin32]::GetListTopIndex($control.Handle) -ne 0) { throw 'IDC_REGIONS failed to restore top scroll position.' }
+                            }
+                        }
+                    }
+                    $rows | Export-Csv -LiteralPath $geometryFile -NoTypeInformation -Append -Encoding UTF8
+                    Write-Status "PASS Win32 geometry page_idd=$pageId locale=$Locale controls=$($rows.Count) output=windows-settings-geometry.csv"
+                }.GetNewClosure()
+
                 $pageSentinels = @('116,123', '124,125,131', '133,139,140', '141,148,152', '153,154')
                 $settingsChildren = @([P2CWin32]::GetChildWindows($settingsHwnd))
                 $navControl = $settingsChildren | Where-Object { $_.ControlId -eq 104 } | Select-Object -First 1
@@ -386,6 +477,7 @@ public static class P2CWin32 {
                         & $captureWindow ([IntPtr]$settingsHwnd) (Join-Path $artifactDir $shotName)
                         Write-Status "CAPTURED Windows Native page=$($pageLabelsEnglish[$pageIndex]) language=English dpi=$settingsDpi screenshot=$shotName"
                     }
+                    if ($pageComplete) { & $writePageGeometry $pageIndex 'English' }
                 }
 
                 if (-not $pageComplete) {
@@ -455,6 +547,7 @@ public static class P2CWin32 {
                                 & $captureWindow ([IntPtr]$settingsHwnd) (Join-Path $artifactDir $shotName)
                                 Write-Status "CAPTURED Windows Native page=$($pageLabelsChinese[$pageIndex]) language=zh-CN dpi=$settingsDpi screenshot=$shotName"
                             }
+                            if ($pageComplete) { & $writePageGeometry $pageIndex 'zh-CN' }
                         }
                         if ($pageComplete) {
                             [System.Windows.Forms.SendKeys]::SendWait('{ESC}')

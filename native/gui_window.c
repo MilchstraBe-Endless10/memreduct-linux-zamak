@@ -28,14 +28,14 @@ extern void gtk_widget_queue_resize(GtkWidget *widget);
 extern void gtk_window_present(GtkWindow *window);
 extern unsigned long gtk_widget_get_type(void);
 extern unsigned int g_signal_lookup(const char *name, unsigned long type);
-extern unsigned int g_signal_handlers_disconnect_matched(
-    void *instance,
-    unsigned int mask,
-    unsigned int signal_id,
-    unsigned long detail,
-    void *closure,
-    void *func,
-    void *data);
+extern unsigned long gtk_container_get_type(void);
+extern int g_type_check_instance_is_a(void *instance, unsigned long iface_type);
+extern const char *g_type_name_from_instance(void *instance);
+extern const char *gtk_widget_get_name(GtkWidget *widget);
+extern GtkWidget *gtk_widget_get_parent(GtkWidget *widget);
+extern unsigned int gtk_get_major_version(void);
+extern unsigned int gtk_get_minor_version(void);
+extern unsigned int gtk_get_micro_version(void);
 extern unsigned long g_signal_connect_data(
     GtkWidget *instance,
     const char *detailed_signal,
@@ -50,6 +50,7 @@ static GtkWindow *settings_window;
 static int settings_close_handler_connected;
 static unsigned long settings_close_handler_id;
 static int settings_geometry_prepared;
+static int gtk_version_logged;
 
 static int on_settings_delete(GtkWidget *widget, void *event, void *data)
 {
@@ -84,21 +85,23 @@ int64_t mr_gui_window_mode(int64_t show_settings)
         }
     }
 
+    if (!gtk_version_logged && getenv("MEMREDUCT_CI") != NULL) {
+        fprintf(stderr, "CI_GTK_RUNTIME version=%u.%u.%u\n",
+                gtk_get_major_version(), gtk_get_minor_version(), gtk_get_micro_version());
+        fflush(stderr);
+        gtk_version_logged = 1;
+    }
+
     if (settings_window_found != NULL && !settings_close_handler_connected) {
         const unsigned int delete_signal_id =
             g_signal_lookup("delete-event", gtk_widget_get_type());
-        unsigned int disconnected = 0;
-
-        if (delete_signal_id != 0) {
-            /* Replace prior close handlers so this reusable window can report close to Zamak. */
-            disconnected = g_signal_handlers_disconnect_matched(
-                (GtkWidget *)settings_window_found,
-                1, /* G_SIGNAL_MATCH_ID */
-                delete_signal_id,
-                0,
-                NULL,
-                NULL,
-                NULL);
+        if (delete_signal_id == 0) {
+            if (getenv("MEMREDUCT_CI") != NULL) {
+                fputs("CI_NATIVE_SETTINGS_DELETE_HANDLER signal_unavailable=true\n", stderr);
+                fflush(stderr);
+            }
+            g_list_free(windows);
+            return 0;
         }
         settings_close_handler_id = g_signal_connect_data(
             (GtkWidget *)settings_window_found,
@@ -106,12 +109,11 @@ int64_t mr_gui_window_mode(int64_t show_settings)
             on_settings_delete,
             NULL,
             NULL,
-            0);
+            1); /* G_CONNECT_AFTER: keep libui-ng's own close callback intact. */
         if (getenv("MEMREDUCT_CI") != NULL) {
             fprintf(stderr,
-                    "CI_NATIVE_SETTINGS_DELETE_HANDLER signal_id=%u disconnected=%u connected=%d\n",
+                    "CI_NATIVE_SETTINGS_DELETE_HANDLER signal_id=%u order=after connected=%d\n",
                     delete_signal_id,
-                    disconnected,
                     settings_close_handler_id != 0);
             fflush(stderr);
         }
@@ -123,24 +125,77 @@ int64_t mr_gui_window_mode(int64_t show_settings)
 
     if (settings_window_found != NULL && !settings_geometry_prepared) {
         GtkWidget *root = gtk_bin_get_child((GtkBin *)settings_window_found);
-        GList *children = root == NULL ? NULL : gtk_container_get_children((GtkContainer *)root);
-        GList *holder_item = children;
-        while (holder_item != NULL && holder_item->next != NULL) {
-            holder_item = holder_item->next;
-        }
-        GtkWidget *holder = holder_item == NULL ? NULL : (GtkWidget *)holder_item->data;
-        if (holder != NULL) {
-            /* libui-ng's last GtkBox child is the content holder; its margined inset is 12 px. */
-            const unsigned int old_border = gtk_container_get_border_width((GtkContainer *)holder);
-            gtk_container_set_border_width((GtkContainer *)holder, 0);
-            gtk_widget_queue_resize(holder);
-            gtk_widget_queue_resize(root);
-            gtk_widget_queue_resize((GtkWidget *)settings_window_found);
-            settings_geometry_prepared = 1;
+        const char *root_type = root == NULL ? "(null)" : g_type_name_from_instance(root);
+        GList *children = root != NULL && g_type_check_instance_is_a(root, gtk_container_get_type()) &&
+                          root_type != NULL && strcmp(root_type, "GtkBox") == 0
+                              ? gtk_container_get_children((GtkContainer *)root)
+                              : NULL;
+        unsigned int child_count = 0;
+        unsigned int holder_candidates = 0;
+        GtkWidget *holder = NULL;
+        unsigned int child_index = 0;
+        for (GList *child = children; child != NULL; child = child->next) {
+            GtkWidget *candidate = (GtkWidget *)child->data;
+            child_count++;
+            const char *candidate_type = candidate == NULL ? NULL : g_type_name_from_instance(candidate);
+            const int is_container = candidate != NULL &&
+                                     g_type_check_instance_is_a(candidate, gtk_container_get_type());
+            const unsigned int child_border = is_container
+                                                  ? gtk_container_get_border_width((GtkContainer *)candidate)
+                                                  : 0;
             if (getenv("MEMREDUCT_CI") != NULL) {
-                fprintf(stderr, "CI_SETTINGS_CONTENT_BORDER old=%u new=0\n", old_border);
+                fprintf(stderr, "CI_SETTINGS_WIDGET_CHILD index=%u type=%s is_container=%d border=%u\n",
+                        child_index,
+                        candidate_type != NULL ? candidate_type : "(unknown)",
+                        is_container,
+                        child_border);
                 fflush(stderr);
             }
+            if (is_container && candidate_type != NULL && strcmp(candidate_type, "GtkBox") == 0 &&
+                child_border == 12) {
+                holder = candidate;
+                holder_candidates++;
+            }
+            child_index++;
+        }
+        const char *holder_type = holder == NULL ? "(null)" : g_type_name_from_instance(holder);
+        const char *holder_name = holder == NULL ? "(null)" : gtk_widget_get_name(holder);
+        if (getenv("MEMREDUCT_CI") != NULL) {
+            fprintf(stderr,
+                    "CI_SETTINGS_WIDGET_TREE root_type=%s children=%u holder_candidates=%u holder_type=%s holder_name=%s\n",
+                    root_type != NULL ? root_type : "(unknown)",
+                    child_count,
+                    holder_candidates,
+                    holder_type != NULL ? holder_type : "(unknown)",
+                    holder_name != NULL ? holder_name : "(unknown)");
+            fflush(stderr);
+        }
+        if (gtk_get_major_version() == 3 && root != NULL && root_type != NULL && strcmp(root_type, "GtkBox") == 0 &&
+            holder_candidates == 1 && holder != NULL && gtk_widget_get_parent(holder) == root) {
+            const unsigned int old_border = gtk_container_get_border_width((GtkContainer *)holder);
+            if (old_border == 12) {
+                /* The unique direct GtkBox child with the tested 12 px inset is the libui-ng content holder. */
+                gtk_container_set_border_width((GtkContainer *)holder, 0);
+                gtk_widget_queue_resize(holder);
+                gtk_widget_queue_resize(root);
+                gtk_widget_queue_resize((GtkWidget *)settings_window_found);
+                settings_geometry_prepared = 1;
+                if (getenv("MEMREDUCT_CI") != NULL) {
+                    fputs("CI_SETTINGS_CONTENT_BORDER old=12 new=0 verified=true\n", stderr);
+                    fflush(stderr);
+                }
+            } else if (getenv("MEMREDUCT_CI") != NULL) {
+                fprintf(stderr, "CI_SETTINGS_CONTENT_BORDER unsupported_border=%u expected=12_or_0\n", old_border);
+                fflush(stderr);
+            }
+        } else if (getenv("MEMREDUCT_CI") != NULL) {
+            fprintf(stderr,
+                    "CI_SETTINGS_WIDGET_TREE unsupported=true gtk_major=%u root_type=%s holder_candidates=%u holder_type=%s\n",
+                    gtk_get_major_version(),
+                    root_type != NULL ? root_type : "(unknown)",
+                    holder_candidates,
+                    holder_type != NULL ? holder_type : "(unknown)");
+            fflush(stderr);
         }
         g_list_free(children);
     }
