@@ -1,5 +1,15 @@
 # 短期记忆 / Latest Handoff
 
+## 最近记录：P2C-1 五页设置 UI 与原版截图 runner（2026-10-26）
+
+- P2C-1 在独立分支 `feat/issue-3-p2c-settings-ui`，Draft PR #7 base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。实现五个设置页与 English/简体中文切换；PR #7 仍 OPEN / Draft，不合并。
+- 在 head `988513ad7c9afe5fd79cb0fe6239f7759cbdaf86` 的 Xvfb run `40260614636` 真实 WM_DELETE_WINDOW 测试失败：关闭设置窗导致应用循环退出，缺少设置 close callback marker。已在 `native/gui_window.c` 添加只作用于应用设置窗的 GTK `delete-event` 重新路由，提交 `396c3126fbb8b9af33755ebf8f2eb67942c71f83` 并推送。新 artifact 观察 `signal_id=66 disconnected=1 connected=1`、delete callback、Zamak 将设置窗隐藏并保持主窗、随后 app 正常退出 0。
+- 修复 head 的 PR GUI Actions [40261537129](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40261537129) 的 Xvfb/XTEST 和 Weston Headless/Pixman 两作业均 PASS；build-and-test [40261541370](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40261541370) PASS；push GUI run `40261541380` PASS。Artifacts：X11 `12624986143`，Wayland `12623629586`。中英文五页截图与源 SHA 记录在 `docs/P2C-1_SETTINGS_UI_REPORT.md`。
+- X11 环境：Ubuntu 24.04、Xvfb 1024×768×24、GTK 3.24.41、scale 1/DPI 96、Adwaita light；主窗 337×369，设置窗 547×345，均是 Linux 测试尺寸而非 Windows 像素基准。语言/页面、Reset 确认、Escape、Close 按钮和窗口管理器关闭均通过；标题栏 close 不再退出主应用。未在本机安装 Xvfb/启动 GUI。
+- Wayland 私有 Weston/Pixman 下主窗和设置窗 surface 创建/绘制/退出码 0；不测输入；记录一次 `gdk_seat_get_keyboard` critical、无 `wl_seat`，未归因。没有访问活动 Hyprland 或桌面 IPC。
+- 本机：`verify_project.py` 33 项 PASS；Python/C 单测 3/3；shell 语法 8/8；Zamak 0.2.0 check/build PASS，test 21/21；`scripts/build-arch.sh`、`git diff --check` PASS。没有 Polkit、drop_caches、Swap/ZRAM 或 root GUI 操作。
+- GitHub Windows Release/截图 run `40261537106`（push）和 `40261541252`（PR）在 20 分钟上限后均为 `cancelled`。日志中的最后成功项是官方 tag、release archive 和 setup SHA-256；取消时出现 orphan `gnupg-w32` Chocolatey 安装进程。artifact `12625127901` 只有 394-byte `result.txt`，未到 signature、binary version、desktop probe 或 screenshot。已在工作副本将 `windows-native-baseline.ps1` 改为使用 runner 预置的 `gpg.exe`、缺少时立即失败，不再运行 Chocolatey 安装；此修复待新 Windows Actions 验证。真实 Windows 截图、DLU 实测、overlay/2px 和 Hyprland 输入仍 BLOCKED / NOT RUN。设置持久化/托盘/特权功能未实现或禁用。
+
 ## 最近记录：P2B-2 原版主窗口结构与数据可靠性修复（2026-10-25）
 
 - 按用户任务核对 PR #6 最新 ChatGPT Review 与 3 条行内评论。PR #6 保持 OPEN / Draft；base `docs/issue-3-p2a-ui-spec` SHA `d89d74fde433da1863b4de0223f974c824fb590e`。修复后代码 HEAD `e4fccb6293c698015c8f4105947669bfdc4693d6` 与远端一致；未修改或合并 main、PR #2/#4/#5。

@@ -58,24 +58,11 @@ try {
     Write-Status "PASS release archive SHA-256=$archiveHash"
     Write-Status "PASS setup SHA-256=$setupHash"
 
-    $gpg = Get-Command gpg.exe -ErrorAction SilentlyContinue |
-        Where-Object { $_.Source -notmatch '\\Git\\usr\\bin\\gpg\.exe$' } |
-        Select-Object -First 1
-    if (-not $gpg) {
-        Invoke-Checked 'choco.exe' @('install', 'gnupg', '-y', '--no-progress') | Out-Null
-        $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
-        $gpgCandidate = Join-Path $programFilesX86 'GnuPG\bin\gpg.exe'
-        if (Test-Path -LiteralPath $gpgCandidate) {
-            $gpg = Get-Item -LiteralPath $gpgCandidate
-        } else {
-            $gpg = Get-Command gpg.exe -ErrorAction SilentlyContinue |
-                Where-Object { $_.Source -notmatch '\\Git\\usr\\bin\\gpg\.exe$' } |
-                Select-Object -First 1
-        }
-    }
-    if (-not $gpg) { throw 'A native Windows GnuPG executable is required for signature verification.' }
+    $gpg = Get-Command gpg.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $gpg) { throw 'The Windows runner image must provide gpg.exe; package installation is disabled in this workflow.' }
     $gpgExe = $gpg.Source
     if (-not $gpgExe) { $gpgExe = $gpg.FullName }
+    Write-Status "Using runner-provided GnuPG executable=$gpgExe"
     $gnupgHome = Join-Path $workDir 'gnupg-home'
     New-Item -ItemType Directory -Force -Path $gnupgHome | Out-Null
     $env:GNUPGHOME = $gnupgHome
