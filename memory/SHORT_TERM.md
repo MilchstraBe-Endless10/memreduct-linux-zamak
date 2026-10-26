@@ -12,6 +12,11 @@
 - 本机非 GUI：Zamak 0.2.0 `check`, `build`, `scripts/build-arch.sh` PASS，`test` 28/28；project verify 33 项、C safety 3/3、相关 Shell 语法和 `git diff --check` PASS。Pillow 比较使用 bundled runtime，未安装本机依赖。
 - 已调整 P2C Windows baseline workflow：仅由目标 PR 触发，避免同一提交同时启动 push/PR 两套重复截图任务；Xvfb timeout 45 分钟、比较 timeout 20 分钟。此工作流修正尚待当前提交的 Actions 验证。没有在本机启动 GUI、Xvfb、Wayland 或操作 Hyprland。
 
+### P2C-2 GroupBox 校准增量（待 hosted 验收）
+
+- 从同一页未缩放截图在 client `(156,20)` 采样，Win32 GroupBox 边线为 RGB `(220,220,220)`，原 Linux 绘制为 `(187,187,187)`。`src/settings_ui.zm` 现将浅色 GroupBox 线改为测得值 `#DCDCDC`；暗色值仍标为临时，因为没有 Windows 暗色参考。比较脚本增加双语 GroupBox 边线色样检查。
+- 修改后 Zamak 0.2.0 check/test/build 通过（28/28）；项目治理 33 项、C safety 3/3、比较脚本 py_compile、全部 Shell 语法、Arch build、`git diff --check` 均通过。修正后生产 Xvfb 截图和 hosted comparator 尚待本次提交后的 Actions；没有本机 GUI/桌面操作。
+
 - 继续使用 PR #7 分支 `feat/issue-3-p2c-settings-ui`。开工时本地与远端 HEAD 均为 `90f5b31a9dede8896a44bd356c43f38862a005db`；PR #7 OPEN / Draft，base `feat/issue-3-p2b-main-window`，没有修改 main 或其他 PR 分支。
 - 已下载并核对该 HEAD 的 CI 证据：Windows 原生/几何 artifact `12632986603`、生产 Xvfb artifact `12632328288`、overlay/diff/几何 artifact `12632129496`；run `40282499292` Windows+Xvfb+comparison、`40282499286` Xvfb+Weston、`40282499313` build/test 均 PASS。该批证据只对应修正前的 `90f5b31`。
 - 修正前可比较控件矩形 172 PASS，12 个 Linux 中间滚动项为 `NOT_COMPARABLE_NATIVE_STATE`，0 FAIL；截图像素变化 61.7290%–80.1728%，故不通过 1:1 像素验收。

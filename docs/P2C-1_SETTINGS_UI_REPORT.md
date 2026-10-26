@@ -52,6 +52,12 @@ Current Windows-native screenshot SHA-256 (artifact `12633108874`):
 
 The Windows artifact verifies source tag `2f5c55d15f69a2c88859e036b16c6f4c971e1968`, portable executable version `3.5.2`, and SHA-256 `dd55a81d56e8c32918e5190b2ec2a1f2a7edbbca884627439b4b619fdfb5602d`; the executable is not Authenticode-signed. Full capture timestamp and per-file checksums are in the linked Actions artifacts.
 
+### Follow-up GroupBox color calibration
+
+Sampling the native and Linux `General configuration` GroupBox left edge at client coordinate `(156,20)` found Windows `(220,220,220)` and Linux `(187,187,187)`. The shared GroupBox painter now uses the measured light-theme edge `#DCDCDC`; dark-theme calibration remains provisional because no authentic dark Windows screenshot is available. The comparison script checks this sample for both locales, in addition to the existing page-face, navigation, checkbox, and appearance-swatch checks. The code-level correction compiles and passes the local 28 Zamak tests; its fresh Xvfb screenshot and hosted pixel check are pending the next PR run.
+
+Typography remains a separate visual difference: Windows uses 8 pt `MS Shell Dlg`, while the hosted Linux capture uses DejaVu Sans and Noto Sans CJK SC. The current settings renderer calls select size/weight without selecting a font family; disabled text also remains visually grayed to communicate that these settings are read-only. No pixel or typography parity is claimed from the geometry results.
+
 ## P2C-2 visual calibration addendum (2026-10-26)
 
 P2C-2 continues the existing Draft PR #7 on `feat/issue-3-p2c-settings-ui`; it does not create another PR. The authenticated Windows reference remains Mem Reduct `v.3.5.2`, tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`, captured on Windows Server 2022 at 96 DPI / 100% scaling. Settings client target remains 558×335. No capture is resized, stretched, or shifted to improve a match.

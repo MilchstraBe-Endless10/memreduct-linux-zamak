@@ -85,10 +85,13 @@ fn outline(p: &ui.Painter, r: &ui.Rect, color: &ui.Color):
     p.add_rect(r)
     p.stroke(color, 1.0)
 
-fn group(s: &State, p: &ui.Painter, r: &ui.Rect, title: string, fg: &ui.Color, border: &ui.Color):
+fn group(s: &State, p: &ui.Painter, r: &ui.Rect, title: string, fg: &ui.Color):
+    # Measured on the Win32 3.5.2 GroupBox edge in the pinned 96-DPI capture.
+    let mut edge = ui.rgb(0xdcdcdc)
+    if s.dark: edge = ui.rgb(0x707070)
     p.begin()
     p.add_rect(r)
-    p.stroke(border, 1.0)
+    p.stroke(&edge, 1.0)
     let mut bg = ui.rgb(0xf0f0f0)
     if s.dark: bg = ui.rgb(0x242424)
     p.fill_rect(&ui.rect(r.x + 7.0, r.y - 2.0, f64(len(title)) * 5.2 + 8.0, 5.0), &bg)
@@ -111,10 +114,10 @@ fn checkbox(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, 
     p.text(r.x + ui_geometry.settings_checkbox_label_inset_px(), r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, size=text_size)
     if s.focus == id: outline(p, &r, focus)
 
-fn frame(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, fg: &ui.Color, border: &ui.Color):
+fn frame(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, fg: &ui.Color):
     let r = child(s, w, h, x, y, width, height)
     emit_geometry(s, id, "control", &r)
-    group(s, p, &r, title, fg, border)
+    group(s, p, &r, title, fg)
     if s.test_mode: println(f"CI_SETTINGS_FRAME id={id} x={x} y={y} w={width} h={height}")
 
 fn text_row(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, disabled: &ui.Color):
@@ -182,14 +185,14 @@ fn draw_list_row(s: &State, p: &ui.Painter, r: &ui.Rect, id: i64, title: string,
     p.text(text_x, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, size=8.0)
 
 fn draw_general(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
-    frame(s, p, w, h, 107, 0.0, 0.0, 260.0, 90.0, text(zh, "General configuration:", "选项:"), fg, border)
+    frame(s, p, w, h, 107, 0.0, 0.0, 260.0, 90.0, text(zh, "General configuration:", "选项:"), fg)
     checkbox(s, p, w, h, 116, 8.0, 12.0, 244.0, 10.0, text(zh, "Always on top", "窗口始终置顶"), disabled, border, focus)
     checkbox(s, p, w, h, 117, 8.0, 24.0, 244.0, 10.0, text(zh, "Load on system startup", "开机启动"), disabled, border, focus)
     checkbox(s, p, w, h, 118, 8.0, 36.0, 244.0, 10.0, text(zh, "Start minimized", "最小化启动"), disabled, border, focus)
     checkbox(s, p, w, h, 120, 8.0, 48.0, 244.0, 10.0, text(zh, "Confirm memory cleaning start", "在内存清理前手动确认"), disabled, border, focus)
     checkbox(s, p, w, h, 119, 8.0, 60.0, 244.0, 10.0, text(zh, "Skip \"User Account Control\" prompt warning", "跳过“用户账户控制”提示"), disabled, border, focus)
     checkbox(s, p, w, h, 121, 8.0, 72.0, 244.0, 10.0, text(zh, "Periodically check for updates (recommended)", "自动检查更新（推荐）"), disabled, border, focus)
-    frame(s, p, w, h, 108, 0.0, 92.0, 260.0, 32.0, text(zh, "Language: (Language)", "语言: (Language)"), fg, border)
+    frame(s, p, w, h, 108, 0.0, 92.0, 260.0, 32.0, text(zh, "Language: (Language)", "语言: (Language)"), fg)
     text_row(s, p, w, h, 122, 8.0, 104.0, 112.0, 12.0, text(zh, "Select language:", "选择语言："), fg)
     let lang = child(s, w, h, 128.0, 104.0, 124.0, 13.0)
     emit_geometry(s, 123, "control", &lang)
@@ -202,7 +205,7 @@ fn draw_general(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabl
     if s.focus == 123: outline(p, &lang, focus)
 
 fn draw_memory(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
-    frame(s, p, w, h, 109, 0.0, 0.0, 260.0, 90.0, text(zh, "Memory regions to be cleaned:", "要清理的内存区域:"), fg, border)
+    frame(s, p, w, h, 109, 0.0, 0.0, 260.0, 90.0, text(zh, "Memory regions to be cleaned:", "要清理的内存区域:"), fg)
     let names_en = ["Working set", "System file cache", "Modified page list*", "Standby list*", "Standby list (without priority)", "Modified file cache", "Registry cache (Windows 8.1+)", "Combine memory lists (Windows 10+)"]
     let names_zh = ["工作集", "系统文件缓存", "已修改页列表*", "备用列表*", "无优先级备用列表", "已修改文件缓存", "注册表缓存（Windows 8.1+）", "合并内存列表（Windows 10+）"]
     let list = child(s, w, h, 8.0, 12.0, 244.0, 70.0)
@@ -228,25 +231,25 @@ fn draw_memory(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disable
     p.line(scrollbar.x + 8.0, scrollbar.y + 5.0, scrollbar.x + 11.0, scrollbar.y + 9.0, border)
     p.line(scrollbar.x + 5.0, scrollbar.bottom() - 9.0, scrollbar.x + 8.0, scrollbar.bottom() - 5.0, border)
     p.line(scrollbar.x + 8.0, scrollbar.bottom() - 5.0, scrollbar.x + 11.0, scrollbar.bottom() - 9.0, border)
-    frame(s, p, w, h, 110, 0.0, 90.0, 260.0, 46.0, text(zh, "Memory management:", "内存管理:"), fg, border)
+    frame(s, p, w, h, 110, 0.0, 90.0, 260.0, 46.0, text(zh, "Memory management:", "内存管理:"), fg)
     checkbox(s, p, w, h, 125, 8.0, 102.0, 194.0, 12.0, text(zh, "Clean when above: (%)", "占用超过此比例时清理：（%）"), disabled, border, focus)
     field(s, p, w, h, 126, 208.0, 102.0, 33.3333, 12.0, "90", disabled, border, focus)
     spinner(s, p, w, h, 127, 240.0, 102.0, 12.0, 12.0, border, focus)
     checkbox(s, p, w, h, 128, 8.0, 116.0, 194.0, 12.0, text(zh, "Clean every: (min.)", "每隔此时间清理：（分钟）"), disabled, border, focus)
     field(s, p, w, h, 129, 208.0, 116.0, 33.3333, 12.0, "30", disabled, border, focus)
     spinner(s, p, w, h, 130, 240.0, 116.0, 12.0, 12.0, border, focus)
-    frame(s, p, w, h, 111, 0.0, 136.0, 260.0, 32.0, text(zh, "Hotkeys (global):", "快捷键(通用):"), fg, border)
+    frame(s, p, w, h, 111, 0.0, 136.0, 260.0, 32.0, text(zh, "Hotkeys (global):", "快捷键(通用):"), fg)
     checkbox(s, p, w, h, 131, 8.0, 150.0, 144.0, 12.0, text(zh, "Clean memory:", "清理内存："), disabled, border, focus)
     field(s, p, w, h, 132, 158.0, 148.0, 94.0, 12.0, "Ctrl+F1", disabled, border, focus)
 
 fn draw_appearance(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
-    frame(s, p, w, h, 107, 0.0, 0.0, 260.0, 78.0, text(zh, "General configuration:", "选项:"), fg, border)
+    frame(s, p, w, h, 107, 0.0, 0.0, 260.0, 78.0, text(zh, "General configuration:", "选项:"), fg)
     checkbox(s, p, w, h, 133, 8.0, 12.0, 244.0, 10.0, text(zh, "Use transparent background", "使用透明背景（不显示颜色提示）"), disabled, border, focus)
     checkbox(s, p, w, h, 134, 8.0, 24.0, 244.0, 10.0, text(zh, "Show border", "显示边框"), disabled, border, focus)
     checkbox(s, p, w, h, 135, 8.0, 36.0, 244.0, 10.0, text(zh, "Round corners", "圆角模式"), disabled, border, focus)
     checkbox(s, p, w, h, 136, 8.0, 48.0, 244.0, 10.0, text(zh, "Change background color (instead text and border)", "更改背景颜色（不包括文本及边框）"), disabled, border, focus)
     checkbox(s, p, w, h, 137, 8.0, 60.0, 244.0, 10.0, text(zh, "Use antialiasing", "启用抗锯齿"), disabled, border, focus)
-    frame(s, p, w, h, 112, 0.0, 80.0, 260.0, 88.0, text(zh, "Style:", "个性化:"), fg, border)
+    frame(s, p, w, h, 112, 0.0, 80.0, 260.0, 88.0, text(zh, "Style:", "个性化:"), fg)
     text_row(s, p, w, h, 138, 8.0, 92.0, 112.0, 12.0, text(zh, "Font:", "字体："), disabled)
     button(s, p, w, h, 139, 128.0, 92.0, 124.0, 12.0, "Lucida Console, 8px, 400", fg, disabled, border, focus)
     let colors_en = ["Text color", "Background color", "\"Warning level\" color", "\"Danger level\" color"]
@@ -264,26 +267,26 @@ fn draw_appearance(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, dis
         draw_list_row(s, p, &row, 140, name, disabled, border, i)
 
 fn draw_tray(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
-    frame(s, p, w, h, 113, 0.0, 0.0, 260.0, 46.0, text(zh, "Color indication:", "颜色指示:"), fg, border)
+    frame(s, p, w, h, 113, 0.0, 0.0, 260.0, 46.0, text(zh, "Color indication:", "颜色指示:"), fg)
     text_row(s, p, w, h, 141, 8.0, 12.0, 194.0, 12.0, text(zh, "\"Warning level\" started at: (%)", "“警告级别”阈值：(%)"), disabled)
     field(s, p, w, h, 142, 208.0, 12.0, 33.3333, 12.0, "70", disabled, border, focus)
     spinner(s, p, w, h, 143, 240.0, 12.0, 12.0, 12.0, border, focus)
     text_row(s, p, w, h, 144, 8.0, 26.0, 194.0, 12.0, text(zh, "\"Danger level\" started at: (%)", "“危险级别”阈值：(%)"), disabled)
     field(s, p, w, h, 145, 208.0, 26.0, 33.3333, 12.0, "90", disabled, border, focus)
     spinner(s, p, w, h, 146, 240.0, 26.0, 12.0, 12.0, border, focus)
-    frame(s, p, w, h, 114, 0.0, 48.0, 260.0, 48.0, text(zh, "Mouse control:", "鼠标控制:"), fg, border)
+    frame(s, p, w, h, 114, 0.0, 48.0, 260.0, 48.0, text(zh, "Mouse control:", "鼠标控制:"), fg)
     text_row(s, p, w, h, 147, 8.0, 60.0, 114.0, 12.0, text(zh, "Single click:", "单击："), disabled)
     field(s, p, w, h, 148, 128.0, 60.0, 124.0, 12.0, text(zh, "Show/Hide", "显示/隐藏"), disabled, border, focus)
     combo_arrow(p, &child(s, w, h, 128.0, 60.0, 124.0, 12.0), border)
     text_row(s, p, w, h, 149, 8.0, 74.0, 114.0, 12.0, text(zh, "Middle click:", "中键单击："), disabled)
     field(s, p, w, h, 150, 128.0, 74.0, 124.0, 12.0, text(zh, "Clean memory", "清理内存"), disabled, border, focus)
     combo_arrow(p, &child(s, w, h, 128.0, 74.0, 124.0, 12.0), border)
-    frame(s, p, w, h, 115, 0.0, 98.0, 260.0, 40.0, text(zh, "Balloon tips (Windows notifications):", "气泡提示(Windows 通知):"), fg, border)
+    frame(s, p, w, h, 115, 0.0, 98.0, 260.0, 40.0, text(zh, "Balloon tips (Windows notifications):", "气泡提示(Windows 通知):"), fg)
     checkbox(s, p, w, h, 152, 8.0, 110.0, 244.0, 12.0, text(zh, "Show memory cleaning results", "显示内存清理结果"), disabled, border, focus)
     checkbox(s, p, w, h, 151, 8.0, 122.0, 244.0, 12.0, text(zh, "Enable notifications sound", "开启通知音效"), disabled, border, focus)
 
 fn draw_advanced(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
-    frame(s, p, w, h, 107, 0.0, 0.0, 260.0, 46.0, text(zh, "General configuration:", "选项:"), fg, border)
+    frame(s, p, w, h, 107, 0.0, 0.0, 260.0, 46.0, text(zh, "General configuration:", "选项:"), fg)
     checkbox(s, p, w, h, 153, 8.0, 12.0, 244.0, 10.0, text(zh, "Allow \"Standby lists\" and \"Modified page list\" cleanup on autoreduct", "允许自动清理备用列表和已修改页列表"), disabled, border, focus)
     checkbox(s, p, w, h, 154, 8.0, 24.0, 244.0, 10.0, text(zh, "Log cleaning results into a debug log", "将清理结果写入调试日志"), disabled, border, focus)
 

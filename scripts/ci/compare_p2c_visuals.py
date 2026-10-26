@@ -204,6 +204,7 @@ def validate_surface_and_checkbox_raster(windows_dir: Path, linux_dir: Path, out
         "page_gap": (150, 20, (240, 240, 240)),
         "page_footer": (300, 290, (240, 240, 240)),
         "navigation": (20, 200, (255, 255, 255)),
+        "IDC_GENERAL_FRAME_left_edge": (156, 20, (220, 220, 220)),
     }
     checkbox_regions = {
         "IDC_ALWAYSONTOP_CHK": (164, 29, 182, 47),

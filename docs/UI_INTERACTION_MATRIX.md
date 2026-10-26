@@ -143,3 +143,5 @@
 默认值截图不宣称为 Linux 已保存配置。对应资源矩形、像素叠加、差异图与 2 px 判断以 [P2C-1 设置报告](P2C-1_SETTINGS_UI_REPORT.md) 中精确 Actions head 的证据为准；不同 CI runs 生成的截图不得混用。
 
 P2C-2 renderer verification at source head `1d1d6562cb27ddb63fb38a2bf71756b5e88d63ee` confirms the page surface has no added child-dialog frame, resource-defined GroupBoxes remain, four Appearance swatches match the source defaults in both languages, and source-default checkmarks remain disabled/read-only. Disabled-option feedback does not alter saved state or trigger a system action. Exact-head report: [P2C-1/P2C-2 settings evidence](P2C-1_SETTINGS_UI_REPORT.md). Current 2 px geometry comparison is 172 PASS / 0 FAIL; 12 intermediate memory-list scroll rows are `NOT_COMPARABLE_NATIVE_STATE`. This does not establish pixel equivalence.
+
+The next calibration compares the shared GroupBox light-theme edge to the Win32 sample at client `(156,20)`: reference RGB `(220,220,220)`. The settings renderer now uses this measured value and the hosted comparator checks it in both locales; validation against the new production screenshots is pending.
