@@ -6,7 +6,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 artifact_dir="${ARTIFACT_DIR:-$root/artifacts/p2c-x11}"
 app="${1:-$artifact_dir/memreduct-zamak-production}"
 mkdir -p "$artifact_dir"
-for cmd in Xvfb openbox wmctrl xdotool xwininfo xprop import identify sha256sum xrdb; do
+for cmd in Xvfb openbox xdotool xwininfo xprop import identify sha256sum xrdb cc pkg-config; do
   command -v "$cmd" >/dev/null || { printf 'Missing X11 test command: %s\n' "$cmd" >&2; exit 2; }
 done
 [[ -x "$app" ]] || { printf 'Production executable missing.\n' >&2; exit 2; }
@@ -54,6 +54,8 @@ export GDK_BACKEND=x11 GTK_THEME=Adwaita:light GDK_SCALE=1 GDK_DPI_SCALE=1 LANG=
 export GSETTINGS_BACKEND=memory XDG_RUNTIME_DIR="$runtime_dir"
 mkdir -m 0700 "$runtime_dir/home" "$runtime_dir/config"
 export HOME="$runtime_dir/home" XDG_CONFIG_HOME="$runtime_dir/config"
+cc -std=c11 -Wall -Wextra -Werror "$root/scripts/ci/send-wm-delete.c" \
+  -o "$runtime_dir/send-wm-delete" $(pkg-config --cflags --libs x11)
 {
   printf 'XDG_RUNTIME_DIR_mode=%s\nDISPLAY=%s\nGDK_BACKEND=%s\nGTK_THEME=%s\nGDK_SCALE=%s\nGDK_DPI_SCALE=%s\nXvfb_screen=1024x768x24\n' \
     "$(stat -c '%a' "$runtime_dir")" "$DISPLAY" "$GDK_BACKEND" "$GTK_THEME" "$GDK_SCALE" "$GDK_DPI_SCALE"
@@ -256,13 +258,16 @@ wait_marker 'CI_SETTINGS_CLOSE resource=106 action=return_to_main'
 window_id="$(window_by_title 'Mem Reduct')"
 geometry "$window_id" 337 369 "$artifact_dir/geometry-main-after-close.txt"
 
-# A real window-manager close request must hide only the settings toplevel.
+# Send the ICCCM WM_DELETE_WINDOW protocol over the isolated X server. This
+# exercises GTK's production delete-event handler without claiming to test a
+# physical desktop window manager.
 xdotool key --clearmodifiers F2
 window_id="$(window_by_title 'Settings - Mem Reduct')"
 settings_id="$window_id"
-# Ask the isolated WM to send WM_DELETE_WINDOW; windowclose would use XDestroyWindow.
-wmctrl -ic "$settings_id"
-wait_marker 'CI_SETTINGS_CLOSE_REQUEST source=window_manager'
+xprop -id "$settings_id" WM_PROTOCOLS | tee "$artifact_dir/p2c-settings-wm-protocols.txt"
+grep -Fq 'WM_DELETE_WINDOW' "$artifact_dir/p2c-settings-wm-protocols.txt"
+"$runtime_dir/send-wm-delete" "$settings_id" | tee "$artifact_dir/p2c-wm-close-request.txt"
+wait_marker 'CI_SETTINGS_CLOSE_REQUEST source=delete_event'
 wait_marker 'CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true'
 kill -0 "$app_pid"
 window_id="$(window_by_title 'Mem Reduct')"
@@ -290,7 +295,8 @@ grep -Fq 'CI_APP_RETURNED' "$artifact_dir/p2c-client.log"
 sha256sum "$artifact_dir"/production-settings-*.png | sed "s#$artifact_dir/##" | tee "$artifact_dir/p2c-screenshots-sha256.txt"
 (
   cd "$root"
-  sha256sum src/main.zm src/settings_ui.zm src/ui_geometry.zm native/gui_window.c
+  sha256sum src/main.zm src/settings_ui.zm src/ui_geometry.zm native/gui_window.c \
+    scripts/ci/p2c-settings-xvfb.sh scripts/ci/send-wm-delete.c
 ) | tee "$artifact_dir/p2c-source-sha256.txt"
-printf 'PASS: separate production settings toplevel; 5 pages x 2 locales; Reset no-op confirmation; keyboard language/navigation/Reset/Close; Escape, button Close, WM close; main remains available and exits normally.\n' \
+printf 'PASS: separate production settings toplevel; 5 pages x 2 locales; Reset no-op confirmation; keyboard language/navigation/Reset/Close; Escape, button Close, WM_DELETE_WINDOW protocol; main remains available and exits normally.\n' \
   | tee "$artifact_dir/p2c-result.txt"

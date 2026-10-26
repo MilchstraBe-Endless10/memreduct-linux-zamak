@@ -333,7 +333,7 @@ fn set_settings_open(s: &mut MainWindow, open: bool):
 fn tick(s: &mut MainWindow):
     s.elapsed_ms += 1000
     if mr_gui_take_settings_close_request() != 0:
-        if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST source=window_manager")
+        if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST source=delete_event")
         set_settings_open(s, false)
         if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true")
     if s.elapsed_ms % 3000 == 0: refresh(s)
