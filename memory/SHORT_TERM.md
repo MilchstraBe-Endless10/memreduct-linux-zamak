@@ -7,9 +7,10 @@
 - Artifacts：Windows `12673463315` (`sha256:22eaadc99b82745dc548af7036bca0bafe7f0c0b38ae5956553d9976dcbfddf1`)，Linux Xvfb `12674390489` (`sha256:f0b49b1577dec13c436cb967c65793ed7388ab0030e1fddc644e7636cc64d2f2`)，视觉/字体/暗色比较 `12673073193` (`sha256:0897e9e15d2a5c8eff9616b6d1eef730fc55e2d454be28238bf39a66810388a3`)。SHA 清单：Windows PNG 41/41、Linux PNG 44/44、dark 70/70、visual 83/83 全匹配。
 - 几何/局部 raster 回归：184/184 resource rectangles PASS（最大 1.5 px），nav 10/10、tree guide 102/102、discrete raster 36/36 PASS。暗色 10 对 Windows/Linux screenshot 全部生成比较素材；变化率 5.9434%–73.2932%，仅 `CAPTURE_AND_COMPARE_PASS`，全像素 1:1 仍 `NOT PASS`。
 - 字体候选：Win32 `MS Shell Dlg 2` / 8.25 pt / weight 400 / ascent-descent 11/2；Linux Pango Sans 8 pt / DejaVu Sans + Noto Sans CJK SC / ascent-descent 10/3。隔离 Liberation Sans 对 English 64/66 度量改善、简中 12/54 改善/12/54 退化；双语全页变化率没有充分收益，生产字体保持不变，不打包字体。
+- GDI/Pango ascent+descent 总和均为 13 px，但 ascent/descent 分配不同 1 px；Linux text origin 不是 GDI baseline 的直接等价测量。GDI 字符串宽度/平均字宽已记；当前证据没有独立且可对齐的 character-spacing/tracking 量，未添加字距补偿。
 - XTEST 双语验证 File/View/Settings/Help、语言子菜单、键盘 Enter/方向/Esc、分隔区跳过、暗色 5 页、safe clean dropdown 均通过；清理项禁用。Windows tray、原生清理 popup、安全确认/结果对话框仍 BLOCKED。简中 12 项来源差异维持 DECISION_REQUIRED。
 - 不操作本机 GUI/Hyprland；无内存清理、Polkit、root GUI、内核写入或 Swap/ZRAM 变化。日志中的 Weston GTK seat critical 未屏蔽、未推断根因。
-- 报告、交互矩阵和三层记忆更新已写入工作树；文档/记忆提交及新 head Actions 待本轮验证。
+- 文档/记忆首轮提交 `6d5f4d4b8212913ea12b59c20f0916b62219aeea` 已推送。该 head 的 PR/push build `40376732590` / `40376726820` PASS；P2B Xvfb 和 Weston run `40376732484` 于 18:45 UTC 前均 PASS，重复设置页 step 按条件 SKIPPED（由 P2C 覆盖）。P2C run `40376732711` 的 Windows native 与 Linux Xvfb jobs 正在运行，Linux APT 安装于 18:45:42 UTC 开始。该 head 的 P2C 截图/比较尚未闭环；未宣称 PASS。
 
 ## 先前未完成状态记录（已被上方 2026-10-27 核对覆盖）
 

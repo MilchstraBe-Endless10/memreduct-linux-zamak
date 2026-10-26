@@ -12,7 +12,7 @@
 
 ## 字体度量与隔离候选结论
 
-- Windows 原生控件 `WM_GETFONT`/GDI 报告逻辑 face alias `MS Shell Dlg 2`、8.25 pt、weight 400，典型 ascent/descent `11/2 px`。注册表 substitution 显示 Tahoma，但没有证据证明 GDI 实际加载的物理字体文件。Linux 默认 Pango `Sans` 8 pt / weight 400，英文字形匹配 DejaVu Sans、简中匹配 Noto Sans CJK SC，ascent/descent `10/3 px`。Canvas 当前 API 没有每次 `Painter.text` 调用独立指定字体 family 的参数。
+- Windows 原生控件 `WM_GETFONT`/GDI 报告逻辑 face alias `MS Shell Dlg 2`、8.25 pt、weight 400，典型 ascent/descent `11/2 px`。注册表 substitution 显示 Tahoma，但没有证据证明 GDI 实际加载的物理字体文件。Linux 默认 Pango `Sans` 8 pt / weight 400，英文字形匹配 DejaVu Sans、简中匹配 Noto Sans CJK SC，ascent/descent `10/3 px`。两边 ascent+descent 都是 13 px，但基线相对分配差 1 px；导出的 GTK text origin 不是 Win32 GDI baseline 的直接等价测量，因此不宣称基线零差异。GDI 字符串宽度与平均字宽已记录，Pango/GDI 没有独立的 tracking/character-spacing 调节量或等价报告列；当前差值是整串字形 advance 的度量结果，没有用任意字距补偿。Canvas 当前 API 没有每次 `Painter.text` 调用独立指定字体 family 的参数。
 - Liberation Sans 只在隔离 Xvfb 进程通过临时 Fontconfig alias 测量并渲染候选截图，没有复制/提交字体文件，也没有改变生产默认字体。120 个同源控件度量样本（English 66、简中 54）中，English **64 改善 / 1 退化 / 1 不变**；简中 **12 改善 / 12 退化 / 30 不变**。宽度在 ±2 px 内的样本由默认 English 5/66 增至候选 56/66；简中由 4/54 增至 6/54。该候选不能同时稳定改善两种语言。
 - 候选全页差异改善很小：English 对 Windows 的变化率只下降约 `0.0578–0.4093` 个百分点；简中变化率约从 `-0.0032` 到 `+0.0022` 个百分点（候选有略微回退或几乎不变的页）。因此没有足够的双语全页证据采用 Liberation Sans，也没有引入字体专用 C/GTK bridge；维持 DejaVu Sans + Noto CJK fallback，不缩放窗口或缩小字号。该实验只证明候选进程的度量变化，不证明字体具备 Windows 字体的完整字形/光栅等价。
 
