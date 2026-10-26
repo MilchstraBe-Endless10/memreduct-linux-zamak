@@ -13,6 +13,8 @@
 
 **P2C-1：五页设置界面** — Draft PR #7，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。生产源码测试 checkpoint `d4f1ca97ac42bc1516a484163b9d4536ea9194b2`；完整 Actions 在文档 head `b473700f0513e91fc6f171fa2b0a8fc3abd3f7df` 全部 PASS（之后仅报告/记忆内容需再同步）。最近修复移除 libui-ng GTK 内容 holder 的 12 px border；Xvfb 实测设置 Canvas 558×335，与隔离 Windows v3.5.2 runner 实测 client area 558×335（Windows outer 574×374，96 DPI / 100%）一致。生产设置窗五页、English/简体中文、资源控件映射及禁用状态详见 `docs/P2C-1_SETTINGS_UI_REPORT.md`。PR GUI run `40269534094` 的 Xvfb/XTEST 与 Weston Headless/Pixman 作业均 PASS，Artifacts：X11 `12627279867`、Wayland `12627990285`；PR build run `40269534153` PASS；PR Windows provenance/native screenshot run `40269534205` PASS，artifact `12627309561`。Windows-hosted runner 采集主窗及五页×两种语言；release/tag/资产哈希、setup PGP 签名、binary version 均核验。本机对代码 checkpoint `d4f1ca9` 的 Zamak 0.2.0 `check/build`、22/22 test、33 项 project verify、3 项 C tests、Arch build、shell syntax 与 `git diff --check` PASS。Windows/Linux 截图客户区几何在指定环境匹配，但没有裁剪叠图和像素差异计算，1:1 / 2 px 仍 NOT RUN；深色主题、菜单/托盘/清理对话框仍未采集。设置持久化、托盘/SNI、自动清理、通知和特权功能未实现或禁用。
 
+**P2C-2：真实截图校准（进行中）** — 继续 PR #7 同一分支。开工时 HEAD `90f5b31a9dede8896a44bd356c43f38862a005db` 与远端相同。其 Windows/Xvfb/visual compare artifacts 为 `12632986603` / `12632328288` / `12632129496`，run `40282499292`；Xvfb+Weston run `40282499286` 和 build/test run `40282499313` PASS。比较表有 172 项几何 <=2 px PASS、12 个 Linux 中间滚动状态 `NOT_COMPARABLE_NATIVE_STATE`、0 FAIL；changed pixels 仍为 61.7290%–80.1728%，像素验收不通过。当前本地修复根据原生截图将浅色页面面色设为 `#F0F0F0`、复选框调至 13 px、内存列表 checkbox/text inset 改为 4/22 px，并增加独立 surface 与 checkbox raster 比较。Zamak 28/28、check/build、项目治理 33 项、C 安全测试 3 项、Arch build、`git diff --check` 已通过。当前改动尚未提交；修改后真实截图、overlay、raster/几何表和 exact-head Actions 待提交后运行。未在用户桌面启动 GUI。
+
 ## 已具备的代码
 - `src/main.zm`: Zamak Canvas 生产主窗口候选、四菜单、双语、禁用清理状态和真实 `/proc/meminfo` 定时采样；不等于完整功能集。
 - `src/ui_geometry.zm`: 集中管理从官方 DLU 模板换算的候选尺寸参数，等待 Windows 字体/DPI 校准。
@@ -34,7 +36,8 @@
 | P1 | Zamak `check/test/build` 通过，Linux GUI 在目标桌面打开 | 本机、GUI 与 CI 验收通过；Draft PR 等待复审 |
 | P2A | 固定 Windows 3.5.2 UI/UX 规格、交互矩阵、Linux 能力映射及隔离测试 | 源码规格 PR #5 OPEN / Draft，PR #4 隔离 X11/Wayland CI PASS。Windows 源图缺失，像素验收 BLOCKED |
 | P2B | 主窗口 UI 高保真实现 | 首个待校准生产候选已在 Draft PR #6；待代码/截图复审；最终像素验收仍等真实 Windows 截图 |
-| P2C-1 | 五页设置窗口、双语页面、Reset/Close 与生产 UI 隔离验收 | Draft PR #7；push Xvfb/XTEST、Weston lifecycle、Windows native baseline 和 Zamak/build CI PASS；Windows 截图已采集；设置 Canvas 与 Windows client 均 558×335；PR GUI Weston 检查待确认最终状态；像素比较、配置持久化及非安全特权功能仍未完成 |
+| P2C-1 | 五页设置窗口、双语页面、Reset/Close 与生产 UI 隔离验收 | Draft PR #7；production Xvfb/XTEST、Weston lifecycle、Windows native baseline、Win32 resource geometry 和 overlays 均有隔离 CI 证据；设置 Canvas 与 Windows client 均 558×335；像素级 1:1 未通过 |
+| P2C-2 | 基于 Windows 3.5.2 截图校准五页设置界面 | PR #7 同一功能分支；页面背景/checkbox 尺寸/列表行内缩已本地修正，Zamak 28/28 和 Arch build PASS；修改后 Xvfb/Weston/Windows exact-head Actions 与 raster/2 px 判断待运行 |
 | P2 | 可信指标显示/日志/只读探测，安全反馈 | 未开始；依赖 P1 与阶段审查 |
 | P3 | 手动一键缓存清理验收、特权隔离与回滚测试 | 未开始；依赖 P2 |
 | P4 | 有条件的自动策略、配置持久化、冷却与可观察性 | 未开始；依赖 P3 安全评审 |

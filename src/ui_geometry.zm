@@ -179,6 +179,18 @@ pub fn settings_list_item_rect(canvas_width: f64, canvas_height: f64, x: f64, y:
     # Win32 ListView item bounds have a 2 px inset; the region list reserves its native scrollbar.
     ui.rect(list.x + 2.0, list.y + 2.0 + f64(row) * 17.0, list.w - 4.0 - scrollbar_width, 17.0)
 
+pub fn settings_checkbox_size_px() -> f64:
+    13.0
+
+pub fn settings_checkbox_label_inset_px() -> f64:
+    14.0
+
+pub fn settings_list_checkbox_inset_px() -> f64:
+    4.0
+
+pub fn settings_list_label_inset_px() -> f64:
+    22.0
+
 pub fn settings_feedback_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
     settings_reference_rect(canvas_width, canvas_height, 156.0, 285.0, 390.0, 12.0)
 
@@ -318,3 +330,9 @@ fn test_settings_shell_contains_page_navigation_and_actions():
     assert(page.bottom() < reset.y)
     assert(reset.right() <= close.x)
     assert(close.right() <= w)
+
+fn test_settings_checkmark_geometry_matches_native_metrics():
+    assert(settings_checkbox_size_px() == 13.0)
+    assert(settings_checkbox_label_inset_px() == 14.0)
+    assert(settings_list_checkbox_inset_px() == 4.0)
+    assert(settings_list_label_inset_px() == 22.0)

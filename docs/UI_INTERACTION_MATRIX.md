@@ -126,3 +126,18 @@
 ## 6. 资源符号覆盖审计
 
 已按官方 tag 的 src/resource.h 与 src/resource.rc 复核矩阵：资源头定义 54 个 IDC（含通用 IDC_STATIC=-1）、38 个 IDM 命令、1 个 IDA 加速表和 6 个 IDD 窗口。每个可操作 IDC/IDM/IDA 项均在表格中逐项或按连续控件组明确列出；IDC_STATIC 是多个静态控件共用的占位 ID，不代表一个独立操作。六个窗口 ID 已分别关联主窗与五页设置。资源头另有 88 个 IDS 宏，其中 ID 45–50 的 6 个宏没有 RC 字符串、简中语言键或代码引用；活动 STRINGTABLE 的 82 个文案见基准清单。此项是静态资源符号覆盖检查，不等于 Windows 可执行程序运行时截图验收。
+
+## 7. Windows v3.5.2 只读默认状态快照
+
+这些默认值来自固定 3.5.2 源码，并与隔离 Windows Native 设置页截图交叉核对。Linux 当前 UI 仅呈现该默认快照；它不读取 Windows 注册表、不代表 Linux 用户已保存的偏好，也不会启用对应操作。除 English/简体中文会话语言选择和设置壳动作外，配置控件继续保持禁用。
+
+| 页面 / 资源 ID | Native 默认显示 | 当前 Linux 表现 | 操作状态 |
+|---|---|---|---|
+| General `IDC_REDUCTCONFIRMATION_CHK=120`, `IDC_CHECKUPDATES_CHK=121` | 勾选；其余页面复选框不勾选 | 勾选状态以灰色只读快照显示 | `NOT_IMPLEMENTED`；点击只解释限制 |
+| Memory cleaning `IDC_REGIONS=124` | 行 0、1、4、5、6、7 勾选；行 2、3 不勾选 | 八行按上游默认展示，列表滚动位置不更改默认值 | `UNSUPPORTED`；不映射到 `drop_caches` |
+| Memory cleaning `IDC_AUTOREDUCTENABLE_CHK=125`, `IDC_AUTOREDUCTINTERVALENABLE_CHK=128`, `IDC_HOTKEY_CLEAN_CHK=131` | 均不勾选 | 未勾选、禁用 | `NOT_IMPLEMENTED` |
+| Appearance `IDC_TRAYCHANGEBG_CHK=136` | 勾选；其他外观复选框不勾选 | 勾选状态只读；`IDC_COLORS=140` 预览 `#FFFFFF`, `#008040`, `#FF8040`, `#EC1C24` | `NOT_IMPLEMENTED`；不编辑/保存托盘颜色 |
+| Tray icon `IDC_NOTIFICATIONSOUND_CHK=151`, `IDC_SHOW_CLEAN_RESULT_CHK=152` | 均勾选 | 勾选状态以灰色只读快照显示 | `NOT_IMPLEMENTED`；不启用通知或声音 |
+| Advanced `IDC_ALLOWSTANDBYLISTCLEANUP_CHK=153`, `IDC_LOGRESULTS_CHK=154` | 均不勾选 | 未勾选、禁用 | 清理选项 `UNSUPPORTED`；日志 `NOT_IMPLEMENTED` |
+
+默认值截图不宣称为 Linux 已保存配置。对应资源矩形、像素叠加、差异图与 2 px 判断以 [P2C-1 设置报告](P2C-1_SETTINGS_UI_REPORT.md) 中精确 Actions head 的证据为准；不同 CI runs 生成的截图不得混用。

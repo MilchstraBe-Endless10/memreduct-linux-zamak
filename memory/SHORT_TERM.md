@@ -1,5 +1,14 @@
 # 短期记忆 / Latest Handoff
 
+## 当前续接：P2C-2 原版截图校准（2026-10-26）
+
+- 继续使用 PR #7 分支 `feat/issue-3-p2c-settings-ui`。开工时本地与远端 HEAD 均为 `90f5b31a9dede8896a44bd356c43f38862a005db`；PR #7 OPEN / Draft，base `feat/issue-3-p2b-main-window`，没有修改 main 或其他 PR 分支。
+- 已下载并核对该 HEAD 的 CI 证据：Windows 原生/几何 artifact `12632986603`、生产 Xvfb artifact `12632328288`、overlay/diff/几何 artifact `12632129496`；run `40282499292` Windows+Xvfb+comparison、`40282499286` Xvfb+Weston、`40282499313` build/test 均 PASS。该批证据只对应修正前的 `90f5b31`。
+- 修正前可比较控件矩形 172 PASS，12 个 Linux 中间滚动项为 `NOT_COMPARABLE_NATIVE_STATE`，0 FAIL；截图像素变化 61.7290%–80.1728%，故不通过 1:1 像素验收。
+- 当前未提交修改：浅色设置页背景改为真实 Windows 截图测得 `#F0F0F0`，导航区域保持白色；复选框方框调整到 13 px；内存区域列表 checkbox / label 内缩改成 4 px / 22 px，并由 `ui_geometry.zm` 集中管理；比较脚本增加页面底色样本和 checkbox 像素边界检测。
+- 本机非 GUI 验证：Zamak 0.2.0 `check` PASS，`test` 28/28 PASS，`build` PASS；项目治理 33 项 PASS；C 安全测试 3/3 PASS；比较脚本 `py_compile` PASS；`scripts/build-arch.sh` PASS；`git diff --check` PASS。没有本地启动 Xvfb、Weston、生产 GUI 或活动 Hyprland。
+- 修改后的截图、overlay、像素差异及新 raster 检查尚未在 exact-head GitHub Actions 运行；新提交 CI pending。Windows 原生 2 px 几何、深色主题、菜单/托盘截图和像素级 1:1 仍未整体验收。所有设置快照仅为上游只读默认值；未执行设置保存、清理、Polkit、Swap/ZRAM 操作。
+
 ## P2C-1 最新续接（2026-10-26）
 
 - PR #7 仍 OPEN / Draft；base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。生产源码测试 checkpoint `d4f1ca97ac42bc1516a484163b9d4536ea9194b2`；文档/记忆同步在 CI-verified head `b473700f0513e91fc6f171fa2b0a8fc3abd3f7df` 上完成。本段再更新的只是报告哈希和 Actions 状态，未改生产源码。分支 `feat/issue-3-p2c-settings-ui`。未合并或改写任何其他分支。

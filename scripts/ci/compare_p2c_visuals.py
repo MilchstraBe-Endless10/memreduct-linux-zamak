@@ -179,6 +179,81 @@ def validate_appearance_swatches(windows_dir: Path, linux_dir: Path, windows: di
                     raise ValueError(f"Linux IDC_COLORS row {index} did not match source default {color} at {point}")
 
 
+def dark_pixel_bounds(image: Image.Image, region: tuple[int, int, int, int]) -> tuple[int, int, int, int] | None:
+    left, top, right, bottom = region
+    points = []
+    for y in range(top, bottom):
+        for x in range(left, right):
+            red, green, blue = image.getpixel((x, y))[:3]
+            if max(red, green, blue) < 200:
+                points.append((x, y))
+    if not points:
+        return None
+    return (
+        min(point[0] for point in points),
+        min(point[1] for point in points),
+        max(point[0] for point in points) + 1,
+        max(point[1] for point in points) + 1,
+    )
+
+
+def validate_surface_and_checkbox_raster(windows_dir: Path, linux_dir: Path, output: Path) -> tuple[int, int]:
+    """Check measured Windows page-face colors and checkbox outlines separately from text AA."""
+    origin_x, origin_y = metadata(windows_dir / "result.txt")[4:6]
+    surface_points = {
+        "page_gap": (150, 20, (240, 240, 240)),
+        "page_footer": (300, 290, (240, 240, 240)),
+        "navigation": (20, 200, (255, 255, 255)),
+    }
+    checkbox_regions = {
+        "IDC_ALWAYSONTOP_CHK": (164, 29, 182, 47),
+        "IDC_REGIONS_row_0": (171, 32, 190, 51),
+    }
+    passed = 0
+    failed = 0
+    with output.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(("locale", "target", "windows", "linux", "dx", "dy", "dw", "dh", "status"))
+        for locale in LOCALES:
+            windows_images = {}
+            linux_images = {}
+            for page in (0, 1):
+                name = "general" if page == 0 else "memory"
+                with Image.open(locate_windows_capture(windows_dir, page, locale)) as source:
+                    windows_images[name] = source.convert("RGB").crop(
+                        (origin_x, origin_y, origin_x + 558, origin_y + 335)
+                    )
+                with Image.open(locate_linux_capture(linux_dir, page, locale)) as source:
+                    linux_images[name] = source.convert("RGB")
+
+            for target, (x, y, expected) in surface_points.items():
+                reference = windows_images["general"].getpixel((x, y))
+                actual = linux_images["general"].getpixel((x, y))
+                status = "PASS" if reference == expected and actual == expected else "FAIL"
+                writer.writerow((locale, target, reference, actual, 0, 0, 0, 0, status))
+                if status == "PASS":
+                    passed += 1
+                else:
+                    failed += 1
+
+            for target, region in checkbox_regions.items():
+                page_name = "general" if target == "IDC_ALWAYSONTOP_CHK" else "memory"
+                reference = dark_pixel_bounds(windows_images[page_name], region)
+                actual = dark_pixel_bounds(linux_images[page_name], region)
+                if reference is None or actual is None:
+                    writer.writerow((locale, target, reference, actual, "", "", "", "", "FAIL"))
+                    failed += 1
+                    continue
+                delta = tuple(actual[index] - reference[index] for index in range(4))
+                status = "PASS" if all(abs(value) <= 2 for value in delta) else "FAIL"
+                writer.writerow((locale, target, reference, actual, *delta, status))
+                if status == "PASS":
+                    passed += 1
+                else:
+                    failed += 1
+    return passed, failed
+
+
 def write_geometry_table(windows: Path, linux: Path, output: Path) -> tuple[int, int]:
     win = parse_windows_geometry(windows)
     lin = parse_linux_geometry(linux)
@@ -269,6 +344,10 @@ def main() -> int:
     windows_geometry = parse_windows_geometry(args.windows_dir / "windows-settings-geometry.csv")
     linux_geometry = parse_linux_geometry(args.linux_dir / "p2c-client.log")
     validate_appearance_swatches(args.windows_dir, args.linux_dir, windows_geometry, linux_geometry)
+    raster_path = args.output_dir / "control-raster-diff.csv"
+    raster_passed, raster_failed = validate_surface_and_checkbox_raster(
+        args.windows_dir, args.linux_dir, raster_path
+    )
     geometry_path = args.output_dir / "control-geometry-diff.csv"
     windows_environment = (args.windows_dir / "windows-environment.txt").read_text(encoding="utf-8-sig", errors="replace")
     linux_environment = (args.linux_dir / "p2c-environment.txt").read_text(encoding="utf-8", errors="replace")
@@ -279,12 +358,12 @@ def main() -> int:
         "Linux source: production Zamak settings window captured by XTEST in an isolated Ubuntu 24.04 Xvfb runner.\n"
         "The Windows PNGs are only cropped at the measured client origin; neither reference nor Linux images are resized, stretched, shifted, or resampled.\n"
         "Geometry verdicts use resource-ID keyed Win32 window/control rectangles and Linux Canvas logical rectangles. PASS requires |dx|, |dy|, |dw|, |dh| <= 2 px for each row. IDC_NAV is compared as one resource control; its non-HWND tree items are assessed by screenshots and XTEST clicks.\n"
-        "The memory-region list is compared in matching top (rows 0-5) and bottom (rows 2-7) scroll states. Linux also tests the intermediate offset; its rows are bounds-checked and marked NOT_COMPARABLE_NATIVE_STATE because the Windows runner does not collect that scroll state. Appearance preview rows are pixel-sampled against the pinned source colors.\n"
+        "The memory-region list is compared in matching top (rows 0-5) and bottom (rows 2-7) scroll states. Linux also tests the intermediate offset; its rows are bounds-checked and marked NOT_COMPARABLE_NATIVE_STATE because the Windows runner does not collect that scroll state. Appearance preview rows are pixel-sampled against the pinned source colors. The control-raster table separately checks native page-face samples and checkbox outline bounds; it does not treat text antialiasing as geometry.\n"
         "Font and rasterization differences are not treated as control geometry errors. Pixel metrics are raw comparisons only and do not imply 1:1 equivalence.\n\n"
         "Windows environment metadata:\n" + windows_environment + "\nLinux environment metadata:\n" + linux_environment,
         encoding="utf-8",
     )
-    for item in (metrics_path, geometry_path, report_path):
+    for item in (metrics_path, geometry_path, raster_path, report_path):
         manifest.append((item.name, sha256(item)))
     with manifest_path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
@@ -292,8 +371,9 @@ def main() -> int:
         writer.writerows(manifest)
     print(f"PASS screenshots=10 windows_outer={outer_w}x{outer_h} client_crop={origin_x},{origin_y},{client_w},{client_h} linux_canvas={client_w}x{client_h}")
     print(f"GEOMETRY target=<=2px pass={passed} fail_or_missing={failed} table={geometry_path.name}")
+    print(f"CONTROL_RASTER target=<=2px pass={raster_passed} fail={raster_failed} table={raster_path.name}")
     print("PIXEL_COMPARISON generated=side-by-side,50pct-overlay,difference-heatmap; verdict=NOT_PIXEL_EQUIVALENCE")
-    return 0 if failed == 0 else 1
+    return 0 if failed == 0 and raster_failed == 0 else 1
 
 
 if __name__ == "__main__":

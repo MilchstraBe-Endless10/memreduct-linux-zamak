@@ -89,7 +89,7 @@ fn group(s: &State, p: &ui.Painter, r: &ui.Rect, title: string, fg: &ui.Color, b
     p.begin()
     p.add_rect(r)
     p.stroke(border, 1.0)
-    let mut bg = ui.rgb(0xffffff)
+    let mut bg = ui.rgb(0xf0f0f0)
     if s.dark: bg = ui.rgb(0x242424)
     p.fill_rect(&ui.rect(r.x + 7.0, r.y - 2.0, f64(len(title)) * 5.2 + 8.0, 5.0), &bg)
     p.text(r.x + 10.0, r.y - 5.0, title, fg, size=8.0)
@@ -97,17 +97,18 @@ fn group(s: &State, p: &ui.Painter, r: &ui.Rect, title: string, fg: &ui.Color, b
 fn checkbox(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color):
     let r = child(s, w, h, x, y, width, height)
     emit_geometry(s, id, "control", &r)
-    let box = ui.rect(r.x, r.y + max(0.0, (r.h - 9.0) / 2.0), 9.0, 9.0)
+    let box_size = ui_geometry.settings_checkbox_size_px()
+    let box = ui.rect(r.x, r.y + max(0.0, (r.h - box_size) / 2.0), box_size, box_size)
     let mut bg = ui.rgb(0xf4f4f4)
     if s.dark: bg = ui.rgb(0x303030)
     p.fill_rect(&box, &bg)
     outline(p, &box, border)
     if upstream_default_checked(id, -1):
-        p.line(box.x + 1.5, box.y + 4.8, box.x + 3.7, box.y + 7.0, disabled)
-        p.line(box.x + 3.7, box.y + 7.0, box.x + 7.5, box.y + 1.7, disabled)
+        p.line(box.x + 2.0, box.y + 6.5, box.x + 5.0, box.y + 9.5, disabled)
+        p.line(box.x + 5.0, box.y + 9.5, box.x + 11.0, box.y + 2.0, disabled)
     let mut text_size = 8.0
     if id == 153: text_size = 7.0
-    p.text(r.x + 14.0, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, size=text_size)
+    p.text(r.x + ui_geometry.settings_checkbox_label_inset_px(), r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, size=text_size)
     if s.focus == id: outline(p, &r, focus)
 
 fn frame(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, fg: &ui.Color, border: &ui.Color):
@@ -170,13 +171,14 @@ fn draw_list_row(s: &State, p: &ui.Painter, r: &ui.Rect, id: i64, title: string,
         return
     let mut text_x = r.x + 5.0
     if id == 124:
-        let box = ui.rect(r.x + 14.0, r.y + max(0.0, (r.h - 9.0) / 2.0), 9.0, 9.0)
-        text_x = r.x + 32.0
+        let box_size = ui_geometry.settings_checkbox_size_px()
+        let box = ui.rect(r.x + ui_geometry.settings_list_checkbox_inset_px(), r.y + max(0.0, (r.h - box_size) / 2.0), box_size, box_size)
+        text_x = r.x + ui_geometry.settings_list_label_inset_px()
         p.fill_rect(&box, &ui.rgb(0xffffff))
         outline(p, &box, border)
         if upstream_default_checked(id, index):
-            p.line(box.x + 1.5, box.y + 4.8, box.x + 3.7, box.y + 7.0, disabled)
-            p.line(box.x + 3.7, box.y + 7.0, box.x + 7.5, box.y + 1.7, disabled)
+            p.line(box.x + 2.0, box.y + 6.5, box.x + 5.0, box.y + 9.5, disabled)
+            p.line(box.x + 5.0, box.y + 9.5, box.x + 11.0, box.y + 2.0, disabled)
     p.text(text_x, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, size=8.0)
 
 fn draw_general(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
@@ -298,7 +300,9 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
         println(f"CI_SETTINGS_PAGE idd={page_dialog_id(s.page)} page={page_title(s.page, zh)} locale={locale} controls={page_control_ids(s.page)} child_dlu=260x168 provisional_canvas={width}x{height}")
         let canvas_page = ui_geometry.settings_page_rect(width, height)
         println(f"CI_SETTINGS_GEOMETRY page_idd={page_dialog_id(s.page)} locale={locale} state=default resource={page_dialog_id(s.page)} part=page x={canvas_page.x} y={canvas_page.y} w={canvas_page.w} h={canvas_page.h}")
-    let mut bg = ui.rgb(0xffffff)
+    # The Windows client surface outside the navigation tree uses the system
+    # button-face color (RGB 240,240,240) in the pinned native capture.
+    let mut bg = ui.rgb(0xf0f0f0)
     let mut fg = ui.rgb(0x161616)
     let mut disabled = ui.rgb(0x777777)
     let mut border = ui.rgb(0x8c8c8c)

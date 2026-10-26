@@ -1,5 +1,21 @@
 # P2C-1 — Five-page settings UI and Windows baseline
 
+## P2C-2 visual calibration addendum (2026-10-26)
+
+P2C-2 continues the existing Draft PR #7 on `feat/issue-3-p2c-settings-ui`; it does not create another PR. The authenticated Windows reference remains Mem Reduct `v.3.5.2`, tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`, captured on Windows Server 2022 at 96 DPI / 100% scaling. Settings client target remains 558×335. No capture is resized, stretched, or shifted to improve a match.
+
+The exact pre-calibration source head was `90f5b31a9dede8896a44bd356c43f38862a005db`. Its Windows source/geometry artifact was `12632986603`, production Xvfb screenshot artifact `12632328288`, and comparison artifact `12632129496` from Actions runs `40282499292` (Windows + Xvfb + comparison), `40282499286` (Xvfb/Weston), and `40282499313` (build/test). That comparison reported 172 control-rectangle rows within 2 px, 12 Linux-only intermediate scroll rows marked `NOT_COMPARABLE_NATIVE_STATE`, and zero geometry failures. Raw pixel comparison was not a pass: changed pixels ranged from 61.7290% to 80.1728% across the five pages and two locales.
+
+The pinned screenshots showed three actionable raster differences, now corrected in the production renderer:
+
+- The page surface and blank footer now use the measured Windows light-theme button-face color RGB `(240,240,240)`; the navigation list stays white. Group-box title knockouts use the same page surface.
+- Resource checkboxes now use a centralized 13 px square and matching checkmark proportions, measured against the native screenshots.
+- The memory-region list checkbox and label insets now follow the observed Win32 list item placement: checkbox inset 4 px and label inset 22 px from the exported row rectangle (previous Linux values were 14 px and 32 px).
+
+The four Appearance color rows retain source-verified read-only previews (`#FFFFFF`, `#008040`, `#FF8040`, `#EC1C24`). Source-default checkmarks remain a read-only presentation snapshot; they are not loaded from or saved as Linux user settings. All non-language configuration controls remain disabled and cannot trigger settings persistence or system actions.
+
+The visual comparator now separately validates reference page-face samples and checkbox raster bounds, in addition to the resource-ID keyed Win32/Linux geometry table. It keeps text antialiasing in the pixel-difference output rather than misclassifying it as control geometry. Exact-head screenshots and this new raster check are **pending the next GitHub Actions run**; do not treat pre-calibration artifacts as evidence for the modified source. The Windows screenshots are authentic native screenshots; overall 1:1 equivalence is still not established by matching coordinates or colors.
+
 Date: 2026-10-26
 Upstream: Henry++ Mem Reduct `v.3.5.2`, source tag commit `2f5c55d15f69a2c88859e036b16c6f4c971e1968`
 PR: [#7 — P2C-1 five-page settings UI](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7), OPEN / Draft
@@ -138,7 +154,10 @@ Windows artifact: [12627309561](https://github.com/MilchstraBe-Endless10/memredu
 - **Client geometry at 96 DPI / scale 1:** PASS — Windows and Linux settings client areas both 558×335; Windows child page is 390×273 at client origin `(156,10)`.
 - **Screenshot acquisition:** PASS — source-verified Windows-native main and ten settings captures, plus production Linux captures for all five settings pages in both locales.
 - **Functional settings shell:** PASS for navigation, language selection, Reset confirmation-only flow, Close, Escape, and WM close. Xvfb uses real isolated XTEST events.
-- **Pixel-level 1:1 / 2 px overlay:** NOT RUN. The screenshots have not yet been cropped into matching client-area pairs and compared with a measured overlay/difference metric. GTK control rendering, text antialiasing, and decorations visibly differ; no pixel-equivalence claim is made.
+- **Control geometry at pre-calibration head `90f5b31`:** PASS for 172 directly comparable rows within 2 px; 12 intermediate Linux scroll rows are `NOT_COMPARABLE_NATIVE_STATE`; 0 geometry failures. This result is specific to that artifact and does not validate later source changes.
+- **Pixel comparison at pre-calibration head `90f5b31`:** overlays and difference maps were generated, but pixel equivalence is not passed. Changed pixels ranged from 61.7290% to 80.1728% and mean channel difference from 16.2256 to 19.9119. The follow-up page-face and checkbox corrections require a new exact-head run.
+- **P2C-2 exact-head raster/geometry result:** NOT RUN pending GitHub Actions for the current source change.
+- **Pixel-level 1:1:** NOT ACCEPTED. Remaining typography, disabled-state contrast, native group-box/button/tree rendering, and antialiasing differences require review even if geometry passes.
 - **Not captured:** dark theme, menus, tray/submenus, and cleanup confirmation/result dialogs. The Windows screenshot workflow currently captures main + five settings pages, not these states.
 - **Not implemented:** settings persistence, active tray/SNI service, autostart/update checks, notification/sound, automatic cleanup, global hotkey, Linux-equivalent advanced cleaning, Polkit authorization, and any real memory cleanup. Disabled controls report limits rather than claiming success.
 - **Wayland:** private Weston lifecycle only. No physical Hyprland, Wayland pointer/keyboard, or HiDPI input validation was performed.
