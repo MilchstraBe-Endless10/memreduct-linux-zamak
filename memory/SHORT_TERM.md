@@ -2,6 +2,15 @@
 
 ## 最新核对：P2C-4 exact-head Actions 证据（2026-10-27）
 
+- PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；本次 CI 验证 head `689211049a2028a8d740763d958d9b001c00c255`，生产源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。
+- P2C run [40405594197](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40405594197) Windows + Linux Xvfb/XTEST + comparison 3/3 PASS；artifacts Windows `12689674313` (`sha256:b757c0792ba9bc4bfa5ec4ce705c9d764e5aa4c9730bc5044d810dcdda4855fe`)，Linux `12691666963` (`sha256:206da7efe42cd4738abba584b8e05d6dfb9d00ce6605e1de86f8fa2e546cc452`)，visual `12690223544` (`sha256:50007b55a99511dbd677954260697a3e172c5d391ae9dbc0f0c090561dba3766`)。
+- P2B run [40405594177](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40405594177) Xvfb/XTEST 与 Weston 2/2 PASS；X11 artifact `12689774323`，Wayland artifact `12691681387`。PR build [40405594170](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40405594170) 与 push build [40405588384](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40405588384) PASS，checks 7/7。
+- Exact-head SHA 复核：Windows PNG 41/41、Linux PNG 44/44、visual 83/83、dark 70/70、P2C source 10/10、source+binary 8/8；几何 184/184（max 1.5 px）、nav 10/10、tree 102/102、raster 36/36、scroll 2/2 全 PASS。明/暗双语 changed-pixel 值见报告；整体 1:1 NOT PASS。
+- APT 获取 101 MB 用时 7 秒且成功，Pillow 安装成功；此前 run 下载缓慢但没有确认 DNS、锁或镜像根因。Weston seat critical / SIGTERM layer diagnostic 保留且原因未知，无 Wayland 输入验收。安全边界保持，无真实清理或桌面操作。
+- 该 run 使用官方 v3.5.2 来源，Windows/Linux 原生截图、明暗双语配对、Overlay/Difference/Heatmap 都在当前 artifact；12 项简中来源差异仍 DECISION_REQUIRED。PR #7 最新 ChatGPT review 仍为 P2C-3R1，认可 CI gate 但 1:1 未通过。详见 [P2C-4 report](../docs/P2C-4_FONT_THEME_MENU_REPORT.md)。
+
+### 前一 exact-head 核对（d238649）
+
 - PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`，当前核验 head `d23864905f7e841eb428135bb1da244abca5d1df`；生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。最新 ChatGPT review 仍是 P2C-3R1 对 `2c745710...` 的审查：CI gate accepted，整体 1:1 NOT PASS。
 - P2C run [40393863774](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40393863774) Windows native、Linux Xvfb/XTEST、比较 3/3 PASS。artifacts：Windows `12687194357` (`sha256:39d347c00ab6cac66a155fcdd3c0c3b76ece305d49a3893872efc3e4239c82e0`)，Linux X11 `12690875520` (`sha256:880a6b11f3cf1555c082d511568ee6d486271b94ffbfdad79db910fc1622612d`)，comparison `12689194953` (`sha256:fa9abb4a9b835a231dfc288c73de6d1d3654e8bd636480977d532b4b93e89312`)。
 - P2B run [40393863850](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40393863850) Xvfb/XTEST 与 Weston Headless/Pixman 2/2 PASS；artifacts X11 `12688395963`、Wayland `12686999481`。PR build [40393863878](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40393863878) 和 push build `40393857503` PASS，PR checks 7 PASS / 0 FAIL。
@@ -10,7 +19,7 @@
 - Xvfb 使用 GitHub-hosted Ubuntu 24.04 / GTK 3.24.41 / Adwaita:light；暗色通过应用 Canvas palette。Weston 13.0.0 Headless/Pixman 客户端退出 0，但保留 `gdk_seat_get_keyboard` critical 和 SIGTERM 后 layer-finalization 诊断；根因未知，不声称有 Wayland 输入验收。当前 P2C APT 成功但下载 69.7 MB 用时 31m33s；旧超时底层原因未确认。
 - 没有本机 GUI、Hyprland IPC、用户桌面输入或真实内存/特权操作。证据索引见 [P2C-4 report](../docs/P2C-4_FONT_THEME_MENU_REPORT.md)。
 
-### 前一 exact-head 核对（37cefdb，历史）
+### 更早 exact-head 核对（37cefdb，历史）
 
 - PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；核验 head `37cefdb351b1cfcdacbc6ca24eb8b06fead93cc1`。生产源码 checkpoint 为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；之后调整 P2B/P2C workflow 并发组并同步报告/记忆，未修改 UI、goldens、依赖或验收阈值。最新 ChatGPT Review 仍是针对 `2c745710...` 的 P2C-3R1 评审：CI gate accepted，整体 1:1 仍未通过。
 - P2C run `40390082314` 在该 head 上 Windows 原版来源/截图、Linux 五页双语 Xvfb/XTEST、比较均 PASS（3/3）；artifacts Windows `12682119919` (`sha256:9a0463631da7bf4e049f5fe319afc9496f16b0fd2b940fae85363f6c2f845acc`)，Linux `12684755661` (`sha256:9bfb89a4bb10da11da9b42bc865627e36bc50c1e654ee3212ee14c7086ba0af2`)，comparison/dark/font `12683006399` (`sha256:8b765ec896abad794b91cbe80194c3959dc98a9c4fabb83cf2ffccdc276437b2`)。
@@ -28,7 +37,7 @@
 - GDI/Pango ascent+descent 总和均为 13 px，但 ascent/descent 分配不同 1 px；Linux text origin 不是 GDI baseline 的直接等价测量。GDI 字符串宽度/平均字宽已记；当前证据没有独立且可对齐的 character-spacing/tracking 量，未添加字距补偿。
 - XTEST 双语验证 File/View/Settings/Help、语言子菜单、键盘 Enter/方向/Esc、分隔区跳过、暗色 5 页、safe clean dropdown 均通过；清理项禁用。Windows tray、原生清理 popup、安全确认/结果对话框仍 BLOCKED。简中 12 项来源差异维持 DECISION_REQUIRED。
 - 不操作本机 GUI/Hyprland；无内存清理、Polkit、root GUI、内核写入或 Swap/ZRAM 变化。日志中的 Weston GTK seat critical 未屏蔽、未推断根因。
-- 文档/记忆首轮提交 `6d5f4d4b8212913ea12b59c20f0916b62219aeea`、`dc1e112` checkpoint 的旧状态及早期 APT 超时记录保留为历史快照；当前已核验状态以本文件顶部 `37cefdb` exact-head 证据和 P2C-4 报告为准。
+- 文档/记忆首轮提交 `6d5f4d4b8212913ea12b59c20f0916b62219aeea`、`dc1e112` checkpoint 的旧状态及早期 APT 超时记录保留为历史快照；当前已核验状态以本文件顶部 `6892110` exact-head 证据和 P2C-4 报告为准。P2C-4 的生产源码 checkpoint 仍是 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`，后续提交只同步证据文档/记忆。
 
 ## 先前未完成状态记录（已被上方 2026-10-27 核对覆盖）
 
