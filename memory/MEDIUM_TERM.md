@@ -2,6 +2,10 @@
 
 更新时间：2026-10-27；仅已见到的证据，未经推测。
 
+## P2C-4 最新 exact-head 证据
+
+PR #7 保持 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`。2026-10-27 核验 branch head `37cefdb351b1cfcdacbc6ca24eb8b06fead93cc1`：P2C run `40390082314` Windows native + Linux production Xvfb/XTEST + visual comparison 3/3 PASS；P2B run `40390082510` production Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build/governance/safety `40390082353` 和 push build `40390075275` PASS。完整 P2C 截图和比较 artifact 摘要 SHA：Windows `12682119919` `9a046363…f845acc`，Linux `12684755661` `9bfb89a4…6ba0af2`，visual `12683006399` `8b765ec8…6437b2`；所有详细值见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。生产源码 checkpoint `6502342`，并发组调整在 `dc1e112`；未改产品代码或阈值。几何/局部栅格全通过但整体 1:1 NOT PASS。P2B 重复的设置页测试在条件下跳过，同 head P2C 完整执行；Weston 客户端退出 0，但测试 SIGTERM 后日志有 layer finalization 诊断，根因未知。Windows tray、危险清理弹窗仍 BLOCKED；12 项中文来源差异待产品决定。没有实际清理或活动桌面操作。
+
 ## 当前阶段
 
 本次 P2C-4 exact-head 复核时间：2026-10-27。

@@ -1,8 +1,29 @@
 # P2C-4 — 字体、控件绘制与深色主题校准
 
-状态：本轮实现和 CI 证据已完成。PR #7 仍 OPEN / Draft，不合并。生产代码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 已通过隔离 Windows/Linux CI；分支 head `dc1e112ba27bb1b89bcdd4b3c55ddf1465695e10` 的 P2C-4 测试也全部执行完成。其后的提交只同步报告、交互矩阵和记忆，不改 P2C-4 代码、Windows 基准或验收阈值；文档 head 的 Actions 状态以 PR #7 最新 Checks 为准。该结论仅覆盖本报告列明的几何、菜单与截图检查；完整 Windows/GTK 像素等价仍 NOT PASS。
+状态：P2C-4 字体候选、控件栅格、深色主题和安全菜单证据已完成；PR #7 仍 OPEN / Draft，不合并。最近核对的精确 PR head 为 `37cefdb351b1cfcdacbc6ca24eb8b06fead93cc1`。相对源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`，分支只追加 CI 并发组调整和文档/记忆同步；生产 UI、Windows goldens、依赖和验收阈值未改。该 exact-head CI 已全部结束且通过；本报告继续明确列出全页像素差异、来源语言决策和 Weston 关闭期诊断，不将局部 PASS 扩大解释为 1:1 验收。
 
-## CI 验证 checkpoint `dc1e112`（2026-10-27）
+## 最终 exact-head 验证 `37cefdb`（2026-10-27）
+
+- PR [#7](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7) 状态 OPEN / Draft；base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`；head `37cefdb351b1cfcdacbc6ca24eb8b06fead93cc1`。生产源码 checkpoint 为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；之后仅调整 P2B/P2C workflow 并发组并同步报告/记忆，未修改 UI、goldens、依赖或验收阈值。检查时没有比 P2C-3R1（head `2c745710210c8794b52a0e9eb19dd1830c00d8d6`）更新的 ChatGPT review；该 review 接受 R1 CI 门槛，但仍明确整体 1:1 UI 为 NOT PASS。
+- P2C [Windows 原版 + Linux 生产 Xvfb/XTEST + comparator run `40390082314`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40390082314)：3/3 jobs SUCCESS，Windows 来源/原生截图、Linux 五页中英文及菜单截图、视觉比较步骤均执行。P2B [生产 Xvfb/XTEST + Weston lifecycle run `40390082510`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40390082510)：2/2 jobs SUCCESS；P2B 中重复的五页设置场景按条件 SKIPPED，同 head 的五页完整验证由 P2C Xvfb job 实际覆盖。PR build/governance/safety [`40390082353`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40390082353) 与 push build [`40390075275`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40390075275) 均 SUCCESS。
+- Artifact digest：Windows [`12682119919`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40390082314/artifacts/12682119919) `sha256:9a0463631da7bf4e049f5fe319afc9496f16b0fd2b940fae85363f6c2f845acc`；Linux production X11 [`12684755661`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40390082314/artifacts/12684755661) `sha256:9bfb89a4bb10da11da9b42bc865627e36bc50c1e654ee3212ee14c7086ba0af2`；Windows/Linux visual comparison [`12683006399`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40390082314/artifacts/12683006399) `sha256:8b765ec896abad794b91cbe80194c3959dc98a9c4fabb83cf2ffccdc276437b2`；P2C APT diagnostics `12684970524` / `12683476105`。P2B artifacts：X11 [`12682830560`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40390082510/artifacts/12682830560) `sha256:d5e4967f92c7feb51defd5623b08b0135abed00ace0a2d17d5a995b22e901fc4`；Wayland [`12682645763`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40390082510/artifacts/12682645763) `sha256:1c68e2e22f6945514b14efb065da7001b3633d3266795895198c2846b5d86524`；其 APT diagnostics 为 `12682755594` / `12683000436`。
+- 对实际下载的 exact-head artifacts 校验：visual `visual-sha256.csv` **83/83**、dark-theme SHA 清单 **70/70**、Linux production screenshot 清单 **44/44** 全部与 PNG 实际字节匹配；Linux source 清单 **10/10** 与源码工作树匹配，主程序/helper 二进制 **2/2** 匹配。主程序 SHA-256 `fa13bc97526e97debd189ef09dacffc31ebf085d168ffe520856d00cdbd30404`，helper `30cac693f610cd0bec92de495f6c6e4ab352f8a6ec43bc807d08a2d27f2acf08`。完整截图 SHA 与截图本体保存在上述 artifact，不混用其他 run 的文件。
+- 最新轻色五页双语 changed-pixel 百分比（Windows 原生客户区与 Linux production Canvas 均 558×335，未缩放）：
+
+| 设置页 | English | 简体中文 |
+|---|---:|---:|
+| General | 12.0184% | 10.6617% |
+| Memory cleaning | 14.8853% | 14.7392% |
+| Appearance | 11.5123% | 10.8966% |
+| Tray icon | 14.7900% | 13.9287% |
+| Advanced | 5.5871% | 5.0741% |
+
+  五页 × 双语的暗色配对截图、并排图、overlay、difference、heatmap 和逐图哈希也都在 visual artifact 的 `dark-theme/` 目录；暗色全页差异率沿用报告下一节列出的数值。几何 **184/184** PASS（最大单项偏差 `1.5 px`）、导航 `10/10`、树线采样 `102/102`、离散控件栅格 `36/36`、中间滚动状态 `2/2` PASS；这些局部测试不等价于像素相等。
+- Weston 在独立 Headless/Pixman 下连接、绘制；测试客户端退出码 `0`，主窗与设置窗均释放。输入设备验收 NOT RUN。关闭客户端后由脚本对 Weston 发送 SIGTERM，`weston.log` 出现 `caught signal 15` 和 `BUG: finalizing a layer with views still on it.`；尚无证据确定根因，因此本报告将其作为 compositor 关闭期诊断保留，不能解释为 clean compositor shutdown，也没有据此归咎应用。
+- Linux 环境：GitHub-hosted Ubuntu 24.04、Xvfb `1024×768×24`、GTK `3.24.41`、96 DPI/scale 1、`Adwaita:light`；Linux 暗色由应用 Canvas palette 切换。Windows：Server 2022 build 20348、1024×768、96 DPI/100% scale。原版仍固定 v.3.5.2 tag `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。
+- 整体 Windows/GTK 像素同一性仍 **NOT PASS**；Windows 专有字体没有打包；12 项上游简中显示差异仍 `DECISION_REQUIRED`。Windows tray、原生清理弹出菜单及真实清理确认/结果弹窗仍 BLOCKED；未执行清理、Polkit、Swap/ZRAM、root GUI 或活动 Hyprland 操作。
+
+## 前一 CI checkpoint `dc1e112`（2026-10-27，历史记录）
 
 - PR [#7](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7) 仍 OPEN / Draft，Base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。以下 exact-head CI 对应分支提交 `dc1e112ba27bb1b89bcdd4b3c55ddf1465695e10`；该提交只更新两个 GUI workflow 的 concurrency group，生产源码、Windows 基准、比较阈值及测试数量均未改变。后续报告/记忆同步不改产品代码。
 - P2C run [40382203136](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40382203136) 在此 head 上 **3/3 jobs PASS**：Windows 3.5.2 来源与截图、Linux 生产设置 Xvfb/XTEST、几何/视觉/暗色比较均执行成功。Artifacts：Windows `12679133143` (`sha256:1417e252b1d837c509670b73524ea9b9058eec0055104cfe5da478beb242e66a`)、Linux Xvfb `12677879049` (`sha256:26fbc176837d7bce5fde49256f8d0f6744ddd235d1adfe13ea3a3e0972019805`)、比较 `12679860675` (`sha256:72d78940a992fae4c60efd0157bc4f7d9d9c4fcc702ed097b577e5e4ff5e6d8d`)。比较 job 报告 Windows crop 与 Linux Canvas 均为 `558×335`、截图 10/10；控件矩形 184/184、离散栅格 36/36、导航选中框 10/10、树点线像素 102/102、中间滚动 2/2 均 PASS。暗色/亮色几何一致；10 组暗色截图生成配对证据，整体像素同一性明确 `NOT PASS`。比较 artifact 包含逐图 SHA-256 清单与 Overlay/Difference/Heatmap。

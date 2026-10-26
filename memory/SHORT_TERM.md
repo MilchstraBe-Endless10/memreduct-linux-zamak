@@ -2,10 +2,11 @@
 
 ## 最新核对：P2C-4 exact-head Actions 证据（2026-10-27）
 
-- CI 验证的 PR #7 分支 head `dc1e112ba27bb1b89bcdd4b3c55ddf1465695e10`，Base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；head 只隔离 P2B/P2C concurrency group，未改生产代码、基准图片或阈值。以下文档/记忆同步提交发生在该 CI checkpoint 之后；其自身 Actions 状态以 PR #7 最新 Checks 为准。
-- P2C run `40382203136`：Windows v3.5.2 来源、Linux production Xvfb/XTEST、视觉/暗色比较 3/3 PASS。Artifacts Windows `12679133143` (`sha256:1417e252b1d837c509670b73524ea9b9058eec0055104cfe5da478beb242e66a`)，Linux `12677879049` (`sha256:26fbc176837d7bce5fde49256f8d0f6744ddd235d1adfe13ea3a3e0972019805`)，comparison `12679860675` (`sha256:72d78940a992fae4c60efd0157bc4f7d9d9c4fcc702ed097b577e5e4ff5e6d8d`)。比较日志确认 558×335、10 screenshots、184/184 geometry、36/36 control raster、10/10 navigation selection、102/102 tree pixels、2/2 middle scroll；暗色图 10/10 配对，整页像素同一性 NOT PASS。比较 artifact 含逐图 SHA-256 manifest 及 Overlay/Difference/Heatmap。
-- P2B run `40382203135` 首次 Xvfb APT install attempt 1 以 `124` 超时；只重跑失败 job 后 attempt 2，P2B Xvfb 和 Weston 两 job 均 PASS。首跑日志：Ubuntu 24.04.5 / image `20261012.334.1`，APT update 成功；`fonts-noto-cjk` 61.2 MB 下载出现 `Ign`/重试并达到 38 分钟硬时限。未见 DNS、APT 锁、缺包，底层网络原因未确认。attempt 2 同包随 101 MB 安装下载 4 秒完成；X11 artifact `12681997882` (`sha256:eb2ec95f941c81e179787a72dc6c1f9368ddd2fb7b6a75574b0c314cf285d5fd`)，Weston artifact `12681398424` (`sha256:e9a57f49ccf67ba376b703d6e0e4d1db548aaea2d1b872c251aa572e1966c801`)，APT diagnostics `12681383785` / `12680778845`。P2B 上重复设置页 step 按条件 SKIPPED；完整五页由同 head P2C 已执行。
-- Build/governance/safety run `40382203131` PASS。本机非 GUI：Zamak `0.2.0` version/check/test (30/30)/build、`scripts/build-arch.sh`、治理 33 项、Python/C tests 3/3、`bash -n scripts/*.sh`、`git diff --check` 全 PASS。没有启动本机 GUI、触碰活动桌面/Hyprland、输入注入、执行清理、Polkit、Swap/ZRAM 或内核写入。
+- PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；核验 head `37cefdb351b1cfcdacbc6ca24eb8b06fead93cc1`。生产源码 checkpoint 为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；之后调整 P2B/P2C workflow 并发组并同步报告/记忆，未修改 UI、goldens、依赖或验收阈值。最新 ChatGPT Review 仍是针对 `2c745710...` 的 P2C-3R1 评审：CI gate accepted，整体 1:1 仍未通过。
+- P2C run `40390082314` 在该 head 上 Windows 原版来源/截图、Linux 五页双语 Xvfb/XTEST、比较均 PASS（3/3）；artifacts Windows `12682119919` (`sha256:9a0463631da7bf4e049f5fe319afc9496f16b0fd2b940fae85363f6c2f845acc`)，Linux `12684755661` (`sha256:9bfb89a4bb10da11da9b42bc865627e36bc50c1e654ee3212ee14c7086ba0af2`)，comparison/dark/font `12683006399` (`sha256:8b765ec896abad794b91cbe80194c3959dc98a9c4fabb83cf2ffccdc276437b2`)。
+- P2B run `40390082510` 的生产主窗 Xvfb/XTEST 和 Weston Headless/Pixman jobs 2/2 PASS；重复的五页 step 按条件 SKIPPED，P2C 已在相同 head 完整覆盖。X11 artifact `12682830560` (`sha256:d5e4967f92c7feb51defd5623b08b0135abed00ace0a2d17d5a995b22e901fc4`)，Weston artifact `12682645763` (`sha256:1c68e2e22f6945514b14efb065da7001b3633d3266795895198c2846b5d86524`)。客户端退出码 0；Weston 收到测试清理 SIGTERM 后记录 `BUG: finalizing a layer with views still on it.`，根因未确认，不能称为无诊断的干净 compositor shutdown；没有把它归为应用崩溃。
+- PR build/governance/safety run `40390082353` 与 push build `40390075275` 均 PASS。下载 artifact 后 SHA 复核：visual 83/83、dark-theme 70/70、Linux screenshot 44/44、源码 10/10、二进制 2/2。资源几何 184/184（最大偏差 1.5 px）、导航 10/10、树线 102/102、raster 36/36、中段滚动 2/2 PASS；五页双语暗色对照均有原图/overlay/difference/heatmap；整体像素 1:1 NOT PASS。
+- Zamak build 版本 0.2.0；CI 产物主程序 SHA-256 `fa13bc97526e97debd189ef09dacffc31ebf085d168ffe520856d00cdbd30404`，helper `30cac693f610cd0bec92de495f6c6e4ab352f8a6ec43bc807d08a2d27f2acf08`。Linux 测试环境 Ubuntu 24.04、Xvfb 1024×768×24、GTK 3.24.41、96 DPI/scale 1、Adwaita:light；Windows Server 2022 build 20348、96 DPI/100%。没有本机 GUI/Hyprland 操作、输入注入或内存特权动作。
 
 ## P2C-4 字体/控件绘制/深色主题实施记录（2026-10-27）
 
@@ -17,7 +18,7 @@
 - GDI/Pango ascent+descent 总和均为 13 px，但 ascent/descent 分配不同 1 px；Linux text origin 不是 GDI baseline 的直接等价测量。GDI 字符串宽度/平均字宽已记；当前证据没有独立且可对齐的 character-spacing/tracking 量，未添加字距补偿。
 - XTEST 双语验证 File/View/Settings/Help、语言子菜单、键盘 Enter/方向/Esc、分隔区跳过、暗色 5 页、safe clean dropdown 均通过；清理项禁用。Windows tray、原生清理 popup、安全确认/结果对话框仍 BLOCKED。简中 12 项来源差异维持 DECISION_REQUIRED。
 - 不操作本机 GUI/Hyprland；无内存清理、Polkit、root GUI、内核写入或 Swap/ZRAM 变化。日志中的 Weston GTK seat critical 未屏蔽、未推断根因。
-- 文档/记忆首轮提交 `6d5f4d4b8212913ea12b59c20f0916b62219aeea` 的 P2C run 状态及早期 APT 超时记录转入历史快照；当前状态以本文件顶部 `dc1e112` exact-head 核验和 P2C-4 报告为准。
+- 文档/记忆首轮提交 `6d5f4d4b8212913ea12b59c20f0916b62219aeea`、`dc1e112` checkpoint 的旧状态及早期 APT 超时记录保留为历史快照；当前已核验状态以本文件顶部 `37cefdb` exact-head 证据和 P2C-4 报告为准。
 
 ## 先前未完成状态记录（已被上方 2026-10-27 核对覆盖）
 
