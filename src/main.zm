@@ -55,11 +55,31 @@ fn normalized_key_name(name: string) -> string:
     if name == "\x1b": return "Escape"
     name
 
-fn menu_rows(menu: i64) -> i64:
-    if menu == 1: return 2
-    if menu == 2: return 4
-    if menu == 3: return 3
-    return 3
+fn root_menu_target(menu: i64, row: i64) -> f64:
+    if menu == 1:
+        if row == 0: return 101.0
+        if row == 2: return 102.0
+    elif menu == 2:
+        if row == 0: return 201.0
+        if row == 1: return 202.0
+        if row == 2: return 203.0
+        if row == 4: return 204.0
+    elif menu == 3:
+        if row == 0: return 301.0
+        if row == 1: return 302.0
+        if row == 2: return 303.0
+        if row == 3: return 304.0
+    elif menu == 4:
+        if row == 0: return 401.0
+        if row == 1: return 402.0
+        if row == 2: return 403.0
+    return 0.0
+
+fn first_root_menu_target(menu: i64) -> f64:
+    for row in 0..ui_geometry.root_menu_row_count(menu):
+        let target = root_menu_target(menu, row)
+        if target != 0.0: return target
+    0.0
 
 fn menu_rect(s: &MainWindow) -> ui.Rect:
     ui_geometry.menu_root_rect(s.width, s.height, s.menu)
@@ -96,8 +116,9 @@ fn menu_item_at(s: &MainWindow, x: f64, y: f64) -> f64:
         return 0.0
     if s.popup == 1 and s.menu > 0:
         let r = menu_rect(s)
-        for row in 0..menu_rows(s.menu):
-            if ui_geometry.root_menu_item_rect(&r, row).contains(x, y): return f64(s.menu * 100 + row + 1)
+        for row in 0..ui_geometry.root_menu_row_count(s.menu):
+            let target = root_menu_target(s.menu, row)
+            if target != 0.0 and ui_geometry.root_menu_item_rect(&r, s.menu, row).contains(x, y): return target
     return 0.0
 
 fn hit(s: &MainWindow, x: f64, y: f64) -> f64:
@@ -129,37 +150,59 @@ fn draw_menu_item(s: &MainWindow, p: &ui.Painter, r: &ui.Rect, target: f64, text
     else:
         p.text(r.x + 8.0, r.y + 5.0, text, disabled, size=10.0)
 
+fn draw_menu_shortcut(p: &ui.Painter, r: &ui.Rect, shortcut: string, color: &ui.Color):
+    let width = ui.text_width(shortcut, size=10.0)
+    p.text(r.right() - width - 8.0, r.y + 5.0, shortcut, color, size=10.0)
+
+fn draw_menu_check(p: &ui.Painter, r: &ui.Rect, checked: bool, color: &ui.Color):
+    if checked: p.text(r.x + 3.0, r.y + 4.0, "✓", color, size=10.0)
+
+fn draw_menu_separator(p: &ui.Painter, r: &ui.Rect, color: &ui.Color):
+    let y = r.y + r.h / 2.0
+    p.line(r.x + 6.0, y, r.right() - 6.0, y, color)
+
 fn draw_root_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, surface: &ui.Color, hot: &ui.Color):
     let r = menu_rect(s)
     p.fill_rect(&r, surface)
     draw_outline(p, &r, border)
-    let row1 = ui_geometry.root_menu_item_rect(&r, 0)
+    let row1 = ui_geometry.root_menu_item_rect(&r, s.menu, 0)
     if s.menu == 1:
         draw_menu_item(s, p, &row1, 101.0, label(s.zh, "Settings...", "设置..."), true, fg, disabled, hot)
-        let row2 = ui_geometry.root_menu_item_rect(&r, 1)
+        draw_menu_shortcut(p, &row1, "F2", fg)
+        let separator = ui_geometry.root_menu_item_rect(&r, s.menu, 1)
+        draw_menu_separator(p, &separator, border)
+        let row2 = ui_geometry.root_menu_item_rect(&r, s.menu, 2)
         draw_menu_item(s, p, &row2, 102.0, label(s.zh, "Exit", "退出"), true, fg, disabled, hot)
     elif s.menu == 2:
         draw_menu_item(s, p, &row1, 201.0, label(s.zh, "Always on top", "窗口始终置顶"), false, fg, disabled, hot)
-        let row2 = ui_geometry.root_menu_item_rect(&r, 1)
+        let row2 = ui_geometry.root_menu_item_rect(&r, s.menu, 1)
         let dark_text = label(s.zh, "Use dark theme", "使用深色主题")
         draw_menu_item(s, p, &row2, 202.0, dark_text, true, fg, disabled, hot)
-        if s.dark: p.text(r.x + r.w - 18.0, row2.y + 5.0, "✓", fg, size=10.0)
-        let row3 = ui_geometry.root_menu_item_rect(&r, 2)
-        draw_menu_item(s, p, &row3, 203.0, label(s.zh, "Language  ›", "语言  ›"), true, fg, disabled, hot)
-        let row4 = ui_geometry.root_menu_item_rect(&r, 3)
-        draw_menu_item(s, p, &row4, 204.0, label(s.zh, "Confirm cleaning", "清理前确认"), false, fg, disabled, hot)
+        draw_menu_check(p, &row2, s.dark, fg)
+        let row3 = ui_geometry.root_menu_item_rect(&r, s.menu, 2)
+        draw_menu_item(s, p, &row3, 203.0, label(s.zh, "Confirm memory cleaning start", "清理前确认"), false, fg, disabled, hot)
+        draw_menu_check(p, &row3, true, disabled)
+        let separator = ui_geometry.root_menu_item_rect(&r, s.menu, 3)
+        draw_menu_separator(p, &separator, border)
+        let row4 = ui_geometry.root_menu_item_rect(&r, s.menu, 4)
+        draw_menu_item(s, p, &row4, 204.0, label(s.zh, "Language (Language)", "语言…… (Language)"), true, fg, disabled, hot)
+        p.text(row4.right() - 12.0, row4.y + 4.0, "›", fg, size=10.0)
     elif s.menu == 3:
         draw_menu_item(s, p, &row1, 301.0, label(s.zh, "Load on system startup", "开机启动"), false, fg, disabled, hot)
-        let row2 = ui_geometry.root_menu_item_rect(&r, 1)
+        let row2 = ui_geometry.root_menu_item_rect(&r, s.menu, 1)
         draw_menu_item(s, p, &row2, 302.0, label(s.zh, "Start minimized", "最小化启动"), false, fg, disabled, hot)
-        let row3 = ui_geometry.root_menu_item_rect(&r, 2)
-        draw_menu_item(s, p, &row3, 303.0, label(s.zh, "Check for updates", "检查更新"), false, fg, disabled, hot)
+        let row3 = ui_geometry.root_menu_item_rect(&r, s.menu, 2)
+        draw_menu_item(s, p, &row3, 303.0, label(s.zh, "Skip \"User Account Control\" prompt warning", "跳过“用户账户控制（UAC）”提示"), false, fg, disabled, hot)
+        let row4 = ui_geometry.root_menu_item_rect(&r, s.menu, 3)
+        draw_menu_item(s, p, &row4, 304.0, label(s.zh, "Periodically check for updates (recommended)", "自动检查更新（推荐）"), false, fg, disabled, hot)
+        draw_menu_check(p, &row4, true, disabled)
     else:
         draw_menu_item(s, p, &row1, 401.0, label(s.zh, "Website", "项目网站"), false, fg, disabled, hot)
-        let row2 = ui_geometry.root_menu_item_rect(&r, 1)
+        let row2 = ui_geometry.root_menu_item_rect(&r, s.menu, 1)
         draw_menu_item(s, p, &row2, 402.0, label(s.zh, "Check for updates", "检查更新"), false, fg, disabled, hot)
-        let row3 = ui_geometry.root_menu_item_rect(&r, 2)
+        let row3 = ui_geometry.root_menu_item_rect(&r, s.menu, 2)
         draw_menu_item(s, p, &row3, 403.0, label(s.zh, "About", "关于"), false, fg, disabled, hot)
+        draw_menu_shortcut(p, &row3, "F1", disabled)
 
 fn draw_language_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, border: &ui.Color, surface: &ui.Color, hot: &ui.Color):
     let r = language_rect(s)
@@ -354,7 +397,7 @@ fn activate(s: &mut MainWindow, target: f64):
             s.menu = selected
             s.popup = 1
             s.focus = f64(selected - 1)
-            s.menu_focus = f64(selected * 100 + 1)
+            s.menu_focus = first_root_menu_target(selected)
         if s.test_mode: println(f"CI_MENU root={s.menu} open={s.popup == 1}")
         if s.popup == 1: log_popup(s, "root", &menu_rect(s))
     elif target == 20.0:
@@ -373,7 +416,7 @@ fn activate(s: &mut MainWindow, target: f64):
     elif target == 102.0:
         if s.test_mode: println("CI_EXIT source=file_menu")
         ui.quit()
-    elif target == 201.0 or target == 204.0:
+    elif target == 201.0 or target == 203.0:
         s.status = label(s.zh, "This Windows setting is not available yet", "此原版设置尚未实现")
         s.popup = 0
     elif target == 202.0:
@@ -381,12 +424,12 @@ fn activate(s: &mut MainWindow, target: f64):
         s.popup = 0
         s.status = label(s.zh, "Theme changed", "外观已切换")
         if s.test_mode: println(f"CI_THEME dark={s.dark}")
-    elif target == 203.0:
+    elif target == 204.0:
         s.popup = 3
         s.menu_focus = 601.0
         if s.test_mode: println("CI_LANGUAGE_MENU open=true")
         log_popup(s, "language", &language_rect(s))
-    elif target == 301.0 or target == 302.0 or target == 303.0:
+    elif target == 301.0 or target == 302.0 or target == 303.0 or target == 304.0:
         s.status = label(s.zh, "This startup/update action is not implemented", "启动或更新操作尚未实现")
         s.popup = 0
     elif target == 401.0 or target == 402.0 or target == 403.0:
@@ -421,8 +464,21 @@ fn move_menu_focus(s: &mut MainWindow, direction: i64):
         first = 601.0
         last = 602.0
     elif s.popup == 1:
-        first = f64(s.menu * 100 + 1)
-        last = f64(s.menu * 100 + menu_rows(s.menu))
+        let row_count = ui_geometry.root_menu_row_count(s.menu)
+        let mut current_row = -1
+        for row in 0..row_count:
+            if root_menu_target(s.menu, row) == s.menu_focus: current_row = row
+        if current_row < 0:
+            s.menu_focus = first_root_menu_target(s.menu)
+            return
+        for _ in 0..row_count:
+            current_row += direction
+            if current_row < 0: current_row = row_count - 1
+            if current_row >= row_count: current_row = 0
+            let candidate = root_menu_target(s.menu, current_row)
+            if candidate != 0.0:
+                s.menu_focus = candidate
+                return
     if first == 0.0: return
     if s.menu_focus < first or s.menu_focus > last:
         if direction > 0: s.menu_focus = first
@@ -479,7 +535,7 @@ fn key(s: &mut MainWindow, event: &ui.Key):
             if s.focus < 4.0:
                 s.menu = i64(s.focus) + 1
                 s.popup = 1
-                s.menu_focus = f64(s.menu * 100 + 1)
+                s.menu_focus = first_root_menu_target(s.menu)
             else:
                 s.popup = 2
                 s.menu_focus = 500.0
@@ -494,10 +550,10 @@ fn key(s: &mut MainWindow, event: &ui.Key):
             if s.menu < 1: s.menu = 4
             if s.menu > 4: s.menu = 1
             s.focus = f64(s.menu - 1)
-            s.menu_focus = f64(s.menu * 100 + 1)
+            s.menu_focus = first_root_menu_target(s.menu)
         elif s.popup == 3 and name == "Left":
             s.popup = 1
-            s.menu_focus = 203.0
+            s.menu_focus = 204.0
         else:
             if name == "Right": s.focus += 1.0
             else: s.focus -= 1.0
@@ -512,7 +568,7 @@ fn key(s: &mut MainWindow, event: &ui.Key):
         else:
             s.menu = i64(s.focus) + 1
             s.popup = 1
-            s.menu_focus = f64(s.menu * 100 + 1)
+            s.menu_focus = first_root_menu_target(s.menu)
         if s.test_mode: println("CI_KEY_ACTION Enter")
     s.canvas.redraw()
 
@@ -587,6 +643,7 @@ fn main():
     let test_timeout = mr_gui_test_timeout_ms()
     if test_mode:
         println("CI_PRODUCTION_START")
+        println(f"CI_TEST_TIMEOUT_MS={test_timeout}")
         println(f"CI_GEOMETRY resource=IDD_MAIN:224x214_dlu provisional_window={width}x{height}")
         println(f"CI_SETTINGS_GEOMETRY resource=IDD_SETTINGS_*:260x168_dlu provisional_shell={settings_width}x{settings_height} canvas={ui_geometry.settings_client_width_px()}x{ui_geometry.settings_client_height_px()}")
     let app: ui.App[MainWindow] = ui.app()

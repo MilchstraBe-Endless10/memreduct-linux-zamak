@@ -4,20 +4,22 @@
 
 状态含义：NATIVE=Linux 上实现原生相同动作；EQUIVALENT=语义受限的 Linux 等价；UNSUPPORTED=没有安全/准确的 Linux 等价；NOT_IMPLEMENTED=可评估但项目当前未实现。状态描述当前 Linux 项目，不代表上游 Windows 功能状态。
 
+P2C-4 在 GitHub-hosted Xvfb/XTEST 中核验了四个主菜单、English/简体中文文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示。GTK 环境主题 `Adwaita:light` 与应用 View 菜单控制的 Canvas 深色调色板分别记录；这不改变本机 GTK 主题。明细与证据边界见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
+
 ## 1. 主窗口、菜单、快捷键
 
 | Resource ID | 窗口 / 控件类型 | 上游文本 English / 简体中文 | 触发及 3.5.2 处理 | Linux 映射 / 权限 | 状态 | 验证 |
 |---|---|---|---|---|---|---|
-| IDD_MAIN=100；IDM_MAIN=100；IDS_FILE=3 | 主菜单根项 File | File / 文件 | 点击后显示下级菜单；DlgProc | GTK/Canvas 菜单；无权限 | NOT_IMPLEMENTED | M-MENU-01 |
-| IDM_MAIN=100；IDS_VIEW=86 | 主菜单根项 View | View / 视图 | 点击后显示下级菜单；DlgProc | GTK/Canvas 菜单；无权限 | NOT_IMPLEMENTED | M-MENU-01 |
-| IDM_MAIN=100；IDS_SETTINGS=4 | 主菜单根项 Settings | Settings / 设置 | 点击后显示下级菜单；DlgProc | GTK/Canvas 菜单；无权限 | NOT_IMPLEMENTED | M-MENU-01 |
-| IDM_MAIN=100；IDS_HELP=7 | 主菜单根项 Help | Help / 帮助 | 点击后显示下级菜单；DlgProc | GTK/Canvas 菜单；无权限 | NOT_IMPLEMENTED | M-MENU-01 |
-| IDM_SETTINGS=155 | File 命令 | Settings… / 设置… | WM_COMMAND→_r_settings_createwindow；F2 加速 | 打开五页设置；无权限 | NOT_IMPLEMENTED | M-MENU-02、K-01 |
-| IDM_EXIT=156 | File 命令 | Exit / 退出 | WM_COMMAND 结束应用 | 正常退出；无权限 | NOT_IMPLEMENTED | M-MENU-02 |
+| IDD_MAIN=100；IDM_MAIN=100；IDS_FILE=3 | 主菜单根项 File | File / 文件 | 点击后显示下级菜单；DlgProc | Canvas 内绘制并命中；English/简体中文；无权限 | NATIVE | M-MENU-01 |
+| IDM_MAIN=100；IDS_VIEW=86 | 主菜单根项 View | View / 视图 | 点击后显示下级菜单；DlgProc | Canvas 内绘制并命中；English/简体中文；无权限 | NATIVE | M-MENU-01 |
+| IDM_MAIN=100；IDS_SETTINGS=4 | 主菜单根项 Settings | Settings / 设置 | 点击后显示下级菜单；DlgProc | Canvas 内绘制并命中；English/简体中文；无权限 | NATIVE | M-MENU-01 |
+| IDM_MAIN=100；IDS_HELP=7 | 主菜单根项 Help | Help / 帮助 | 点击后显示下级菜单；DlgProc | Canvas 内绘制并命中；English/简体中文；无权限 | NATIVE | M-MENU-01 |
+| IDM_SETTINGS=155 | File 命令 | Settings… / 设置… | WM_COMMAND→_r_settings_createwindow；F2 加速 | 打开五页设置；无权限 | NATIVE | M-MENU-02、K-01 |
+| IDM_EXIT=156 | File 命令 | Exit / 退出 | WM_COMMAND 结束应用 | 正常退出；无权限 | NATIVE | M-MENU-02 |
 | IDM_ALWAYSONTOP_CHK=157 | View 勾选项 | Always on top / 窗口始终置顶 | WM_COMMAND 写设置并切换窗口置顶状态 | GTK keep-above 可能受 Wayland compositor 限制；无权限 | NOT_IMPLEMENTED | M-MENU-03 |
-| IDM_USEDARKTHEME=159 | View 勾选项 | Use dark theme / 夜间模式 | 写主题设置并重绘 | 仅切换原版对应浅/暗样式；无权限 | NOT_IMPLEMENTED | M-MENU-03、SHOT-01 |
+| IDM_USEDARKTHEME=159 | View 勾选项 | Use dark theme / 夜间模式 | 写主题设置并重绘 | 切换应用 Canvas 浅/暗调色板并在 View 显示勾选；当前只对本次会话有效；无权限 | NATIVE | M-MENU-03、SHOT-01 |
 | IDM_REDUCTCONFIRMATION_CHK=161 | View 勾选项 | Confirm memory cleaning start / 在内存清理前手动确认 | 改 IsShowReductConfirmation | Linux 清理前确认；无权限 | NOT_IMPLEMENTED | M-CLEAN-01 |
-| IDX_LANGUAGE=1000 起 | View 子菜单 | Language (Language) / 语言…… (Language)；动态 locale 名称 | DlgProc 动态列 locale；WM_COMMAND→locale apply | 项目必须双语运行时切换且完整覆盖菜单、五页、对话框和通知；无权限 | NOT_IMPLEMENTED | M-LANG-01 |
+| IDX_LANGUAGE=1000 起 | View 子菜单 | Language (Language) / 语言…… (Language)；动态 locale 名称 | DlgProc 动态列 locale；WM_COMMAND→locale apply | English/简体中文运行时切换；动态名称与勾选状态可见；仅会话状态，不保存；无权限 | NATIVE | M-LANG-01 |
 | IDM_LOADONSTARTUP_CHK=158 | Settings 勾选项 | Load on system startup / 开机自启 | WM_COMMAND→autorun helper | 只可考虑用户级 XDG Autostart；不装 root 服务 | NOT_IMPLEMENTED | M-SET-01 |
 | IDM_STARTMINIMIZED_CHK=160 | Settings 勾选项 | Start minimized / 最小化启动（不显示窗口） | 改启动可见状态 | 桌面启动器与托盘能力相关；无权限 | NOT_IMPLEMENTED | M-SET-01 |
 | IDM_SKIPUACWARNING_CHK=162 | Settings 勾选项 | Skip “User Account Control” prompt warning / 跳过“用户账户控制（UAC）”提示 | Windows UAC 专用选项 | 不得映射成跳过 Polkit；无权限 | UNSUPPORTED | M-SET-02 |

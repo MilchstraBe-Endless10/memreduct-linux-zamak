@@ -58,7 +58,7 @@ long long mr_gui_test_timeout_ms(void)
 
     errno = 0;
     parsed = strtol(value, &end, 10);
-    if (errno != 0 || end == value || *end != '\0' || parsed < 1000 || parsed > 120000) {
+    if (errno != 0 || end == value || *end != '\0' || parsed < 1000 || parsed > 600000) {
         return 0;
     }
     return (long long)parsed;

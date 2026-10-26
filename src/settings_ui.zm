@@ -19,12 +19,13 @@ pub struct State:
     logged_zh: bool
     logged_width: f64
     logged_height: f64
+    logged_dark: bool
     emit_geometry: bool
     region_scroll: i64
     logged_region_scroll: i64
 
 pub fn initial(test_mode: bool) -> State:
-    State(page: 0, focus: 100, modal: 0, status: "", dark: false, hover: 0.0, pressed: 0.0, language_open: false, language_focus: 801, test_mode: test_mode, logged_page: -1, logged_zh: false, logged_width: -1.0, logged_height: -1.0, emit_geometry: false, region_scroll: 0, logged_region_scroll: -1)
+    State(page: 0, focus: 100, modal: 0, status: "", dark: false, hover: 0.0, pressed: 0.0, language_open: false, language_focus: 801, test_mode: test_mode, logged_page: -1, logged_zh: false, logged_width: -1.0, logged_height: -1.0, logged_dark: false, emit_geometry: false, region_scroll: 0, logged_region_scroll: -1)
 
 fn text(zh: bool, en: string, cn: string) -> string:
     if zh: return cn
@@ -53,12 +54,14 @@ fn child(s: &State, w: f64, h: f64, x: f64, y: f64, width: f64, height: f64) -> 
 fn emit_geometry(s: &State, id: i64, part: string, r: &ui.Rect):
     if s.emit_geometry:
         let locale = text(s.logged_zh, "en", "zh-CN")
-        println(f"CI_SETTINGS_GEOMETRY page_idd={page_dialog_id(s.page)} locale={locale} state=default resource={id} part={part} x={r.x} y={r.y} w={r.w} h={r.h}")
+        let theme_name = if s.dark: "dark" else: "light"
+        println(f"CI_SETTINGS_GEOMETRY page_idd={page_dialog_id(s.page)} locale={locale} state=default resource={id} part={part} x={r.x} y={r.y} w={r.w} h={r.h} theme={theme_name}")
 
 fn emit_region_row_geometry(s: &State, index: i64, r: &ui.Rect):
     if s.emit_geometry:
         let locale = text(s.logged_zh, "en", "zh-CN")
-        println(f"CI_SETTINGS_GEOMETRY page_idd=102 locale={locale} state=scroll-{s.region_scroll} resource=124 part=row-{index} x={r.x} y={r.y} w={r.w} h={r.h}")
+        let theme_name = if s.dark: "dark" else: "light"
+        println(f"CI_SETTINGS_GEOMETRY page_idd=102 locale={locale} state=scroll-{s.region_scroll} resource=124 part=row-{index} x={r.x} y={r.y} w={r.w} h={r.h} theme={theme_name}")
 
 fn canvas_text(s: &State, p: &ui.Painter, id: i64, part: string, x: f64, y: f64, value: string, color: &ui.Color, size: f64, bold: bool):
     if s.emit_geometry:
@@ -315,17 +318,19 @@ fn draw_advanced(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disab
 
 pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, height: f64):
     s.dark = dark
-    s.emit_geometry = s.test_mode and (s.logged_page != s.page or s.logged_zh != zh or s.logged_width != width or s.logged_height != height or (s.page == 1 and s.logged_region_scroll != s.region_scroll))
+    s.emit_geometry = s.test_mode and (s.logged_page != s.page or s.logged_zh != zh or s.logged_width != width or s.logged_height != height or s.logged_dark != dark or (s.page == 1 and s.logged_region_scroll != s.region_scroll))
     if s.emit_geometry:
         s.logged_page = s.page
         s.logged_zh = zh
         s.logged_width = width
         s.logged_height = height
+        s.logged_dark = dark
         s.logged_region_scroll = s.region_scroll
         let locale = text(zh, "en", "zh-CN")
-        println(f"CI_SETTINGS_PAGE idd={page_dialog_id(s.page)} page={page_title(s.page, zh)} locale={locale} controls={page_control_ids(s.page)} child_dlu=260x168 provisional_canvas={width}x{height}")
+        let theme_name = if dark: "dark" else: "light"
+        println(f"CI_SETTINGS_PAGE idd={page_dialog_id(s.page)} page={page_title(s.page, zh)} locale={locale} controls={page_control_ids(s.page)} child_dlu=260x168 provisional_canvas={width}x{height} theme={theme_name}")
         let canvas_page = ui_geometry.settings_page_rect(width, height)
-        println(f"CI_SETTINGS_GEOMETRY page_idd={page_dialog_id(s.page)} locale={locale} state=default resource={page_dialog_id(s.page)} part=page x={canvas_page.x} y={canvas_page.y} w={canvas_page.w} h={canvas_page.h}")
+        println(f"CI_SETTINGS_GEOMETRY page_idd={page_dialog_id(s.page)} locale={locale} state=default resource={page_dialog_id(s.page)} part=page x={canvas_page.x} y={canvas_page.y} w={canvas_page.w} h={canvas_page.h} theme={theme_name}")
     # The Windows client surface outside the navigation tree uses the system
     # button-face color (RGB 240,240,240) in the pinned native capture.
     let mut bg = ui.rgb(0xf0f0f0)

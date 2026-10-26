@@ -51,7 +51,7 @@ jobs:
         env:
           APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2c-linux-apt
           APT_INSTALL_TIMEOUT: 38m
-        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_INSTALL_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox wmctrl fonts-noto-cjk fonts-dejavu
+        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_INSTALL_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox wmctrl fonts-noto-cjk fonts-dejavu fonts-liberation2
       - name: Install pinned Zamak 0.2.0
         run: npm install --global @veyralux/zamak@0.2.0
       - name: Build production GUI and helper
@@ -63,6 +63,11 @@ jobs:
       - name: Capture and exercise the production settings window
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/p2c-linux-production-x11
+        run: bash scripts/ci/p2c-settings-xvfb.sh "$RUNNER_TEMP/p2c-linux-production-x11/memreduct-zamak-production"
+      - name: Run isolated Liberation Sans font candidate experiment
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2c-linux-production-x11/font-candidate
+          P2C_FONT_CANDIDATE: liberation
         run: bash scripts/ci/p2c-settings-xvfb.sh "$RUNNER_TEMP/p2c-linux-production-x11/memreduct-zamak-production"
       - name: Upload APT runner and dependency diagnostics
         if: always()
@@ -113,6 +118,19 @@ jobs:
           python3 scripts/ci/compare_p2c_visuals.py
           --windows-dir "$RUNNER_TEMP/p2c-windows-native"
           --linux-dir "$RUNNER_TEMP/p2c-linux-production-x11"
+          --output-dir "$RUNNER_TEMP/p2c-comparison"
+      - name: Compare the 10 dark-mode screenshot pairs
+        run: >-
+          python3 scripts/ci/compare_p2c_dark.py
+          --windows-dir "$RUNNER_TEMP/p2c-windows-native"
+          --linux-dir "$RUNNER_TEMP/p2c-linux-production-x11"
+          --output-dir "$RUNNER_TEMP/p2c-comparison"
+      - name: Compare process-local Liberation Sans trial against GDI text widths
+        run: >-
+          python3 scripts/ci/compare_font_candidates.py
+          --windows-dir "$RUNNER_TEMP/p2c-windows-native"
+          --default-linux-dir "$RUNNER_TEMP/p2c-linux-production-x11"
+          --candidate-linux-dir "$RUNNER_TEMP/p2c-linux-production-x11/font-candidate"
           --output-dir "$RUNNER_TEMP/p2c-comparison"
       - name: Upload APT comparison diagnostics
         if: always()

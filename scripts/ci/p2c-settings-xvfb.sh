@@ -5,6 +5,8 @@ set -Eeuo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 artifact_dir="${ARTIFACT_DIR:-$root/artifacts/p2c-x11}"
 app="${1:-$artifact_dir/memreduct-zamak-production}"
+font_candidate="${P2C_FONT_CANDIDATE:-default}"
+fontconfig_mode=system-default
 mkdir -p "$artifact_dir"
 for cmd in Xvfb openbox wmctrl xdotool xwininfo xprop import identify sha256sum xrdb; do
   command -v "$cmd" >/dev/null || { printf 'Missing X11 test command: %s\n' "$cmd" >&2; exit 2; }
@@ -54,15 +56,43 @@ export GDK_BACKEND=x11 GTK_THEME=Adwaita:light GDK_SCALE=1 GDK_DPI_SCALE=1 LANG=
 export GSETTINGS_BACKEND=memory XDG_RUNTIME_DIR="$runtime_dir"
 mkdir -m 0700 "$runtime_dir/home" "$runtime_dir/config"
 export HOME="$runtime_dir/home" XDG_CONFIG_HOME="$runtime_dir/config"
+if [[ "$font_candidate" == liberation ]]; then
+  [[ -r /usr/share/doc/fonts-liberation2/copyright ]] || {
+    printf 'Liberation font package copyright record is missing.\n' >&2
+    exit 2
+  }
+  cat >"$runtime_dir/fonts-liberation.xml" <<'XML'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <include>/etc/fonts/fonts.conf</include>
+  <match target="pattern">
+    <test name="family" qual="any" compare="eq"><string>Sans</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>Liberation Sans</string></edit>
+  </match>
+</fontconfig>
+XML
+  export FONTCONFIG_FILE="$runtime_dir/fonts-liberation.xml" FONTCONFIG_PATH=/etc/fonts
+  fontconfig_mode=isolated-process-override
+  cp /usr/share/doc/fonts-liberation2/copyright "$artifact_dir/font-candidate-license.txt"
+elif [[ "$font_candidate" != default ]]; then
+  printf 'Unsupported P2C_FONT_CANDIDATE: %s\n' "$font_candidate" >&2
+  exit 2
+fi
 {
-  printf 'XDG_RUNTIME_DIR_mode=%s\nDISPLAY=%s\nGDK_BACKEND=%s\nGTK_THEME=%s\nGDK_SCALE=%s\nGDK_DPI_SCALE=%s\nXvfb_screen=1024x768x24\n' \
-    "$(stat -c '%a' "$runtime_dir")" "$DISPLAY" "$GDK_BACKEND" "$GTK_THEME" "$GDK_SCALE" "$GDK_DPI_SCALE"
+  printf 'XDG_RUNTIME_DIR_mode=%s\nDISPLAY=%s\nGDK_BACKEND=%s\nGTK_THEME=%s\nGTK_THEME_source=isolated process environment; application palette state is controlled separately by the View menu\nP2C_font_candidate=%s\nFONTCONFIG_mode=%s\nGDK_SCALE=%s\nGDK_DPI_SCALE=%s\nXvfb_screen=1024x768x24\n' \
+    "$(stat -c '%a' "$runtime_dir")" "$DISPLAY" "$GDK_BACKEND" "$GTK_THEME" "$font_candidate" "$fontconfig_mode" "$GDK_SCALE" "$GDK_DPI_SCALE"
   printf 'GTK_version=%s\nEnglish_font=' "$(pkg-config --modversion gtk+-3.0)"
+  printf 'Fontconfig_version=%s\n' "$(fc-match --version | head -n 1)"
   fc-match 'sans-serif:lang=en' | head -n 1
   printf 'Linux_font_match_en=%s\n' "$(fc-match --format '%{family} | %{style}' 'sans-serif:lang=en')"
   printf 'Chinese_font='
   fc-match 'sans-serif:lang=zh-cn' | head -n 1
   printf 'Linux_font_match_zh=%s\n' "$(fc-match --format '%{family} | %{style}' 'sans-serif:lang=zh-cn')"
+  if [[ "$font_candidate" == liberation ]]; then
+    printf 'Liberation_package_version=%s\n' "$(dpkg-query -W -f='${Version}' fonts-liberation2)"
+    printf 'P2C_fontconfig_sha256=%s\n' "$(sha256sum "$runtime_dir/fonts-liberation.xml" | awk '{print $1}')"
+  fi
   xdpyinfo | awk '/dimensions:/{print "X11_dimensions=" $2; exit}'
   printf 'Windows source=Mem Reduct v.3.5.2 tag 2f5c55d15f69a2c88859e036b16c6f4c971e1968\n'
   printf 'Windows reference: 574x374 outer / 558x335 client settings window. Linux target: 558x335 client; Canvas fills it. Child template=260x168 DLU measured at 390x273 px on Windows Server 2022, 96 DPI.\n'
@@ -79,7 +109,7 @@ for _ in {1..50}; do
 done
 xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 'window id' || { cat "$artifact_dir/p2c-openbox.log" >&2; exit 1; }
 
-MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=120000 stdbuf -oL "$app" >"$artifact_dir/p2c-client.log" 2>&1 &
+MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=600000 stdbuf -oL "$app" >"$artifact_dir/p2c-client.log" 2>&1 &
 app_pid="$!"
 wait_marker() {
   local marker="$1"
@@ -101,6 +131,17 @@ wait_new_marker() {
     sleep 0.1
   done
   printf 'Missing new production settings event: %s\n' "$marker" >&2
+  cat "$artifact_dir/p2c-client.log" >&2
+  return 1
+}
+wait_page_theme() {
+  local marker="$1" theme="$2"
+  for _ in {1..120}; do
+    if grep -F -- "$marker" "$artifact_dir/p2c-client.log" | grep -Fq -- "theme=$theme"; then return 0; fi
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  printf 'Missing production page/theme state: %s theme=%s\n' "$marker" "$theme" >&2
   cat "$artifact_dir/p2c-client.log" >&2
   return 1
 }
@@ -126,22 +167,103 @@ geometry() {
   }
 }
 capture() {
-  local wid="$1" name="$2" expected="$3"
+  local wid="$1" name="$2" expected="$3" theme="${4:-light}" locale="${5:-unknown}"
+  sleep 0.12
   import -window "$wid" "$artifact_dir/$name"
   [[ "$(identify -format '%wx%h' "$artifact_dir/$name")" == "$expected" ]] || {
     printf 'Unexpected screenshot dimensions for %s; expected %s.\n' "$name" "$expected" >&2
     return 1
   }
+  printf 'theme=%s locale=%s screenshot=%s size=%s sha256=%s\n' \
+    "$theme" "$locale" "$name" "$expected" "$(sha256sum "$artifact_dir/$name" | awk '{print $1}')" \
+    | tee -a "$artifact_dir/p2c-captures.log"
+}
+wait_popup_fits() {
+  local kind="$1" menu="$2" locale="$3"
+  for _ in {1..100}; do
+    if grep -F "CI_POPUP kind=$kind menu=$menu locale=$locale" "$artifact_dir/p2c-client.log" | grep -Fq 'fits=true'; then return 0; fi
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  printf 'Popup did not fit the production Canvas: kind=%s menu=%s locale=%s\n' "$kind" "$menu" "$locale" >&2
+  cat "$artifact_dir/p2c-client.log" >&2
+  return 1
 }
 click() { xdotool mousemove --sync --window "$1" "$2" "$3" click 1; sleep 0.12; }
 
 wait_marker 'CI_PRODUCTION_START'
+wait_marker 'CI_TEST_TIMEOUT_MS=600000'
 wait_marker 'CI_GTK_FONT source=GtkLabelStyle'
 wait_marker 'CI_MEMORY source=/proc/meminfo'
 wait_marker 'CI_DRAW width='
 window_id="$(window_by_title 'Mem Reduct')"
 geometry "$window_id" 337 369 "$artifact_dir/geometry-main.txt"
 capture "$window_id" 'production-settings-main-before.png' '337x369'
+
+# Capture the real production root menus in both locales. Separators and
+# language navigation are exercised through XTEST; no cleaning command runs.
+capture_root_menus() {
+  local locale="$1" suffix="$2" index marker before close_marker close_before
+  local -a names=(file view settings help) positions=(20 60 120 178)
+  for index in 0 1 2 3; do
+    marker="CI_MENU root=$((index + 1)) open=true"
+    before="$(grep -Fc -- "$marker" "$artifact_dir/p2c-client.log" || true)"
+    click "$window_id" "${positions[$index]}" 10
+    wait_new_marker "$marker" "$before"
+    wait_popup_fits root "$((index + 1))" "$locale"
+    capture "$window_id" "production-menu-${names[$index]}-${suffix}.png" '337x369' light "$locale"
+    close_marker='CI_MENU closed reason=Escape'
+    close_before="$(grep -Fc -- "$close_marker" "$artifact_dir/p2c-client.log" || true)"
+    xdotool key --clearmodifiers Escape
+    wait_new_marker "$close_marker" "$close_before"
+  done
+}
+capture_root_menus en en
+
+# Language is a real View submenu. Arrow navigation must skip the separator,
+# keep the submenu inside the Canvas, and update only the session locale.
+marker='CI_MENU root=2 open=true'
+before="$(grep -Fc -- "$marker" "$artifact_dir/p2c-client.log" || true)"
+click "$window_id" 60 10
+wait_new_marker "$marker" "$before"
+focus_before="$(grep -Fc -- 'CI_FOCUS item=204' "$artifact_dir/p2c-client.log" || true)"
+xdotool key --clearmodifiers Down Down Down
+wait_new_marker 'CI_FOCUS item=204' "$focus_before"
+before="$(grep -Fc -- 'CI_LANGUAGE_MENU open=true' "$artifact_dir/p2c-client.log" || true)"
+xdotool key --clearmodifiers Return
+wait_new_marker 'CI_LANGUAGE_MENU open=true' "$before"
+wait_popup_fits language 2 en
+capture "$window_id" 'production-menu-language-en.png' '337x369' light en
+xdotool key --clearmodifiers Down
+wait_marker 'CI_FOCUS item=602'
+before="$(grep -Fc -- 'CI_LOCALE locale=zh-CN' "$artifact_dir/p2c-client.log" || true)"
+xdotool key --clearmodifiers Return
+wait_new_marker 'CI_LOCALE locale=zh-CN' "$before"
+sleep 0.2
+capture "$window_id" 'production-main-zh.png' '337x369' light zh-CN
+capture_root_menus zh-CN zh
+marker='CI_MENU root=2 open=true'
+before="$(grep -Fc -- "$marker" "$artifact_dir/p2c-client.log" || true)"
+click "$window_id" 60 10
+wait_new_marker "$marker" "$before"
+focus_before="$(grep -Fc -- 'CI_FOCUS item=204' "$artifact_dir/p2c-client.log" || true)"
+xdotool key --clearmodifiers Down Down Down
+wait_new_marker 'CI_FOCUS item=204' "$focus_before"
+before="$(grep -Fc -- 'CI_LANGUAGE_MENU open=true' "$artifact_dir/p2c-client.log" || true)"
+xdotool key --clearmodifiers Return
+wait_new_marker 'CI_LANGUAGE_MENU open=true' "$before"
+wait_popup_fits language 2 zh-CN
+capture "$window_id" 'production-menu-language-zh.png' '337x369' light zh-CN
+before="$(grep -Fc -- 'CI_LOCALE locale=en' "$artifact_dir/p2c-client.log" || true)"
+xdotool key --clearmodifiers Return
+wait_new_marker 'CI_LOCALE locale=en' "$before"
+marker='CI_CLEAN_MENU open=true'
+before="$(grep -Fc -- "$marker" "$artifact_dir/p2c-client.log" || true)"
+click "$window_id" 288 322
+wait_new_marker "$marker" "$before"
+capture "$window_id" 'production-menu-clean-dropdown-en.png' '337x369'
+xdotool key --clearmodifiers Escape
+wait_marker 'CI_MENU closed reason=Escape'
 
 # Open through the actual File > Settings command and verify a separate native top-level.
 menu_marker='CI_MENU root=1 open=true'
@@ -376,6 +498,52 @@ wait_marker 'CI_SETTINGS_CLOSE resource=106 action=return_to_main'
 window_id="$(window_by_title 'Mem Reduct')"
 geometry "$window_id" 337 369 "$artifact_dir/geometry-main-after-wm-close-reopen.txt"
 
+# Toggle the application's own dark palette via its View menu with real XTEST
+# keyboard events; GTK_THEME remains recorded independently as Adwaita:light.
+view_marker='CI_MENU root=2 open=true'
+view_before="$(grep -Fc -- "$view_marker" "$artifact_dir/p2c-client.log" || true)"
+click "$window_id" 60 10
+wait_new_marker "$view_marker" "$view_before"
+xdotool key --clearmodifiers Down
+wait_marker 'CI_FOCUS item=202'
+xdotool key --clearmodifiers Return
+wait_marker 'CI_THEME dark=true'
+capture "$window_id" 'production-main-dark-en.png' '337x369' dark en
+
+# Capture every settings page in both locales from the same production process.
+xdotool key --clearmodifiers F2
+wait_marker 'CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true'
+window_id="$(window_by_title 'Settings - Mem Reduct')"
+wait_page_theme 'CI_SETTINGS_PAGE idd=101 page=General locale=en controls=' dark
+page_names=("General" "Memory cleaning" "Appearance" "Tray icon" "Advanced")
+for index in 0 1 2 3 4; do
+  y=$((23 + 20 * index))
+  click "$window_id" 60 "$y"
+  wait_page_theme "CI_SETTINGS_PAGE idd=$((101 + index)) page=${page_names[$index]} locale=en controls=" dark
+  capture "$window_id" "production-settings-${index}-en-dark.png" '558x335' dark en
+done
+click "$window_id" 60 20
+click "$window_id" 400 190
+wait_marker 'CI_SETTINGS_LANGUAGE resource=123 popup_open=true'
+click "$window_id" 400 225
+wait_marker 'CI_LOCALE locale=zh-CN source=IDC_LANGUAGE_123'
+for index in 0 1 2 3 4; do
+  y=$((23 + 20 * index))
+  case "$index" in
+    0) page_name='常规' ;;
+    1) page_name='内存清理' ;;
+    2) page_name='外观' ;;
+    3) page_name='托盘图标' ;;
+    4) page_name='高级' ;;
+  esac
+  click "$window_id" 60 "$y"
+  wait_page_theme "CI_SETTINGS_PAGE idd=$((101 + index)) page=$page_name locale=zh-CN controls=" dark
+  capture "$window_id" "production-settings-${index}-zh-dark.png" '558x335' dark zh-CN
+done
+click "$window_id" 507 310
+wait_marker 'CI_SETTINGS_CLOSE resource=106 action=return_to_main'
+window_id="$(window_by_title 'Mem Reduct')"
+
 xdotool key --clearmodifiers Alt+F4
 wait_marker 'CI_WINDOW_CLOSE'
 for _ in {1..100}; do
@@ -404,12 +572,13 @@ for xid in "$main_window_xid" "$settings_window_xid"; do
   fi
 done
 printf 'PASS both production X11 windows released after app exit.\n' | tee "$artifact_dir/p2c-window-resource-release.txt"
-sha256sum "$artifact_dir"/production-settings-*.png | sed "s#$artifact_dir/##" | tee "$artifact_dir/p2c-screenshots-sha256.txt"
+sha256sum "$artifact_dir"/production-*.png | sed "s#$artifact_dir/##" | tee "$artifact_dir/p2c-screenshots-sha256.txt"
 (
   cd "$root"
-  sha256sum src/main.zm src/settings_ui.zm src/ui_geometry.zm native/gui_window.c \
+  sha256sum src/main.zm src/settings_ui.zm src/ui_geometry.zm native/gui_window.c native/gui_test.c \
     scripts/ci/p2c-settings-xvfb.sh scripts/ci/compare_p2c_visuals.py \
+    scripts/ci/compare_p2c_dark.py scripts/ci/compare_font_candidates.py \
     scripts/ci/windows-native-baseline.ps1
 ) | tee "$artifact_dir/p2c-source-sha256.txt"
-printf 'PASS: separate production settings toplevel; 5 pages x 2 locales; Windows region list scroll-up/down; Reset no-op confirmation; keyboard language/navigation/Reset/Close; Escape, button Close, settings Alt+F4, WM_DELETE_WINDOW protocol; main remains available and all windows are destroyed on clean exit.\n' \
+printf 'PASS: production XTEST captured File/View/Settings/Help in English and Simplified Chinese, the Language submenu in both selection states, and the safe clean dropdown; keyboard navigation skipped native menu separators and locale changed session-only; application dark palette toggled through View; 5 settings pages x 2 locales captured in light and dark states; existing Windows region scroll, Reset, language, keyboard, Escape, Close, Alt+F4 and WM_DELETE_WINDOW tests passed; main remained available and both windows were released on exit.\n' \
   | tee "$artifact_dir/p2c-result.txt"
