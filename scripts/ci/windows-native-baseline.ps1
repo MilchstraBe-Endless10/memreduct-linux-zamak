@@ -31,18 +31,29 @@ function Invoke-Checked([string]$Exe, [string[]]$Arguments) {
 }
 
 try {
-    $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'memreduct-linux-zamak-p2c-ci' } `
-        -Uri 'https://api.github.com/repos/henrypp/memreduct/releases/tags/v.3.5.2'
-    if ($release.tag_name -ne $tag) { throw "Unexpected release tag: $($release.tag_name)" }
-    Write-Status "Official release tag=$($release.tag_name) published=$($release.published_at) url=$($release.html_url)"
-    $tagObject = Invoke-RestMethod -Headers @{ 'User-Agent' = 'memreduct-linux-zamak-p2c-ci' } `
-        -Uri 'https://api.github.com/repos/henrypp/memreduct/git/ref/tags/v.3.5.2'
-    while ($tagObject.object.type -eq 'tag') {
-        $tagObject = Invoke-RestMethod -Headers @{ 'User-Agent' = 'memreduct-linux-zamak-p2c-ci' } `
-            -Uri "https://api.github.com/repos/henrypp/memreduct/git/tags/$($tagObject.object.sha)"
+    $tagRef = "refs/tags/$tag"
+    $peeledTagRef = "$tagRef^{}"
+    $tagRefs = Invoke-Checked 'git.exe' @('ls-remote', '--exit-code', 'https://github.com/henrypp/memreduct.git', $tagRef, $peeledTagRef)
+    $resolvedTagCommit = ''
+    foreach ($line in $tagRefs) {
+        $parts = $line -split '\s+'
+        if ($parts.Count -eq 2 -and $parts[1] -eq $peeledTagRef) {
+            $resolvedTagCommit = $parts[0]
+            break
+        }
     }
-    if ($tagObject.object.sha -ne $tagCommit) { throw "The official v.3.5.2 tag resolved to unexpected commit $($tagObject.object.sha)" }
-    Write-Status "PASS official source tag commit=$tagCommit"
+    if (-not $resolvedTagCommit) {
+        foreach ($line in $tagRefs) {
+            $parts = $line -split '\s+'
+            if ($parts.Count -eq 2 -and $parts[1] -eq $tagRef) {
+                $resolvedTagCommit = $parts[0]
+                break
+            }
+        }
+    }
+    if ($resolvedTagCommit -ne $tagCommit) { throw "The official $tag tag resolved to unexpected commit $resolvedTagCommit" }
+    Write-Status "Official release tag=$tag url=https://github.com/henrypp/memreduct/releases/tag/$tag"
+    Write-Status "PASS official source tag commit=$resolvedTagCommit (git ls-remote)"
 
     $checksumPath = Join-Path $workDir 'memreduct-3.5.2.sha256'
     $archivePath = Join-Path $workDir 'memreduct-3.5.2-bin.7z'
