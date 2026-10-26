@@ -2,6 +2,16 @@
 
 ## 当前续接：P2C-2 原版截图校准（2026-10-26）
 
+### Exact-head 验收更新（源码 head `1d1d6562cb27ddb63fb38a2bf71756b5e88d63ee`）
+
+- PR #7 仍 OPEN / Draft，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`；PR review 无新行内结论。HEAD 与远端一致，工作树起初干净；未改 main、PR #2/#4/#5/#6，也未启动本机 GUI 或操作桌面。
+- 生产 Xvfb/XTEST + Weston Headless/Pixman run `40284909745` 两作业均 PASS。Artifacts：X11 `12633129180`、Wayland `12633864035`。Settings 客户区 558×335；XTEST 覆盖五页双语、Close/Escape/Alt+F4/WM_DELETE_WINDOW、重复 hide/show、相同窗口重开、主窗存活和最终窗口资源释放，应用退出码 0。GUI bridge 日志：GTK `3.24.41`，`delete-event` signal 66，唯一预存 unblocked handler 70 被单独 block 后连接目标 handler；holder 为唯一直接 GtkBox、原 border 12，验证后改为 0。
+- Windows native v3.5.2 run `40284909821` 的 Windows job PASS，artifact `12633108874`；源 tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`，binary 版本 3.5.2。PR run `40284909821` 的 Xvfb job 于 25 分钟 job timeout 后 CANCELLED，比较 job SKIPPED；push duplicate `40284904057` 同样在 Xvfb timeout 后 CANCELLED / 比较 SKIPPED。另一个独立生产 Xvfb+Weston run `40284909745` 两项通过。
+- 同一 source HEAD 的 Windows artifact `12633108874` 与 Linux artifact `12633129180` 已用隔离 Bundled Python/Pillow `12.3.0` 作本地 exact-head comparison：截图 10 张；控件几何 172 PASS / 0 FAIL；12 个中间滚动项 `NOT_COMPARABLE_NATIVE_STATE`；页面/checkbox raster 10 PASS；上游颜色采样 8 PASS。Overlay/heatmap/CSV 已在本地比较输出生成。Changed-pixel 比例 7.9548%–18.6990%，仍非像素等价。
+- 截图与源码 SHA-256、字体/主题/DPI、运行与几何细节已记入 `docs/P2C-1_SETTINGS_UI_REPORT.md`；矩阵补了只读默认态、无外框与证据状态说明。Windows `8pt Ms Shell Dlg` 与 Linux DejaVu Sans/Noto Sans CJK SC 抗锯齿/字体差异仍存在；暗色主题、托盘/菜单/对话框和 Wayland 输入未验收。Weston 留有一次 `gdk_seat_get_keyboard` critical、无 `wl_seat` 和 shutdown `BUG: finalizing a layer with views still on it.`；未观察到 compositor 崩溃，因果未定。
+- 本机非 GUI：Zamak 0.2.0 `check`, `build`, `scripts/build-arch.sh` PASS，`test` 28/28；project verify 33 项、C safety 3/3、相关 Shell 语法和 `git diff --check` PASS。Pillow 比较使用 bundled runtime，未安装本机依赖。
+- 已调整 P2C Windows baseline workflow：仅由目标 PR 触发，避免同一提交同时启动 push/PR 两套重复截图任务；Xvfb timeout 45 分钟、比较 timeout 20 分钟。此工作流修正尚待当前提交的 Actions 验证。没有在本机启动 GUI、Xvfb、Wayland 或操作 Hyprland。
+
 - 继续使用 PR #7 分支 `feat/issue-3-p2c-settings-ui`。开工时本地与远端 HEAD 均为 `90f5b31a9dede8896a44bd356c43f38862a005db`；PR #7 OPEN / Draft，base `feat/issue-3-p2b-main-window`，没有修改 main 或其他 PR 分支。
 - 已下载并核对该 HEAD 的 CI 证据：Windows 原生/几何 artifact `12632986603`、生产 Xvfb artifact `12632328288`、overlay/diff/几何 artifact `12632129496`；run `40282499292` Windows+Xvfb+comparison、`40282499286` Xvfb+Weston、`40282499313` build/test 均 PASS。该批证据只对应修正前的 `90f5b31`。
 - 修正前可比较控件矩形 172 PASS，12 个 Linux 中间滚动项为 `NOT_COMPARABLE_NATIVE_STATE`，0 FAIL；截图像素变化 61.7290%–80.1728%，故不通过 1:1 像素验收。

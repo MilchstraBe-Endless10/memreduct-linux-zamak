@@ -15,6 +15,10 @@
 
 **P2C-2：真实截图校准（进行中）** — PR #7 同一分支已推送 `f5c5488b4f4e0871311c52dfe4bde61d89be7b7a`。Windows/Xvfb/compare run `40284199572`、production Xvfb+Weston `40284199595`、build/test `40284199576`。Xvfb/XTEST、Wayland lifecycle、Windows provenance 和 build/test PASS；Windows/Xvfb/compare 采集作业 PASS，但比较器因 Memory checkbox crop 包含下一行像素而 FAIL 两个 raster 项。其余底色 6 项和 General checkbox 2 项 PASS；几何 172 PASS、0 FAIL，另有 12 项中间滚动状态 `NOT_COMPARABLE_NATIVE_STATE`。改变像素降至 7.9548%–18.6990%，仍不构成像素等价。已将 ROI 缩至单行范围，新的 exact-head CI 待提交后执行。Zamak 28/28、check/build、治理 33 项、C 安全测试 3 项、Arch build 与 `git diff --check` 本地通过；未在用户桌面启动 GUI。
 
+### P2C-2 最新验收状态（2026-10-26，source head `1d1d6562cb27ddb63fb38a2bf71756b5e88d63ee`）
+
+PR #7 的 Xvfb/XTEST + Weston run `40284909745` 两项通过，Windows native baseline `40284909821` 的 Windows job 通过，build/test `40284909782` 通过。对应 artifacts：X11 `12633129180`、Wayland `12633864035`、Windows `12633108874`。Windows/Linux artifacts 的本地对照由 bundled Pillow 12.3.0 运行：172 geometry PASS、10 control-raster PASS、8 source swatch PASS；12 个中间滚动行标记 `NOT_COMPARABLE_NATIVE_STATE`。像素 changed range 7.9548%–18.6990%，因此 1:1 仍未通过。Hosted PR run `40284909821` 与 push duplicate `40284904057` 的 Xvfb 作业均在 25 分钟 timeout 后取消，比较 job 被跳过；workflow 已改为只由 PR 事件触发，并将 Xvfb / comparison timeout 调至 45 / 20 分钟，待新 head Actions 验证。截图 SHA、Win32 控件映射和 GTK 日志在设置报告。本机 Zamak 28/28、33 项治理检查、C safety 3/3、Shell、Arch build 与 diff 检查通过；未启动本机 GUI或操作活动桌面。
+
 ## 已具备的代码
 - `src/main.zm`: Zamak Canvas 生产主窗口候选、四菜单、双语、禁用清理状态和真实 `/proc/meminfo` 定时采样；不等于完整功能集。
 - `src/ui_geometry.zm`: 集中管理从官方 DLU 模板换算的候选尺寸参数，等待 Windows 字体/DPI 校准。

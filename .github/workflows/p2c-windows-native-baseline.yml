@@ -1,9 +1,6 @@
 name: P2C Windows native 3.5.2 baseline
 
 on:
-  push:
-    branches:
-      - feat/issue-3-p2c-settings-ui
   pull_request:
     branches:
       - feat/issue-3-p2b-main-window
@@ -33,7 +30,7 @@ jobs:
   linux-production-x11:
     name: Capture production settings UI (Xvfb / XTEST)
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -68,7 +65,7 @@ jobs:
     name: Compare native controls and client-area pixels
     runs-on: ubuntu-24.04
     needs: [windows-native-release, linux-production-x11]
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install Pillow for image comparison

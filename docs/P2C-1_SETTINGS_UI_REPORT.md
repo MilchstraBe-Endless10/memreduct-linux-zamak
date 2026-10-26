@@ -1,5 +1,57 @@
 # P2C-1 — Five-page settings UI and Windows baseline
 
+## P2C-2 exact-head calibration evidence (`1d1d6562cb27ddb63fb38a2bf71756b5e88d63ee`)
+
+The Windows and Linux captures below were generated from the same PR source head. The Linux production capture is from Xvfb run `40284909745`; the fresh Windows baseline is from run `40284909821`. Both are isolated hosted-runner captures. The Windows baseline job passed, but the separate Xvfb capture job in `40284909821` reached its 25-minute job timeout and the hosted comparison job was skipped. The duplicate push run `40284904057` also timed out in Xvfb and skipped comparison. An exact-head local comparison was run from the successful downloaded artifacts with the bundled Pillow 12.3.0 runtime; no host package was installed. The workflow now runs on the PR event only, avoiding a duplicate push run, and gives Xvfb/comparison jobs 45/20 minutes.
+
+| Evidence | Run / artifact | Result |
+|---|---|---|
+| Zamak/project build and tests | PR run `40284909782` | PASS |
+| Production Xvfb/XTEST and lifecycle | PR run `40284909745`, artifact `12633129180` | PASS; five pages in both languages; clean exit and window resource release |
+| Production Weston Headless/Pixman lifecycle | PR run `40284909745`, artifact `12633864035` | PASS; main and settings clients exited 0; no Wayland input claim |
+| Official Windows 3.5.2 baseline/captures | PR run `40284909821`, artifact `12633108874` | Windows job PASS |
+| Dedicated hosted Windows/Linux comparison | PR run `40284909821` | SKIPPED because its required Xvfb capture job timed out at 25 minutes |
+| Duplicate push baseline run | `40284904057` | CANCELLED at the Xvfb job timeout; Windows baseline passed; comparison SKIPPED |
+| Exact-head local artifact comparison | Windows `12633108874` + Linux `12633129180` | PASS: 172 geometry rows within 2 px, 0 geometry failures, 12 middle-scroll rows `NOT_COMPARABLE_NATIVE_STATE`, 10 raster checks PASS, 8 color swatches matched |
+
+The local comparison generated unscaled client crops, side-by-side images, 50% overlays, difference heatmaps, metrics, resource-ID geometry deltas, raster checks and SHA-256 manifests. The Windows image was cropped only at measured client origin `(8,31)`; neither source image was resized, stretched or shifted. Pixel percentages are comparison-only, not a 1:1 pass:
+
+| Page | English changed pixels | 简体中文 changed pixels |
+|---|---:|---:|
+| General | 14.7558% | 13.0856% |
+| Memory cleaning | 18.4080% | 18.0501% |
+| Appearance | 16.6153% | 15.8225% |
+| Tray icon | 18.6990% | 17.7446% |
+| Advanced | 8.6128% | 7.9548% |
+
+The production renderer has no full-page child-dialog outline; it draws only resource-defined group boxes. Appearance `IDC_COLORS=140` displays read-only source defaults (`#FFFFFF`, `#008040`, `#FF8040`, `#EC1C24`). `upstream_default_checked()` renders the verified 3.5.2 check states; the 28-test suite checks these defaults and verifies disabled clicks do not change them. The permanent “Template defaults only” footer is absent; limitations appear as interaction feedback and in the Reset confirmation without adding a permanent row. No settings are persisted or enabled.
+
+The narrow GTK close interception was exercised on GTK 3.24.41. Logs record `delete-event` signal id `66`, the single pre-existing unblocked handler id `70`, only that handler blocked, then the targeted application handler connected. Runtime tree inspection found exactly one direct `GtkBox` holder with the expected 12 px border and adjusted only that verified holder to 0 px. XTEST exercised Close, Escape, Alt+F4, WM_DELETE_WINDOW, repeated hide/show, re-open of the same settings window, main-window availability and final resource release; the application exited 0. This does not validate other GTK/libui-ng versions.
+
+The Linux runner records Ubuntu 24.04, GTK 3.24.41, Xvfb 1024×768×24, scale 1 / 96 DPI, Adwaita light, DejaVu Sans and Noto Sans CJK SC. Windows records Windows Server 2022, 1024×768, 96 DPI / 100%, light theme and 8 pt `Ms Shell Dlg`. Font and raster differences remain visible and were not counted as geometry errors.
+
+Current Linux production screenshot SHA-256 (artifact `12633129180`):
+
+| Page | English | 简体中文 |
+|---|---|---|
+| General | `254add6b1f447a519f9dd04adb74128106e0706cd22ae5abb7879cae2920a979` | `5d10063d95d0478da0b7c1dd057f857f82ddbf6b3ccebb8f81af4b7cbd0f7523` |
+| Memory cleaning | `0b2d49fa4c3b1d2c5164a91f5819752c691f92141c2ccbe87b4b4f2a07af8aa9` | `45160cb34aa625949c5bd6d405fb86c7fac420c90bcc8608514278c21f9ce055` |
+| Appearance | `ec1a3156dd79b776cf48762b3c39bbcec424a0037b4a01dab10da41087527af6` | `deec7d59446db84a490daaf89ecf16d29bbb6fd8ac6f4d7d85d18a0bdae95345` |
+| Tray icon | `bc7bacb4b4b473aff943a493373de500cacbf2cd96f3d4c3fc201071812b7f86` | `3d48ada55696c135515cf52ec7b8e13ad4a9bdd5a8152525a3bed8d7f4e70236` |
+| Advanced | `0a8e2e2ab351605c3fd28e7d09dbdd79f7d06a06a1dbbf612216dd16e24f0abc` | `d5554793d9869a69e0c3752fe4a6ab48e5e53c56930efddae45d00ac68be70d8` |
+
+Current Windows-native screenshot SHA-256 (artifact `12633108874`):
+
+| Page | English | 简体中文 |
+|---|---|---|
+| General | `22333ba98bdb72b58a20de718b68ba9c50192883ad36a07f191fccfbcf1a7c4e` | `499d8f110c86ef435f1ac0e6929a07e83bdb0a7ab2bb0cc345d0e006cb983d53` |
+| Memory cleaning | `643fe50fe22d0aaebb30ac75f15d411e45c93a03473dfffab2b8c172a990c677` | `c3565daa379f78b9dc61e08a2a14793ab765c30fe50b71ed786b6fd8f2500ac9` |
+| Appearance | `4b3b11e4daace5daa61c9e72ccb333c50d3fc5830341887ba6292f0050c07958` | `f7edd76780322ae721d36775811d822329e8356e6d4234b11de04a2f8d13b4e9` |
+| Tray icon | `20f665322221dbfa8bde2ee638893f55ac2cda5a10daf97b5b4d9eb3c5b45bf7` | `cbaa725431964ff081f41bb2ee2bc9aef1e1b97f11fc3008d6ef008e1c197e8` |
+| Advanced | `5873fad6dc6b96630b76351cbb46fc4a2cbb723f7b335935581083f1bf0f7f3f` | `7cc65d5076b8769cbd012b35198d4ca3b109273f7d9e33638583a81440d5b64c` |
+
+The Windows artifact verifies source tag `2f5c55d15f69a2c88859e036b16c6f4c971e1968`, portable executable version `3.5.2`, and SHA-256 `dd55a81d56e8c32918e5190b2ec2a1f2a7edbbca884627439b4b619fdfb5602d`; the executable is not Authenticode-signed. Full capture timestamp and per-file checksums are in the linked Actions artifacts.
+
 ## P2C-2 visual calibration addendum (2026-10-26)
 
 P2C-2 continues the existing Draft PR #7 on `feat/issue-3-p2c-settings-ui`; it does not create another PR. The authenticated Windows reference remains Mem Reduct `v.3.5.2`, tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`, captured on Windows Server 2022 at 96 DPI / 100% scaling. Settings client target remains 558×335. No capture is resized, stretched, or shifted to improve a match.
@@ -13,6 +65,8 @@ The pinned screenshots showed three actionable raster differences, now corrected
 - The memory-region list checkbox and label insets now follow the observed Win32 list item placement: checkbox inset 4 px and label inset 22 px from the exported row rectangle (previous Linux values were 14 px and 32 px).
 
 The four Appearance color rows retain source-verified read-only previews (`#FFFFFF`, `#008040`, `#FF8040`, `#EC1C24`). Source-default checkmarks remain a read-only presentation snapshot; they are not loaded from or saved as Linux user settings. All non-language configuration controls remain disabled and cannot trigger settings persistence or system actions.
+
+**Superseding exact-head result:** the narrowed checkbox ROI on `1d1d6562cb27ddb63fb38a2bf71756b5e88d63ee` passes the same-head local comparison: 10/10 raster checks, 8/8 swatch samples and 172/172 comparable geometry rows within 2 px. The hosted comparison job did not run because the required Xvfb job timed out; local comparison is not a substitute for a successful hosted job. A corrected workflow is queued with the next PR update.
 
 The visual comparator now separately validates reference page-face samples and checkbox raster bounds, in addition to the resource-ID keyed Win32/Linux geometry table. It keeps text antialiasing in the pixel-difference output rather than misclassifying it as control geometry. The first exact-head run `f5c5488b4f4e0871311c52dfe4bde61d89be7b7a` generated fresh captures: Windows artifact `12633352398`, production Xvfb artifact `12633925245`, and comparison artifact `12634010092`. The production GUI/XTEST and Weston run `40284199595` and build/test run `40284199576` passed. The Windows/Xvfb/comparison run `40284199572` failed only the raster comparator: all six page-face samples and both General checkbox samples passed; the two Memory row samples were false failures because their test crop extended into the next list row. Geometry remained 172 PASS, 0 FAIL, plus 12 `NOT_COMPARABLE_NATIVE_STATE`; raw changed pixels improved to 7.9548%–18.6990%, still not pixel-equivalent. The crop has been narrowed and requires a fresh exact-head Actions run before its result can be accepted.
 
