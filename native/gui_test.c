@@ -1,9 +1,43 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include <errno.h>
-#include <gtk/gtk.h>
-#include <pango/pangocairo.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* Keep the test-only font probe header-free like the production GTK bridge. */
+typedef struct _GtkWidget GtkWidget;
+typedef struct _GtkStyleContext GtkStyleContext;
+typedef struct _PangoFontDescription PangoFontDescription;
+typedef struct _PangoContext PangoContext;
+typedef struct _PangoFontMap PangoFontMap;
+typedef struct _PangoFont PangoFont;
+typedef struct _PangoFontMetrics PangoFontMetrics;
+typedef struct _PangoLanguage PangoLanguage;
+
+extern GtkWidget *gtk_label_new(const char *text);
+extern GtkStyleContext *gtk_widget_get_style_context(GtkWidget *widget);
+extern void gtk_style_context_get(GtkStyleContext *context, int state, const char *first_property, ...);
+extern PangoContext *gtk_widget_get_pango_context(GtkWidget *widget);
+extern PangoFontDescription *pango_font_description_copy(const PangoFontDescription *description);
+extern void pango_font_description_set_size(PangoFontDescription *description, int size);
+extern PangoFontMap *pango_context_get_font_map(PangoContext *context);
+extern PangoFont *pango_font_map_load_font(PangoFontMap *font_map, PangoContext *context, const PangoFontDescription *description);
+extern PangoFontMetrics *pango_context_get_metrics(PangoContext *context, const PangoFontDescription *description, PangoLanguage *language);
+extern PangoLanguage *pango_language_from_string(const char *language);
+extern PangoFontDescription *pango_font_describe(PangoFont *font);
+extern char *pango_font_description_to_string(const PangoFontDescription *description);
+extern const char *pango_font_description_get_family(const PangoFontDescription *description);
+extern int pango_font_description_get_weight(const PangoFontDescription *description);
+extern int pango_font_metrics_get_ascent(PangoFontMetrics *metrics);
+extern int pango_font_metrics_get_descent(PangoFontMetrics *metrics);
+extern void pango_font_metrics_unref(PangoFontMetrics *metrics);
+extern void pango_font_description_free(PangoFontDescription *description);
+extern void gtk_widget_destroy(GtkWidget *widget);
+extern void *g_object_ref_sink(void *object);
+extern void g_object_unref(void *object);
+extern void g_free(void *memory);
+
+#define PANGO_SCALE 1024
 
 /* Test controls are inert unless the CI runner sets these exact variables. */
 long long mr_gui_test_mode(void)
@@ -63,7 +97,7 @@ long long mr_gui_test_log_canvas_font(void)
     g_object_ref_sink(probe);
     GtkStyleContext *style = gtk_widget_get_style_context(probe);
     PangoFontDescription *base = NULL;
-    gtk_style_context_get(style, GTK_STATE_FLAG_NORMAL, "font", &base, NULL);
+    gtk_style_context_get(style, 0, "font", &base, NULL); /* GTK_STATE_FLAG_NORMAL */
     if (base == NULL) {
         gtk_widget_destroy(probe);
         g_object_unref(probe);

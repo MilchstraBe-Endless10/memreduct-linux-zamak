@@ -2,7 +2,7 @@
 
 基准固定为 Henry++ Mem Reduct `v.3.5.2`，源码 tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。本表比较该版本的英文源码、简体中文资源、Windows 中文运行显示和当前 Linux Zamak 显示；后续 3.5.3 开发源码不作为本表依据。
 
-“无简中资源”表示该字符串在 3.5.2 中是 `main.h` / `main.c` 硬编码文本，而非 `resource.rc` 字符串表中的可本地化 key。Windows 实际中文显示依据隔离 Windows Server 2022 runner 的 v3.5.2 原生截图，96 DPI、100% 缩放；当前 Linux 文案来自 `src/settings_ui.zm`。
+“无简中资源”表示该字符串在 3.5.2 中是 `main.h` / `main.c` 硬编码文本，而非 `resource.rc` 字符串表中的可本地化 key。Windows 实际中文显示依据隔离 Windows Server 2022 runner 的 v3.5.2 原生截图，96 DPI、100% 缩放；当前 Linux 文案来自 `src/settings_ui.zm`。P2C-3 采集器另以 UI Automation 读取原生 `IDC_REGIONS` ListItem.Name，并以 Win32 控件文本读取 Advanced 标签；若 runtime 证据未取得，比较报告必须标记缺失，不能用源码常量代替。
 
 | 原版资源 / 位置 | 上游英文 | 3.5.2 简中资源 | Windows 简中实际显示 | Linux 当前简中显示 | 差异类型 | 决策状态 |
 |---|---|---|---|---|---|---|

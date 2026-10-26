@@ -130,12 +130,12 @@ using System.Runtime.InteropServices;
 public static class P2CWin32 {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
-  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct LOGFONTW {
+[StructLayout(LayoutKind.Sequential, CharSet=System.Runtime.InteropServices.CharSet.Unicode)] public struct LOGFONTW {
     public int Height, Width, Escapement, Orientation, Weight;
     public byte Italic, Underline, StrikeOut, CharSet, OutPrecision, ClipPrecision, Quality, PitchAndFamily;
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string FaceName;
   }
-  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct TEXTMETRICW {
+[StructLayout(LayoutKind.Sequential, CharSet=System.Runtime.InteropServices.CharSet.Unicode)] public struct TEXTMETRICW {
     public int Height, Ascent, Descent, InternalLeading, ExternalLeading, AveCharWidth, MaxCharWidth, Weight, Overhang, DigitizedAspectX, DigitizedAspectY;
     public char FirstChar, LastChar, DefaultChar, BreakChar;
     public byte Italic, Underlined, StruckOut, PitchAndFamily, CharSet;

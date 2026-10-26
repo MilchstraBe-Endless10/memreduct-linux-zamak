@@ -1,6 +1,14 @@
 # 短期记忆 / Latest Handoff
 
-## 当前续接：P2C-2 原版截图校准（2026-10-26）
+## 当前续接：P2C-3 原版视觉差异收敛（2026-10-26）
+
+- PR #7 是 OPEN / Draft，继续使用 `feat/issue-3-p2c-settings-ui`，base `feat/issue-3-p2b-main-window`；首批代码已推至 head `1f93abe75a3ba4dadf01860a79a44b62ccfdce0b`，但该 exact-head CI 失败并已定位根因。
+- Windows run `40307471183`：官方 v3.5.2 tag、发布资产 SHA、setup PGP 签名通过；采集脚本 C# 类型因 `LOGFONTW.CharSet` 字段名遮蔽 `CharSet` 类型失败，未采到新截图。
+- 同 head 的 Xvfb/Weston run `40307471104` 及重复 push run `40307465078`：Zamak 编译在 `native/gui_test.c` 的 GTK/Pango include 阶段失败，生产窗口测试未启动；比较 job skipped。修复改用 header-free ABI 声明和限定 C# 类型名，待推送重跑。
+- 修复后的本机检查：Zamak 0.2.0 `check` PASS、29/29 test PASS、`build` PASS；独立 C11 语法检查 PASS。此前同一轮的治理检查 33 项、Python/C 单测 3/3、脚本语法、Python `py_compile`、`git diff --check` PASS；最终提交后重跑。
+- 无本机 GUI/Xvfb/Wayland/Hyprland 操作，无 GTK 安装、内存清理、Polkit、Swap/ZRAM 写入。首轮 Actions 失败不能计为 P2C-3 验收；等待修复后 exact-head run。
+
+## P2C-2 已核验历史证据（2026-10-26）
 
 ### 最新 exact-head 验收（production source SHA `20c8fbc8fc80c481965fecbde17aa507eb7247fe`）
 
