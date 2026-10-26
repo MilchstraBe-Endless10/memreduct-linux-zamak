@@ -58,11 +58,22 @@ try {
     Write-Status "PASS release archive SHA-256=$archiveHash"
     Write-Status "PASS setup SHA-256=$setupHash"
 
-    $gpg = Get-Command gpg.exe -ErrorAction SilentlyContinue
+    $gpg = Get-Command gpg.exe -ErrorAction SilentlyContinue |
+        Where-Object { $_.Source -notmatch '\\Git\\usr\\bin\\gpg\.exe$' } |
+        Select-Object -First 1
     if (-not $gpg) {
         Invoke-Checked 'choco.exe' @('install', 'gnupg', '-y', '--no-progress') | Out-Null
-        $gpg = Get-Command gpg.exe -ErrorAction Stop
+        $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+        $gpgCandidate = Join-Path $programFilesX86 'GnuPG\bin\gpg.exe'
+        if (Test-Path -LiteralPath $gpgCandidate) {
+            $gpg = Get-Item -LiteralPath $gpgCandidate
+        } else {
+            $gpg = Get-Command gpg.exe -ErrorAction SilentlyContinue |
+                Where-Object { $_.Source -notmatch '\\Git\\usr\\bin\\gpg\.exe$' } |
+                Select-Object -First 1
+        }
     }
+    if (-not $gpg) { throw 'A native Windows GnuPG executable is required for signature verification.' }
     $gpgExe = $gpg.Source
     if (-not $gpgExe) { $gpgExe = $gpg.FullName }
     $gnupgHome = Join-Path $workDir 'gnupg-home'
