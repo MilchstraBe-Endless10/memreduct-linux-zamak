@@ -152,7 +152,7 @@ wait_marker 'CI_GTK_RUNTIME version=3.'
 wait_marker 'CI_SETTINGS_WIDGET_TREE root_type=GtkBox'
 wait_marker 'holder_candidates=1'
 wait_marker 'CI_NATIVE_SETTINGS_DELETE_HANDLER signal_id='
-wait_marker 'order=after connected=1'
+wait_marker 'phase=normal connected=1'
 wait_marker 'CI_SETTINGS_CONTENT_BORDER old='
 wait_marker 'CI_SETTINGS_PAGE idd=101 page=General locale=en controls=116,117,118,120,119,121,122,123 child_dlu=260x168 provisional_canvas=558.0x335.0'
 geometry "$window_id" 558 335 "$artifact_dir/geometry-settings-en.txt"
@@ -298,10 +298,13 @@ xdotool key --clearmodifiers F2
 window_id="$(window_by_title 'Settings - Mem Reduct')"
 request_marker='CI_SETTINGS_CLOSE_REQUEST source=delete_event'
 request_before="$(grep -Fc -- "$request_marker" "$artifact_dir/p2c-client.log" || true)"
+native_event_marker='CI_NATIVE_SETTINGS_DELETE_EVENT'
+native_event_before="$(grep -Fc -- "$native_event_marker" "$artifact_dir/p2c-client.log" || true)"
 handled_marker='CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true'
 handled_before="$(grep -Fc -- "$handled_marker" "$artifact_dir/p2c-client.log" || true)"
 xdotool windowactivate --sync "$window_id"
 xdotool key --clearmodifiers Alt+F4
+wait_new_marker "$native_event_marker" "$native_event_before"
 wait_new_marker "$request_marker" "$request_before"
 wait_new_marker "$handled_marker" "$handled_before"
 kill -0 "$app_pid"
@@ -320,11 +323,13 @@ settings_id="$window_id"
 xprop -id "$settings_id" WM_PROTOCOLS | tee "$artifact_dir/p2c-settings-wm-protocols.txt"
 grep -Fq 'WM_DELETE_WINDOW' "$artifact_dir/p2c-settings-wm-protocols.txt"
 request_before="$(grep -Fc -- "$request_marker" "$artifact_dir/p2c-client.log" || true)"
+native_event_before="$(grep -Fc -- "$native_event_marker" "$artifact_dir/p2c-client.log" || true)"
 handled_before="$(grep -Fc -- "$handled_marker" "$artifact_dir/p2c-client.log" || true)"
 printf 'requesting WM_DELETE_WINDOW by title: Settings - Mem Reduct\n' \
   | tee "$artifact_dir/p2c-wm-close-request.txt"
 wmctrl -v -c 'Settings - Mem Reduct' 2>&1 \
   | tee -a "$artifact_dir/p2c-wm-close-request.txt"
+wait_new_marker "$native_event_marker" "$native_event_before"
 wait_new_marker "$request_marker" "$request_before"
 wait_new_marker "$handled_marker" "$handled_before"
 kill -0 "$app_pid"
