@@ -139,6 +139,7 @@ public static class P2CWin32 {
   [DllImport("user32.dll", SetLastError=true)] private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] private static extern bool EnumChildWindows(IntPtr parent, EnumWindowsCallback callback, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] private static extern int GetDlgCtrlID(IntPtr hWnd);
+  [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr GetParent(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool CloseDesktop(IntPtr desktop);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint GetDpiForWindow(IntPtr hWnd);
@@ -183,6 +184,29 @@ public static class P2CWin32 {
   }
   public static int GetComboSelection(IntPtr combo) {
     return SendMessage(combo, 0x0147, IntPtr.Zero, IntPtr.Zero).ToInt32();
+  }
+  private static void AppendTreeSiblings(IntPtr tree, IntPtr item, System.Collections.Generic.List<IntPtr> items) {
+    while (item != IntPtr.Zero && items.Count < 64) {
+      items.Add(item);
+      IntPtr child=SendMessage(tree, 0x110A, new IntPtr(4), item);
+      if (child != IntPtr.Zero) AppendTreeSiblings(tree, child, items);
+      item=SendMessage(tree, 0x110A, new IntPtr(1), item);
+    }
+  }
+  public static IntPtr[] GetTreeItems(IntPtr tree) {
+    var items=new System.Collections.Generic.List<IntPtr>();
+    IntPtr root=SendMessage(tree, 0x110A, IntPtr.Zero, IntPtr.Zero);
+    AppendTreeSiblings(tree, root, items);
+    return items.ToArray();
+  }
+  public static bool SelectTreeItem(IntPtr tree, IntPtr item) {
+    return SendMessage(tree, 0x110B, new IntPtr(9), item) != IntPtr.Zero;
+  }
+  public static bool SelectComboItem(IntPtr combo, int index) {
+    if (SendMessage(combo, 0x014E, new IntPtr(index), IntPtr.Zero).ToInt32() < 0) return false;
+    int command=GetDlgCtrlID(combo) | (1 << 16);
+    SendMessage(GetParent(combo), 0x0111, new IntPtr(command), combo);
+    return GetComboSelection(combo) == index;
   }
 }
 '@
@@ -316,36 +340,36 @@ public static class P2CWin32 {
                 $pageSentinels = @('116,123', '124,125,131', '133,139,140', '141,148,152', '153,154')
                 $settingsChildren = @([P2CWin32]::GetChildWindows($settingsHwnd))
                 $navControl = $settingsChildren | Where-Object { $_.ControlId -eq 104 } | Select-Object -First 1
-                $selectPageByKeyboard = {
+                $treeItems = @([P2CWin32]::GetTreeItems($navControl.Handle))
+                Write-Status "Native settings navigation IDC_NAV tree items=$($treeItems.Count)"
+                $selectPageByTree = {
                     param([int]$PageIndex, [string]$Language, [string]$Label)
-                    if (-not $navControl) { return $false }
-                    [void][P2CWin32]::SetForegroundWindow($settingsHwnd)
-                    [void][P2CWin32]::SetFocus($navControl.Handle)
-                    [System.Windows.Forms.SendKeys]::SendWait('{HOME}')
-                    for ($down = 0; $down -lt $PageIndex; $down++) { [System.Windows.Forms.SendKeys]::SendWait('{DOWN}') }
-                    Start-Sleep -Milliseconds 300
-                    $currentChildren = @([P2CWin32]::GetChildWindows($settingsHwnd))
-                    $visibleIds = @($currentChildren | Where-Object { $_.Visible } | ForEach-Object { $_.ControlId })
                     $expectedIds = @($pageSentinels[$PageIndex].Split(',') | ForEach-Object { [int]$_ })
-                    $missing = @($expectedIds | Where-Object { $_ -notin $visibleIds })
-                    if ($missing.Count -gt 0) {
-                        $statusLine = "BLOCKED Windows Native $Language page '$Label': IDC_NAV keyboard selection did not show expected resource IDs $($missing -join ',')."
-                        Add-Content -LiteralPath $statusFile -Value $statusLine -Encoding UTF8
-                        Write-Host $statusLine
-                        return $false
+                    foreach ($treeItem in $treeItems) {
+                        [void][P2CWin32]::SelectTreeItem($navControl.Handle, $treeItem)
+                        Start-Sleep -Milliseconds 200
+                        $currentChildren = @([P2CWin32]::GetChildWindows($settingsHwnd))
+                        $visibleIds = @($currentChildren | Where-Object { $_.Visible } | ForEach-Object { $_.ControlId })
+                        $missing = @($expectedIds | Where-Object { $_ -notin $visibleIds })
+                        if ($missing.Count -eq 0) {
+                            $shotName = "windows-native-settings-$PageIndex-$Language.png"
+                            & $captureWindow $settingsHwnd (Join-Path $artifactDir $shotName)
+                            $statusLine = "CAPTURED Windows Native page=$Label language=$Language dpi=$settingsDpi screenshot=$shotName visible_resource_ids=$($pageSentinels[$PageIndex])"
+                            Add-Content -LiteralPath $statusFile -Value $statusLine -Encoding UTF8
+                            Write-Host $statusLine
+                            return $true
+                        }
                     }
-                    $shotName = "windows-native-settings-$PageIndex-$Language.png"
-                    & $captureWindow $settingsHwnd (Join-Path $artifactDir $shotName)
-                    $statusLine = "CAPTURED Windows Native page=$Label language=$Language dpi=$settingsDpi screenshot=$shotName visible_resource_ids=$($pageSentinels[$PageIndex])"
+                    $statusLine = "BLOCKED Windows Native $Language page '$Label': IDC_NAV tree selection did not show resource IDs $($expectedIds -join ',')."
                     Add-Content -LiteralPath $statusFile -Value $statusLine -Encoding UTF8
                     Write-Host $statusLine
-                    return $true
+                    return $false
                 }.GetNewClosure()
 
                 $pageComplete = $true
                 foreach ($pageIndex in 0..4) {
                     if (-not (& $selectPage $settingsElement $pageLabelsEnglish[$pageIndex])) {
-                        if (-not (& $selectPageByKeyboard $pageIndex 'English' $pageLabelsEnglish[$pageIndex])) {
+                        if (-not (& $selectPageByTree $pageIndex 'English' $pageLabelsEnglish[$pageIndex])) {
                             $pageComplete = $false; break
                         }
                     } else {
@@ -398,16 +422,11 @@ public static class P2CWin32 {
                             if ($languageItems[$itemIndex] -match 'Chinese.*Simplified|Simplified Chinese|简体中文') { $chineseIndex = $itemIndex; break }
                         }
                         if ($chineseIndex -ge 0) {
-                            [void](& $selectPageByKeyboard 0 'English' $pageLabelsEnglish[0])
-                            [void][P2CWin32]::SetForegroundWindow($settingsHwnd)
-                            [void][P2CWin32]::SetFocus($nativeLanguageControl.Handle)
-                            [System.Windows.Forms.SendKeys]::SendWait('{F4}')
-                            [System.Windows.Forms.SendKeys]::SendWait('{HOME}')
-                            for ($down = 0; $down -lt $chineseIndex; $down++) { [System.Windows.Forms.SendKeys]::SendWait('{DOWN}') }
-                            [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+                            [void](& $selectPageByTree 0 'English' $pageLabelsEnglish[0])
+                            $languageSelected = [P2CWin32]::SelectComboItem($nativeLanguageControl.Handle, $chineseIndex)
                             Start-Sleep -Milliseconds 500
                             $selectedIndex = [P2CWin32]::GetComboSelection($nativeLanguageControl.Handle)
-                            $languageSelected = $selectedIndex -eq $chineseIndex
+                            $languageSelected = $languageSelected -and $selectedIndex -eq $chineseIndex
                             Write-Status "Windows Native language selection requested_index=$chineseIndex selected_index=$selectedIndex"
                         } else {
                             Write-Status 'BLOCKED Windows Native Simplified Chinese screenshots: IDC_LANGUAGE has no Simplified Chinese choice.'
@@ -421,7 +440,7 @@ public static class P2CWin32 {
                         Start-Sleep -Milliseconds 500
                         foreach ($pageIndex in 0..4) {
                             if (-not (& $selectPage $settingsElement $pageLabelsChinese[$pageIndex])) {
-                                if (-not (& $selectPageByKeyboard $pageIndex 'zh-CN' $pageLabelsChinese[$pageIndex])) { $pageComplete = $false; break }
+                                if (-not (& $selectPageByTree $pageIndex 'zh-CN' $pageLabelsChinese[$pageIndex])) { $pageComplete = $false; break }
                             } else {
                                 Start-Sleep -Milliseconds 250
                                 $shotName = "windows-native-settings-$pageIndex-zh-CN.png"
