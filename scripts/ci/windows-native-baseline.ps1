@@ -391,14 +391,18 @@ public static class P2CWin32 {
                             $writeVisibleRows = {
                                 param([string]$State)
                                 $itemIndex = 0
-                                & $writeStatusClosure "Win32 geometry list item bounds begin page_idd=$pageId resource=$($control.ControlId) state=$State"
+                                $line = "Win32 geometry list item bounds begin page_idd=$pageId resource=$($control.ControlId) state=$State"
+                                Add-Content -LiteralPath $statusFile -Value $line -Encoding UTF8
+                                Write-Host $line
                                 foreach ($itemRect in @([P2CWin32]::GetListItemRects($control.Handle))) {
                                     if ($itemRect.Top -ge $listClient.Top -and $itemRect.Bottom -le $listClient.Bottom) {
                                         $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state=$State; resource_id=$control.ControlId; part="row-$itemIndex"; x=$listOrigin.X-$settingsClientOrigin.X+$itemRect.Left; y=$listOrigin.Y-$settingsClientOrigin.Y+$itemRect.Top; width=$itemRect.Right-$itemRect.Left; height=$itemRect.Bottom-$itemRect.Top; class='ListViewItem' })
                                     }
                                     $itemIndex++
                                 }
-                                & $writeStatusClosure "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$State count=$itemIndex"
+                                $line = "Win32 geometry list item bounds complete page_idd=$pageId resource=$($control.ControlId) state=$State count=$itemIndex"
+                                Add-Content -LiteralPath $statusFile -Value $line -Encoding UTF8
+                                Write-Host $line
                             }.GetNewClosure()
                             $initialState = if ($control.ControlId -eq 124) { 'scroll-0' } else { 'default' }
                             if ($control.ControlId -eq 124 -and [P2CWin32]::GetListTopIndex($control.Handle) -ne 0) {
