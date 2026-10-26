@@ -19,6 +19,16 @@ extern const char *gtk_window_get_title(GtkWindow *window);
 extern void gtk_widget_show(GtkWidget *widget);
 extern void gtk_widget_hide(GtkWidget *widget);
 extern void gtk_window_present(GtkWindow *window);
+extern unsigned long gtk_widget_get_type(void);
+extern unsigned int g_signal_lookup(const char *name, unsigned long type);
+extern unsigned int g_signal_handlers_disconnect_matched(
+    void *instance,
+    unsigned int mask,
+    unsigned int signal_id,
+    unsigned long detail,
+    void *closure,
+    void *func,
+    void *data);
 extern unsigned long g_signal_connect_data(
     GtkWidget *instance,
     const char *detailed_signal,
@@ -67,6 +77,21 @@ int64_t mr_gui_window_mode(int64_t show_settings)
     }
 
     if (settings_window_found != NULL && !settings_close_handler_connected) {
+        const unsigned int delete_signal_id =
+            g_signal_lookup("delete-event", gtk_widget_get_type());
+        unsigned int disconnected = 0;
+
+        if (delete_signal_id != 0) {
+            /* Replace prior close handlers so this reusable window can report close to Zamak. */
+            disconnected = g_signal_handlers_disconnect_matched(
+                (GtkWidget *)settings_window_found,
+                1, /* G_SIGNAL_MATCH_ID */
+                delete_signal_id,
+                0,
+                NULL,
+                NULL,
+                NULL);
+        }
         settings_close_handler_id = g_signal_connect_data(
             (GtkWidget *)settings_window_found,
             "delete-event",
@@ -74,6 +99,14 @@ int64_t mr_gui_window_mode(int64_t show_settings)
             NULL,
             NULL,
             0);
+        if (getenv("MEMREDUCT_CI") != NULL) {
+            fprintf(stderr,
+                    "CI_NATIVE_SETTINGS_DELETE_HANDLER signal_id=%u disconnected=%u connected=%d\n",
+                    delete_signal_id,
+                    disconnected,
+                    settings_close_handler_id != 0);
+            fflush(stderr);
+        }
         if (settings_close_handler_id != 0) {
             settings_window = settings_window_found;
             settings_close_handler_connected = 1;
