@@ -15,6 +15,8 @@ from PIL import Image, ImageChops
 
 PAGES = ("general", "memory", "appearance", "tray", "advanced")
 LOCALES = {"en": "English", "zh": "zh-CN"}
+NAV_SELECTED = (217, 217, 217)
+NAV_GUIDE = (109, 109, 109)
 WINDOW_RE = re.compile(
     r"settings geometry outer=(\d+)x(\d+) client=(\d+)x(\d+).*?client_origin_in_window=(\d+),(\d+)"
 )
@@ -257,6 +259,81 @@ def validate_surface_and_checkbox_raster(windows_dir: Path, linux_dir: Path, out
     return passed, failed
 
 
+def exact_color_bounds(image: Image.Image, area: tuple[int, int, int, int], color: tuple[int, int, int]) -> tuple[int, int, int, int] | None:
+    left, top, right, bottom = area
+    points = [
+        (x, y)
+        for y in range(top, bottom)
+        for x in range(left, right)
+        if image.getpixel((x, y)) == color
+    ]
+    if not points:
+        return None
+    left = min(point[0] for point in points)
+    top = min(point[1] for point in points)
+    return (
+        left,
+        top,
+        max(point[0] for point in points) + 1 - left,
+        max(point[1] for point in points) + 1 - top,
+    )
+
+
+def validate_navigation_raster(windows_dir: Path, linux_dir: Path, output: Path) -> tuple[int, int, int, int]:
+    """Compare native selected TreeView rows and dotted branch pixels to Xvfb output."""
+    origin_x, origin_y = metadata(windows_dir / "result.txt")[4:6]
+    passed = 0
+    failed = 0
+    guide_passed = 0
+    guide_failed = 0
+    measured_widths = {
+        "en": (45, 88, 66, 52, 56),
+        "zh": (32, 56, 32, 56, 32),
+    }
+    with output.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(("page", "locale", "resource_id", "win_x", "win_y", "win_w", "win_h", "linux_x", "linux_y", "linux_w", "linux_h", "dx", "dy", "dw", "dh", "status"))
+        for locale in LOCALES:
+            for page, page_name in enumerate(PAGES):
+                with Image.open(locate_windows_capture(windows_dir, page, locale)) as source:
+                    windows = source.convert("RGB").crop(
+                        (origin_x, origin_y, origin_x + 558, origin_y + 335)
+                    )
+                with Image.open(locate_linux_capture(linux_dir, page, locale)) as source:
+                    linux = source.convert("RGB")
+
+                row_top = 10 + page * 20
+                native = exact_color_bounds(windows, (12, row_top, 144, row_top + 22), NAV_SELECTED)
+                current = exact_color_bounds(linux, (12, row_top, 144, row_top + 22), NAV_SELECTED)
+                expected = (27, row_top + 2, measured_widths[locale][page], 20)
+                native_ok = native == expected
+                if native is None or current is None:
+                    delta = ("", "", "", "")
+                    status = "FAIL"
+                else:
+                    delta = tuple(current[index] - native[index] for index in range(4))
+                    status = "PASS" if native_ok and all(abs(value) <= 2 for value in delta) else "FAIL"
+                writer.writerow((page_name, locale, 104, *(native or ("", "", "", "")), *(current or ("", "", "", "")), *delta, status))
+                if status == "PASS":
+                    passed += 1
+                else:
+                    failed += 1
+
+    guide_points = {(23, 22 + 2 * step) for step in range(41)}
+    guide_points.update((x, 22 + 20 * page) for page in range(5) for x in (25, 27))
+    for locale in LOCALES:
+        with Image.open(locate_windows_capture(windows_dir, 0, locale)) as source:
+            windows = source.convert("RGB").crop((origin_x, origin_y, origin_x + 558, origin_y + 335))
+        with Image.open(locate_linux_capture(linux_dir, 0, locale)) as source:
+            linux = source.convert("RGB")
+        for point in sorted(guide_points):
+            if windows.getpixel(point) == NAV_GUIDE and linux.getpixel(point) == NAV_GUIDE:
+                guide_passed += 1
+            else:
+                guide_failed += 1
+    return passed, failed, guide_passed, guide_failed
+
+
 def write_geometry_table(windows: Path, linux: Path, output: Path) -> tuple[int, int]:
     win = parse_windows_geometry(windows)
     lin = parse_linux_geometry(linux)
@@ -351,6 +428,10 @@ def main() -> int:
     raster_passed, raster_failed = validate_surface_and_checkbox_raster(
         args.windows_dir, args.linux_dir, raster_path
     )
+    navigation_path = args.output_dir / "nav-selection-geometry.csv"
+    nav_passed, nav_failed, guide_passed, guide_failed = validate_navigation_raster(
+        args.windows_dir, args.linux_dir, navigation_path
+    )
     geometry_path = args.output_dir / "control-geometry-diff.csv"
     windows_environment = (args.windows_dir / "windows-environment.txt").read_text(encoding="utf-8-sig", errors="replace")
     linux_environment = (args.linux_dir / "p2c-environment.txt").read_text(encoding="utf-8", errors="replace")
@@ -360,13 +441,14 @@ def main() -> int:
         f"Windows measured outer/client: {outer_w}x{outer_h} / {client_w}x{client_h}; client crop origin={origin_x},{origin_y}.\n"
         "Linux source: production Zamak settings window captured by XTEST in an isolated Ubuntu 24.04 Xvfb runner.\n"
         "The Windows PNGs are only cropped at the measured client origin; neither reference nor Linux images are resized, stretched, shifted, or resampled.\n"
-        "Geometry verdicts use resource-ID keyed Win32 window/control rectangles and Linux Canvas logical rectangles. PASS requires |dx|, |dy|, |dw|, |dh| <= 2 px for each row. IDC_NAV is compared as one resource control; its non-HWND tree items are assessed by screenshots and XTEST clicks.\n"
+        "Geometry verdicts use resource-ID keyed Win32 window/control rectangles and Linux Canvas logical rectangles. PASS requires |dx|, |dy|, |dw|, |dh| <= 2 px for each row. IDC_NAV is compared as one resource control; its non-HWND tree items are checked separately from native selected-row pixels, dotted guide pixels, and XTEST clicks.\n"
         "The memory-region list is compared in matching top (rows 0-5) and bottom (rows 2-7) scroll states. Linux also tests the intermediate offset; its rows are bounds-checked and marked NOT_COMPARABLE_NATIVE_STATE because the Windows runner does not collect that scroll state. Appearance preview rows are pixel-sampled against the pinned source colors. The control-raster table separately checks native page-face samples and checkbox outline bounds; it does not treat text antialiasing as geometry.\n"
+        "The navigation table compares screenshot-measured IDC_NAV selection bounds to the Windows native #D9D9D9 rows at 96 DPI. Dotted branch points are separately checked at the native #6D6D6D pixel coordinates in both locales.\n"
         "Font and rasterization differences are not treated as control geometry errors. Pixel metrics are raw comparisons only and do not imply 1:1 equivalence.\n\n"
         "Windows environment metadata:\n" + windows_environment + "\nLinux environment metadata:\n" + linux_environment,
         encoding="utf-8",
     )
-    for item in (metrics_path, geometry_path, raster_path, report_path):
+    for item in (metrics_path, geometry_path, raster_path, navigation_path, report_path):
         manifest.append((item.name, sha256(item)))
     with manifest_path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
@@ -375,8 +457,10 @@ def main() -> int:
     print(f"PASS screenshots=10 windows_outer={outer_w}x{outer_h} client_crop={origin_x},{origin_y},{client_w},{client_h} linux_canvas={client_w}x{client_h}")
     print(f"GEOMETRY target=<=2px pass={passed} fail_or_missing={failed} table={geometry_path.name}")
     print(f"CONTROL_RASTER target=<=2px pass={raster_passed} fail={raster_failed} table={raster_path.name}")
+    print(f"NAV_SELECTION target=<=2px pass={nav_passed} fail={nav_failed} table={navigation_path.name}")
+    print(f"NAV_TREE_DOTS target=exact-native-pixels pass={guide_passed} fail={guide_failed}")
     print("PIXEL_COMPARISON generated=side-by-side,50pct-overlay,difference-heatmap; verdict=NOT_PIXEL_EQUIVALENCE")
-    return 0 if failed == 0 and raster_failed == 0 else 1
+    return 0 if failed == 0 and raster_failed == 0 and nav_failed == 0 and guide_failed == 0 else 1
 
 
 if __name__ == "__main__":

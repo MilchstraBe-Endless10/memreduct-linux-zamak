@@ -168,6 +168,19 @@ pub fn settings_nav_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
 pub fn settings_nav_item_rect(canvas_width: f64, canvas_height: f64, index: i64) -> ui.Rect:
     settings_reference_rect(canvas_width, canvas_height, 12.0, 10.0 + f64(index) * 20.0, 132.0, 20.0)
 
+pub fn settings_nav_selection_rect(canvas_width: f64, canvas_height: f64, index: i64, zh: bool) -> ui.Rect:
+    # Screenshot-measured v3.5.2 TreeView selection bounds at 96 DPI / 100% scale.
+    let width = if zh:
+        if index == 1 or index == 3: 56.0 else: 32.0
+    else:
+        if index == 0: 45.0 elif index == 1: 88.0 elif index == 2: 66.0 elif index == 3: 52.0 else: 56.0
+    ui.rect(
+        27.0 * canvas_width / f64(settings_client_width_px()),
+        (12.0 + f64(index) * 20.0) * canvas_height / f64(settings_client_height_px()),
+        width * canvas_width / f64(settings_client_width_px()),
+        20.0 * canvas_height / f64(settings_client_height_px())
+    )
+
 pub fn settings_child_rect(canvas_width: f64, canvas_height: f64, x: f64, y: f64, w: f64, h: f64) -> ui.Rect:
     let page = settings_page_rect(canvas_width, canvas_height)
     let sx = canvas_width / f64(settings_client_width_px())
@@ -317,6 +330,14 @@ fn test_settings_geometry_matches_measured_child_template():
     assert(reset.x == 153.0 and reset.y == 299.0 and reset.w == 75.0 and reset.h == 23.0)
     assert(close.x == 471.0 and close.y == 299.0 and close.w == 75.0 and close.h == 23.0)
     assert(close.right() == 546.0 and close.right() <= w)
+
+fn test_settings_navigation_selection_matches_windows_raster_bounds():
+    let w = f64(settings_client_width_px())
+    let h = f64(settings_client_height_px())
+    let english = settings_nav_selection_rect(w, h, 2, false)
+    let chinese = settings_nav_selection_rect(w, h, 2, true)
+    assert(english.x == 27.0 and english.y == 52.0 and english.w == 66.0 and english.h == 20.0)
+    assert(chinese.x == 27.0 and chinese.y == 52.0 and chinese.w == 32.0 and chinese.h == 20.0)
 
 fn test_settings_shell_contains_page_navigation_and_actions():
     let w = f64(settings_client_width_px())

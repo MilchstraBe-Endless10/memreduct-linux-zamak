@@ -310,13 +310,15 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
     let mut fg = ui.rgb(0x161616)
     let mut disabled = ui.rgb(0x777777)
     let mut border = ui.rgb(0x8c8c8c)
-    let mut selected = ui.rgb(0xdce8f5)
+    let mut selected = ui.rgb(0xd9d9d9)
+    let mut nav_guide = ui.rgb(0x6d6d6d)
     if dark:
         bg = ui.rgb(0x242424)
         fg = ui.rgb(0xe9e9e9)
         disabled = ui.rgb(0x8b8b8b)
         border = ui.rgb(0x707070)
         selected = ui.rgb(0x3c5066)
+        nav_guide = ui.rgb(0x9a9a9a)
     p.fill_rect(&ui.rect(0.0, 0.0, width, height), &bg)
 
     let nav = ui_geometry.settings_nav_rect(width, height)
@@ -329,15 +331,18 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
         let r = ui_geometry.settings_nav_item_rect(width, height, i)
         emit_geometry(s, 104, f"item-{i}", &r)
         let title = page_title(i, zh)
-        let label_width = if zh:
-            if i == 0 or i == 2 or i == 4: 24.0 else: 48.0
-        else:
-            if i == 1: 78.0 elif i == 2: 56.0 elif i == 3: 52.0 else: 44.0
-        let selected_item = ui.rect(r.x + 12.0, r.y, min(r.w - 12.0, label_width + 4.0), r.h)
+        let selected_item = ui_geometry.settings_nav_selection_rect(width, height, i, zh)
         if i == s.page: p.fill_rect(&selected_item, &selected)
         p.text(r.x + 18.0, r.y + max(1.0, (r.h - 10.0) / 2.0), title, fg, size=8.0)
-        if i == s.page: outline(p, &selected_item, &border)
-        if s.focus == 100 + i: outline(p, &r, &fg)
+
+    # Native TreeView dotted branch: one vertical stem and short branches at
+    # each measured row center. Navigation rows remain full-width hit targets.
+    for dot in 0..41:
+        p.fill_rect(&ui.rect(nav.x + 11.0, nav.y + 12.0 + f64(dot) * 2.0, 1.0, 1.0), &nav_guide)
+    for i in 0..5:
+        let center_y = nav.y + 12.0 + f64(i) * 20.0
+        for dot in 0..3:
+            p.fill_rect(&ui.rect(nav.x + 11.0 + f64(dot) * 2.0, center_y, 1.0, 1.0), &nav_guide)
 
     let page = ui_geometry.settings_page_rect(width, height)
     p.fill_rect(&page, &bg)
