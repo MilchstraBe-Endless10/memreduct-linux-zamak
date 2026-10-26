@@ -1,6 +1,6 @@
 # P2C-1 — Five-page settings UI and Windows baseline
 
-## P2C-2 exact-head calibration evidence (`1d1d6562cb27ddb63fb38a2bf71756b5e88d63ee`)
+## P2C-2 prior exact-head calibration evidence (`1d1d6562cb27ddb63fb38a2bf71756b5e88d63ee`)
 
 The Windows and Linux captures below were generated from the same PR source head. The Linux production capture is from Xvfb run `40284909745`; the fresh Windows baseline is from run `40284909821`. Both are isolated hosted-runner captures. The Windows baseline job passed, but the separate Xvfb capture job in `40284909821` reached its 25-minute job timeout and the hosted comparison job was skipped. The duplicate push run `40284904057` also timed out in Xvfb and skipped comparison. An exact-head local comparison was run from the successful downloaded artifacts with the bundled Pillow 12.3.0 runtime; no host package was installed. The workflow now runs on the PR event only, avoiding a duplicate push run, and gives Xvfb/comparison jobs 45/20 minutes.
 
@@ -54,7 +54,7 @@ The Windows artifact verifies source tag `2f5c55d15f69a2c88859e036b16c6f4c971e19
 
 ### Follow-up GroupBox color calibration
 
-Sampling the native and Linux `General configuration` GroupBox left edge at client coordinate `(156,20)` found Windows `(220,220,220)` and Linux `(187,187,187)`. The shared GroupBox painter now uses the measured light-theme edge `#DCDCDC`; dark-theme calibration remains provisional because no authentic dark Windows screenshot is available. The comparison script checks this sample for both locales, in addition to the existing page-face, navigation, checkbox, and appearance-swatch checks. The code-level correction compiles and passes the local 28 Zamak tests; its fresh Xvfb screenshot and hosted pixel check are pending the next PR run.
+Sampling the native and Linux `General configuration` GroupBox left edge at client coordinate `(156,20)` found Windows `(220,220,220)` and Linux `(187,187,187)` before the correction. The first hosted run after changing the stroke color captured `(229,229,229)` at that point: a one-pixel Cairo stroke centered on an integer coordinate was antialiased against the `#F0F0F0` page. The new follow-up aligns the stroke path to half-pixel coordinates so its one-pixel edge can match the Win32 sample. Dark-theme calibration remains provisional because no authentic dark Windows screenshot is available. The comparison script checks this sample in both locales, along with page-face, navigation, checkbox, and appearance-swatch samples. Run `40289475248` has the authentic Windows and production Xvfb artifacts; its two new GroupBox sample rows failed (`Windows #DCDCDC`, Linux `#E5E5E5`), while 172 geometry, 10 other raster checks, and the production Xvfb job passed. The half-pixel correction compiles and passes the local 28 Zamak tests; a fresh hosted comparison is pending.
 
 Typography remains a separate visual difference: Windows uses 8 pt `MS Shell Dlg`, while the hosted Linux capture uses DejaVu Sans and Noto Sans CJK SC. The current settings renderer calls select size/weight without selecting a font family; disabled text also remains visually grayed to communicate that these settings are read-only. No pixel or typography parity is claimed from the geometry results.
 
@@ -113,7 +113,7 @@ The portable archive has no detached signature. Provenance is the official relea
 
 ## Geometry correction
 
-The initial Linux settings content was 523×321 because libui-ng's final GTK content-holder child had a 12 px container border. Changing the settings top-level border, GTK style, or Canvas margins did not remove this inset. `native/gui_window.c` now finds the last child of the settings root box, confirms the holder, changes its border width to zero, and queues resize on the holder, root, and settings window. The Xvfb run records `CI_SETTINGS_CONTENT_BORDER old=12 new=0` and measures a 558×335 Canvas.
+The initial Linux settings content was 523×321 because libui-ng's GTK content-holder child had a 12 px container border. Changing the settings top-level border, GTK style, or Canvas margins did not remove this inset. `native/gui_window.c` now requires a GTK box root, enumerates its direct children, and selects exactly one child that is itself a `GtkBox` with the verified 12 px border; it does not assume a child index or that the last child is the holder. The Xvfb run records the widget tree, `CI_SETTINGS_CONTENT_BORDER old=12 new=0`, and measures a 558×335 Canvas. Unsupported GTK trees fail closed with diagnostics.
 
 The earlier `547×345` top-level / `523×321` Canvas values are superseded and retained only in earlier-run history. Current measured Linux Canvas and Windows client area both equal 558×335 at scale 1 / 96 DPI. GTK/Wayland client-side decorations may change the visible outer window; only the Canvas/client rectangle is compared here. The five `260×168 DLU` Windows resources remain child-page templates, not the settings outer frame.
 

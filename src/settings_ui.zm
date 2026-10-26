@@ -89,8 +89,9 @@ fn group(s: &State, p: &ui.Painter, r: &ui.Rect, title: string, fg: &ui.Color):
     # Measured on the Win32 3.5.2 GroupBox edge in the pinned 96-DPI capture.
     let mut edge = ui.rgb(0xdcdcdc)
     if s.dark: edge = ui.rgb(0x707070)
+    let aligned = ui.rect(r.x + 0.5, r.y + 0.5, r.w - 1.0, r.h - 1.0)
     p.begin()
-    p.add_rect(r)
+    p.add_rect(&aligned)
     p.stroke(&edge, 1.0)
     let mut bg = ui.rgb(0xf0f0f0)
     if s.dark: bg = ui.rgb(0x242424)
