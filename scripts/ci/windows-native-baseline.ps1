@@ -121,11 +121,37 @@ using System;
 using System.Runtime.InteropServices;
 public static class P2CWin32 {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+  public sealed class WindowInfo {
+    public IntPtr Handle; public uint ProcessId; public string Title; public string ClassName;
+    public bool Visible; public int Width; public int Height;
+  }
+  private delegate bool EnumWindowsCallback(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll", SetLastError=true)] public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+  [DllImport("user32.dll", SetLastError=true)] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll", SetLastError=true)] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int maxCount);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder className, int maxCount);
+  [DllImport("user32.dll", SetLastError=true)] private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool CloseDesktop(IntPtr desktop);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint GetDpiForWindow(IntPtr hWnd);
+  public static WindowInfo[] GetProcessWindows(uint processId) {
+    var windows = new System.Collections.Generic.List<WindowInfo>();
+    EnumWindows(delegate(IntPtr hWnd, IntPtr state) {
+      uint owner; GetWindowThreadProcessId(hWnd, out owner);
+      if (owner == processId) {
+        var rect = new RECT(); GetWindowRect(hWnd, out rect);
+        var title = new System.Text.StringBuilder(512); GetWindowText(hWnd, title, title.Capacity);
+        var className = new System.Text.StringBuilder(256); GetClassName(hWnd, className, className.Capacity);
+        windows.Add(new WindowInfo { Handle=hWnd, ProcessId=owner, Title=title.ToString(), ClassName=className.ToString(),
+          Visible=IsWindowVisible(hWnd), Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top });
+      }
+      return true;
+    }, IntPtr.Zero);
+    return windows.ToArray();
+  }
 }
 '@
     $os = Get-CimInstance Win32_OperatingSystem
@@ -168,21 +194,30 @@ public static class P2CWin32 {
             $graphics.Dispose(); $bitmap.Dispose()
             Write-Status "CAPTURED Windows Native main window geometry=$($mainRect.Right-$mainRect.Left)x$($mainRect.Bottom-$mainRect.Top) dpi=$mainDpi screenshot=windows-native-main-en.png"
 
+            $mainHandleValue = $mainHwnd.ToInt64()
             [System.Windows.Forms.SendKeys]::SendWait('{F2}')
-            Start-Sleep -Seconds 1
-            $desktopRoot = [System.Windows.Automation.AutomationElement]::RootElement
-            $windowCondition = [System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-                [System.Windows.Automation.ControlType]::Window)
-            $topWindows = $desktopRoot.FindAll([System.Windows.Automation.TreeScope]::Children, $windowCondition)
-            $settingsElement = $null
-            foreach ($element in $topWindows) {
-                if ($element.Current.Name -match 'Settings|设置') { $settingsElement = $element; break }
+            Start-Sleep -Milliseconds 750
+            $ownedWindows = @([P2CWin32]::GetProcessWindows([uint32]$appProcess.Id))
+            $settingsWindow = $ownedWindows | Where-Object { $_.Visible -and $_.Handle.ToInt64() -ne $mainHandleValue -and $_.Width -gt 200 -and $_.Height -gt 100 } | Select-Object -First 1
+            if (-not $settingsWindow) {
+                Write-Status 'F2 did not create a visible settings top-level; sending the source-verified IDM_SETTINGS=155 command to the released main window.'
+                [void][P2CWin32]::PostMessage($mainHwnd, 0x0111, [IntPtr]155, [IntPtr]::Zero)
+                for ($attempt = 0; $attempt -lt 20 -and -not $settingsWindow; $attempt++) {
+                    Start-Sleep -Milliseconds 250
+                    $ownedWindows = @([P2CWin32]::GetProcessWindows([uint32]$appProcess.Id))
+                    $settingsWindow = $ownedWindows | Where-Object { $_.Visible -and $_.Handle.ToInt64() -ne $mainHandleValue -and $_.Width -gt 200 -and $_.Height -gt 100 } | Select-Object -First 1
+                }
             }
-            if (-not $settingsElement) {
-                Write-Status 'BLOCKED Windows Native settings pages: F2 did not expose an accessible settings window through UI Automation.'
+            foreach ($window in $ownedWindows) {
+                Write-Status "Native app window hwnd=$($window.Handle) visible=$($window.Visible) size=$($window.Width)x$($window.Height) class=$($window.ClassName) title=$($window.Title)"
+            }
+            $desktopRoot = [System.Windows.Automation.AutomationElement]::RootElement
+            if (-not $settingsWindow) {
+                Write-Status 'BLOCKED Windows Native settings pages: no visible non-main application window appeared after F2 and IDM_SETTINGS=155.'
             } else {
-                $settingsHwnd = $settingsElement.Current.NativeWindowHandle
+                $settingsHwnd = $settingsWindow.Handle
+                $settingsElement = [System.Windows.Automation.AutomationElement]::FromHandle($settingsHwnd)
+                if (-not $settingsElement) { throw 'The settings window was created, but UI Automation could not attach to its native handle.' }
                 $settingsRect = [P2CWin32+RECT]::new()
                 if (-not [P2CWin32]::GetWindowRect([IntPtr]$settingsHwnd, [ref]$settingsRect)) { throw 'Unable to read native settings-window bounds.' }
                 $settingsDpi = [P2CWin32]::GetDpiForWindow([IntPtr]$settingsHwnd)
