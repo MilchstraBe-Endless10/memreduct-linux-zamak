@@ -63,13 +63,23 @@ try {
     $gpgExe = $gpg.Source
     if (-not $gpgExe) { $gpgExe = $gpg.FullName }
     Write-Status "Using runner-provided GnuPG executable=$gpgExe"
+    $cygpathExe = Join-Path (Split-Path $gpgExe -Parent) 'cygpath.exe'
+    if (-not (Test-Path -LiteralPath $cygpathExe)) { throw 'Git for Windows cygpath.exe is required to pass runner paths to its GnuPG runtime.' }
+    function Convert-GitPathToPosix([string]$Path) {
+        $converted = & $cygpathExe -u $Path
+        if ($LASTEXITCODE -ne 0) { throw "cygpath.exe could not convert path: $Path" }
+        return ($converted -join '').Trim()
+    }
     $gnupgHome = Join-Path $workDir 'gnupg-home'
     New-Item -ItemType Directory -Force -Path $gnupgHome | Out-Null
-    $env:GNUPGHOME = $gnupgHome
+    $env:GNUPGHOME = Convert-GitPathToPosix $gnupgHome
     $keyPath = Join-Path $workDir 'henrypp.gpg'
     Invoke-WebRequest -Uri 'https://github.com/henrypp.gpg' -OutFile $keyPath
-    Invoke-Checked $gpgExe @('--batch', '--import', $keyPath) | Out-Null
-    $verifyOutput = Invoke-Checked $gpgExe @('--batch', '--status-fd', '1', '--verify', $signaturePath, $setupPath)
+    $keyPathPosix = Convert-GitPathToPosix $keyPath
+    $setupPathPosix = Convert-GitPathToPosix $setupPath
+    $signaturePathPosix = Convert-GitPathToPosix $signaturePath
+    Invoke-Checked $gpgExe @('--batch', '--import', $keyPathPosix) | Out-Null
+    $verifyOutput = Invoke-Checked $gpgExe @('--batch', '--status-fd', '1', '--verify', $signaturePathPosix, $setupPathPosix)
     $validLine = $verifyOutput | Where-Object { $_ -match '^\[GNUPG:\] VALIDSIG ' } | Select-Object -First 1
     $fingerprint = if ($validLine) { ($validLine -split '\s+')[2] } else { '' }
     if ($fingerprint -ne 'D98523611524AB29BE7330AC288120A75635B5FD') { throw "Unexpected detached-signature fingerprint: $fingerprint" }

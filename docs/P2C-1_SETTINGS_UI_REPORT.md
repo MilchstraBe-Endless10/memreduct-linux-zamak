@@ -2,7 +2,7 @@
 
 Date: 2026-10-26
 Upstream: Henry++ Mem Reduct `v.3.5.2`, source tag commit `2f5c55d15f69a2c88859e036b16c6f4c971e1968`
-Status: Linux settings UI is a provisional source-based implementation on Draft PR #7. Production Xvfb/XTEST and Weston lifecycle checks pass at head `396c3126fbb8b9af33755ebf8f2eb67942c71f83`. Windows-native screenshot evidence is still pending/blocked; no pixel comparison is claimed.
+Status: Linux settings UI is a provisional source-based implementation on Draft PR #7. Production Xvfb/XTEST and Weston lifecycle checks pass at tested application-code head `396c3126fbb8b9af33755ebf8f2eb67942c71f83`. Windows-native screenshot evidence remains blocked; no pixel comparison is claimed.
 
 ## Scope and geometry
 
@@ -51,7 +51,7 @@ The Weston Headless/Pixman lane starts the production program on a private Wayla
 | Local Windows/PowerShell run | NOT RUN | `powershell` is not installed and the development host is not a Windows desktop |
 | GitHub-hosted production GUI | PASS | PR run `40261537129`; Xvfb and Weston jobs both pass at tested head `396c3126fbb8b9af33755ebf8f2eb67942c71f83` |
 | GitHub-hosted Zamak/build-and-test | PASS | PR run `40261541370`; push build run `40261537096` also passed |
-| GitHub-hosted Windows release/screenshot attempt | BLOCKED | Runs `40261537106` (push) and `40261541252` (PR) were cancelled at the 20-minute workflow limit during Chocolatey GnuPG installation; desktop probe and screenshots were not reached |
+| GitHub-hosted Windows release/screenshot attempt | BLOCKED | Initial runs timed out in Chocolatey GnuPG installation; follow-up runs `40263501261` / `40263504561` verified tag/assets but failed on MSYS GnuPG path handling. A `cygpath` correction is prepared, awaiting rerun |
 
 ## Verified GitHub Actions evidence
 
@@ -86,9 +86,11 @@ Pinned expected release evidence used by the workflow:
 - Extracted portable `memreduct.exe`: SHA-256 `dd55a81d56e8c32918e5190b2ec2a1f2a7edbbca884627439b4b619fdfb5602d`.
 - Native Windows screenshot completeness is `BLOCKED` until actual PNGs for the main window and five settings pages, release binary SHA, Windows build, DPI/scaling, display resolution, theme, locale, capture date/method, and image SHA-256 are present in an artifact.
 
-On PR head `396c3126fbb8b9af33755ebf8f2eb67942c71f83`, Windows push run [40261537106](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40261537106) and PR run [40261541252](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40261541252) were both cancelled at the 20-minute workflow limit. The push artifact [12625127901](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40261537106/artifacts/12625127901) contains only `result.txt` (394 bytes): the official tag commit, archive SHA-256, and setup SHA-256 checks passed; execution then stalled during Chocolatey GnuPG installation. The runner log records an orphan `gnupg-w32` installer at cancellation. Signature verification, executable extraction/version inspection, desktop probing, and screenshot capture were not reached. This establishes only the source tag and two asset hashes, not the complete release provenance.
+On PR head `396c3126fbb8b9af33755ebf8f2eb67942c71f83`, Windows push run [40261537106](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40261537106) and PR run [40261541252](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40261541252) were both cancelled at the 20-minute workflow limit. The push artifact [12625127901](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40261537106/artifacts/12625127901) contains only `result.txt` (394 bytes): the official tag commit, archive SHA-256, and setup SHA-256 checks passed; execution then stalled during Chocolatey GnuPG installation. The runner log records an orphan `gnupg-w32` installer at cancellation. Signature verification, executable extraction/version inspection, desktop probing, and screenshot capture were not reached.
 
-The script has been adjusted to use the runner's existing `gpg.exe` and fail immediately if it is absent, avoiding package installation. This adjustment has not yet been validated by a Windows Actions rerun. Authentic Windows screenshot completeness remains `BLOCKED`.
+At PR head `82aa001e501e14ce6a2fc4a2da58341bc7ee0f8e`, the follow-up Windows runs [40263501261](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40263501261) and [40263504561](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40263504561) failed quickly after confirming the official tag and release asset hashes. Git for Windows `gpg.exe` was found, but treated the Windows `GNUPGHOME` and key file paths as MSYS paths; the keyring import failed. Artifacts `12624828971` and `12625208164` record that failure. The desktop probe and screenshots were again not reached.
+
+The working copy now converts the temporary GnuPG home, public key, setup, and signature paths with the runner's adjacent `cygpath.exe` before invoking Git's GnuPG. This correction has not yet been validated by a Windows Actions rerun. Authentic Windows screenshot completeness remains `BLOCKED`.
 
 Wine is not used. Windows native pixel comparison remains `BLOCKED / NOT RUN` until the source and Linux target screenshots exist under controlled, recorded display conditions. No 2-pixel claim is made.
 

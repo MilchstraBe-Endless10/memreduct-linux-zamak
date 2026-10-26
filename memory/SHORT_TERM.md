@@ -8,7 +8,7 @@
 - X11 环境：Ubuntu 24.04、Xvfb 1024×768×24、GTK 3.24.41、scale 1/DPI 96、Adwaita light；主窗 337×369，设置窗 547×345，均是 Linux 测试尺寸而非 Windows 像素基准。语言/页面、Reset 确认、Escape、Close 按钮和窗口管理器关闭均通过；标题栏 close 不再退出主应用。未在本机安装 Xvfb/启动 GUI。
 - Wayland 私有 Weston/Pixman 下主窗和设置窗 surface 创建/绘制/退出码 0；不测输入；记录一次 `gdk_seat_get_keyboard` critical、无 `wl_seat`，未归因。没有访问活动 Hyprland 或桌面 IPC。
 - 本机：`verify_project.py` 33 项 PASS；Python/C 单测 3/3；shell 语法 8/8；Zamak 0.2.0 check/build PASS，test 21/21；`scripts/build-arch.sh`、`git diff --check` PASS。没有 Polkit、drop_caches、Swap/ZRAM 或 root GUI 操作。
-- GitHub Windows Release/截图 run `40261537106`（push）和 `40261541252`（PR）在 20 分钟上限后均为 `cancelled`。日志中的最后成功项是官方 tag、release archive 和 setup SHA-256；取消时出现 orphan `gnupg-w32` Chocolatey 安装进程。artifact `12625127901` 只有 394-byte `result.txt`，未到 signature、binary version、desktop probe 或 screenshot。已在工作副本将 `windows-native-baseline.ps1` 改为使用 runner 预置的 `gpg.exe`、缺少时立即失败，不再运行 Chocolatey 安装；此修复待新 Windows Actions 验证。真实 Windows 截图、DLU 实测、overlay/2px 和 Hyprland 输入仍 BLOCKED / NOT RUN。设置持久化/托盘/特权功能未实现或禁用。
+- Windows runner 第一次尝试 run `40261537106` / `40261541252` 在 20 分钟限制取消：资产 SHA PASS 后卡在 Chocolatey GnuPG 安装，artifact `12625127901` 只含部分 `result.txt`。移除安装、使用 Git for Windows 自带 GPG 后，run `40263501261` / `40263504561` 又因 MSYS GPG 将 `D:\...` `GNUPGHOME` 误当 MSYS 相对路径而快速 FAIL；tag 和 archive/setup SHA 均 PASS，签名验证、binary version、桌面检查、截图尚未到达。当前工作副本以 `cygpath.exe` 将 GNUPGHOME/key/setup/signature 路径转成 POSIX 格式，待新 Windows Actions 验证。真实 Windows 截图、DLU 实测、overlay/2px 和 Hyprland 输入仍 BLOCKED / NOT RUN。设置持久化/托盘/特权功能未实现或禁用。
 
 ## 最近记录：P2B-2 原版主窗口结构与数据可靠性修复（2026-10-25）
 

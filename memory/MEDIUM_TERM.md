@@ -11,7 +11,7 @@
 
 **P2B-2：主窗口结构和采样可靠性** — PR #6 已推送最终 Draft head `911a3d0b99b05f15bd0109dca475b0b5174e7888`，base 为 PR #5 `d89d74fde433da1863b4de0223f974c824fb590e`。最新 ChatGPT 的 P2B-2 scoped review 认可三组纵向布局、菜单边界、采样失效和隔离 GUI 证据；Windows 原生截图/2px 和 Hyprland 输入仍未验收。
 
-**P2C-1：五页设置界面** — 独立 Draft PR #7，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。修复后的生产代码 head `396c3126fbb8b9af33755ebf8f2eb67942c71f83` 的 PR GUI run `40261537129`（Xvfb/XTEST、Weston Headless/Pixman 两作业）及 build-and-test run `40261541370` 均 PASS；push GUI run `40261541380` 也 PASS。X11/Wayland artifacts 分别为 `12624986143` / `12623629586`。Xvfb 已覆盖五页×中英文截图、导航/键盘/Reset/Close，以及真实 `WM_DELETE_WINDOW` 请求；设置窗关闭后主窗仍在，主窗退出码 0。Wayland 仅证明私有 Weston 上 surface/lifecycle，不代表真实输入。Windows 来源/截图 runs `40261537106`、`40261541252` 在 20 分钟运行上限时被取消；日志确认官方 tag 和 archive/setup 哈希后，停在 Chocolatey GnuPG 安装，未到签名/desktop/screenshot。工作副本已修改脚本改用 runner 预置 GnuPG，需新 Actions 验证。设置控件仍多为禁用和非持久化，几何 PROVISIONAL；不能宣称 1:1。
+**P2C-1：五页设置界面** — 独立 Draft PR #7，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。修复后的生产代码 head `396c3126fbb8b9af33755ebf8f2eb67942c71f83` 的 PR GUI run `40261537129`（Xvfb/XTEST、Weston Headless/Pixman 两作业）及 build-and-test run `40261541370` 均 PASS；push GUI run `40261541380` 也 PASS。X11/Wayland artifacts 分别为 `12624986143` / `12623629586`。Xvfb 已覆盖五页×中英文截图、导航/键盘/Reset/Close，以及真实 `WM_DELETE_WINDOW` 请求；设置窗关闭后主窗仍在，主窗退出码 0。Wayland 仅证明私有 Weston 上 surface/lifecycle，不代表真实输入。Windows runs `40261537106` / `40261541252` 在 20 分钟上限因 Chocolatey GnuPG 安装而取消；改用 runner GPG 后 runs `40263501261` / `40263504561` 证明官方 tag 与资产哈希，但因 GnuPG 不接受原生 Windows 路径而 FAIL，未到 desktop/screenshot。工作副本现用 `cygpath` 转换路径，待新 Actions 验证。设置控件仍多为禁用和非持久化，几何 PROVISIONAL；不能宣称 1:1。
 
 ## 已具备的代码
 - `src/main.zm`: Zamak Canvas 生产主窗口候选、四菜单、双语、禁用清理状态和真实 `/proc/meminfo` 定时采样；不等于完整功能集。
@@ -24,7 +24,7 @@
 
 ## 当前阻塞
 - 等待 ChatGPT 复审 PR #6/#7 的生产主窗和五页设置 UI、截图与诊断；PR #7 保持 OPEN / Draft，不合并。
-- Windows v3.5.2 原生截图、实测 DLU→像素换算、2 px 对照和 Hyprland 实际输入仍未完成；Windows workflow 的 GnuPG 安装阻塞待用 runner 预置程序修复并复跑。Weston 日志中的 GTK seat critical / SIGTERM cleanup BUG 保留为待解释诊断。
+- Windows v3.5.2 原生截图、实测 DLU→像素换算、2 px 对照和 Hyprland 实际输入仍未完成；Windows workflow 的 GnuPG 临时路径转换修复待 Actions 复跑。Weston 日志中的 GTK seat critical / SIGTERM cleanup BUG 保留为待解释诊断。
 - 五页设置界面已实现导航和显示；设置持久化、托盘/SNI、Polkit 授权端到端、真实缓存清理、Swap/ZRAM 写入均未执行或实现。除语言、Reset 确认和 Close 外的设置控件保持禁用。
 
 ## 阶段表
