@@ -4,7 +4,7 @@
 
 状态含义：NATIVE=Linux 上实现原生相同动作；EQUIVALENT=语义受限的 Linux 等价；UNSUPPORTED=没有安全/准确的 Linux 等价；NOT_IMPLEMENTED=可评估但项目当前未实现。状态描述当前 Linux 项目，不代表上游 Windows 功能状态。
 
-P2C-4 的隔离 Xvfb/XTEST 套件覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图时分别记录 GTK `Adwaita:light` 与应用自己的 Canvas 暗色调色板，不更改桌面主题。此前提交已执行相关菜单/主题场景；当前 exact-head P2C run `40363399854` 的 Linux Xvfb job 已因 APT 38 分钟安装超时（exit 124）失败，Windows/Linux comparator 未运行；本矩阵不把该 HEAD 的截图或视觉比较写为已验收。明细与证据边界见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
+P2C-4 的隔离 Xvfb/XTEST 套件覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图分别记录 GTK `Adwaita:light` 与应用自己的 Canvas 暗色调色板，不更改桌面主题。精确 head `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 的 P2C run `40373093546` Windows、Linux Xvfb/XTEST、视觉比较三项全 PASS；P2B run `40373092535` Xvfb 与 Weston 生命周期两项 PASS，build/safety run `40373092652` PASS。细节和限制见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`；这些检查不构成完整像素 1:1 或活动 Hyprland 输入验收。
 
 ## 1. 主窗口、菜单、快捷键
 
@@ -157,3 +157,12 @@ Exact-head calibration at source `06be74b740e8906e64d837d8ac77e0255bea1081` samp
 - 源码 `b4b5de5` 的 exact-source 截图配对已将 `IDC_REGIONS` 顶部/中间/底部 EN/zh-CN 资源 ID 行纳入比较：184/184 控件/行几何 PASS，最大绝对分量偏差 1.5 px。文字墨迹框偏差单独归类；简中原版未翻译差异不算几何误差。
 - 主菜单、清理区域弹出菜单、尝试托盘上下文菜单及来源命令暗色主题截图由隔离 Windows runner 采集。真实清理确认/结果对话框若必须执行内存清理才能出现，保持 `BLOCKED`，不触发动作。
 - 当前配对基准来自 Windows run `40312777621` artifact `12645980196` 与同源码 Xvfb run `40312777567` artifact `12645029581`；逐页变化率、字体宽度差、原生中文显示和截图状态见 [P2C-3 视觉报告](P2C-3_VISUAL_FIDELITY_REPORT.md)。P2C-3 候选按钮光栅/文字墨迹修正仍待新 HEAD CI 核验；全页 changed-pixel 比例只作前后比较，不构成 1:1 验收。
+
+## 10. P2C-4 字体、暗色控件与菜单证据
+
+- 固定基准仍为 Windows Mem Reduct v.3.5.2 / `2f5c55d15f69a2c88859e036b16c6f4c971e1968`；P2C exact-head run `40373093546`、生产 Xvfb run `40373092535`、build/safety run `40373092652` 均关联提交 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。
+- 暗色主题包含五页 × English/简体中文十组 Windows/Linux 558×335 配对；全部有原始截图、并排、overlay、difference、heatmap 和 SHA。changed-pixel 比例：General `10.2327% / 51.6086%`、Memory cleaning `12.6625% / 73.2932%`、Appearance `11.6311% / 54.3027%`、Tray icon `11.2534% / 54.6584%`、Advanced `5.9434% / 46.0889%`（English / 简中）。十项均为 `CAPTURE_AND_COMPARE_PASS; PIXEL_IDENTITY_NOT_PASS`。Linux 是应用 Canvas 暗色配色，GTK 主题仍固定 `Adwaita:light`；简中差异率也包含原版来源文本与 Linux 完整本地化的差异，不能解释成字体问题。
+- 本轮隔离 Liberation Sans 候选测试：English 66 个同源控件样本 64 改善、1 退化、1 不变；简中 54 个样本 12 改善、12 退化、30 不变。candidate 英文全页差异只改善 0.0578–0.4093 个百分点，简中基本不变或轻微回退；未改变生产字体、字号或窗口几何，未把 Windows 专有字体打包。GDI 仍报告逻辑 alias `MS Shell Dlg 2`，物理字体文件身份未证实；Pango 默认匹配 DejaVu Sans / Noto Sans CJK SC。
+- 同 head 对照回归：Win32 资源矩形 `184/184 PASS`，最大分量偏差 `1.5 px`；导航当前选中区域 `10/10 PASS`；树状点线像素 `102/102 PASS`；离散控件栅格 `36/36 PASS`。这几类局部验收不表示全页像素一致；总体暗色变化率仍超过像素相等目标。
+- XTEST 实际展开 Linux File / View / Settings / Help 英中菜单及 View 语言子菜单，执行键盘导航、Enter/Escape、分隔槽跳过和安全的 clean dropdown 外观测试；清理菜单项保持禁用。Windows runner 只采集到四个英文主菜单；tray menu 未被 UI Automation 暴露，清理 popup 没有安全展开路径，确认/结果弹窗需要真实清理才能打开，均保持 `BLOCKED`。
+- 当前截图 artifact 和哈希清单在 [P2C-4 报告](P2C-4_FONT_THEME_MENU_REPORT.md) 索引；`12` 项简中来源差异仍 `DECISION_REQUIRED`，不擅自替换 Linux 当前完整中文翻译。没有执行清理、Polkit、Swap/ZRAM、root GUI 或活动桌面操作。

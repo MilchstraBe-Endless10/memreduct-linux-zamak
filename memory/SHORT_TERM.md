@@ -1,5 +1,20 @@
 # 短期记忆 / Latest Handoff
 
+## 最新核对：P2C-4 字体/控件绘制/深色主题校准（2026-10-27）
+
+- PR #7 仍 OPEN / Draft；Base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；P2C 生产代码/工作流 head `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。Windows v.3.5.2 tag SHA 固定 `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。
+- P2C run `40373093546` Windows 来源、生产 Xvfb/XTEST 与比较 3/3 PASS；P2B run `40373092535` 的主窗 Xvfb/XTEST、Weston Headless/Pixman 两 job PASS；build/governance/safety PR run `40373092652` 与 push run `40373081011` PASS。P2B 重复设置页 step 按条件 skipped，完整设置页交互在同 head P2C run 已执行。
+- Artifacts：Windows `12673463315` (`sha256:22eaadc99b82745dc548af7036bca0bafe7f0c0b38ae5956553d9976dcbfddf1`)，Linux Xvfb `12674390489` (`sha256:f0b49b1577dec13c436cb967c65793ed7388ab0030e1fddc644e7636cc64d2f2`)，视觉/字体/暗色比较 `12673073193` (`sha256:0897e9e15d2a5c8eff9616b6d1eef730fc55e2d454be28238bf39a66810388a3`)。SHA 清单：Windows PNG 41/41、Linux PNG 44/44、dark 70/70、visual 83/83 全匹配。
+- 几何/局部 raster 回归：184/184 resource rectangles PASS（最大 1.5 px），nav 10/10、tree guide 102/102、discrete raster 36/36 PASS。暗色 10 对 Windows/Linux screenshot 全部生成比较素材；变化率 5.9434%–73.2932%，仅 `CAPTURE_AND_COMPARE_PASS`，全像素 1:1 仍 `NOT PASS`。
+- 字体候选：Win32 `MS Shell Dlg 2` / 8.25 pt / weight 400 / ascent-descent 11/2；Linux Pango Sans 8 pt / DejaVu Sans + Noto Sans CJK SC / ascent-descent 10/3。隔离 Liberation Sans 对 English 64/66 度量改善、简中 12/54 改善/12/54 退化；双语全页变化率没有充分收益，生产字体保持不变，不打包字体。
+- XTEST 双语验证 File/View/Settings/Help、语言子菜单、键盘 Enter/方向/Esc、分隔区跳过、暗色 5 页、safe clean dropdown 均通过；清理项禁用。Windows tray、原生清理 popup、安全确认/结果对话框仍 BLOCKED。简中 12 项来源差异维持 DECISION_REQUIRED。
+- 不操作本机 GUI/Hyprland；无内存清理、Polkit、root GUI、内核写入或 Swap/ZRAM 变化。日志中的 Weston GTK seat critical 未屏蔽、未推断根因。
+- 报告、交互矩阵和三层记忆更新已写入工作树；文档/记忆提交及新 head Actions 待本轮验证。
+
+## 先前未完成状态记录（已被上方 2026-10-27 核对覆盖）
+
+以下各段保留当时进度，不能作为当前状态。
+
 ## 当前续接：P2C-4 字体/控件绘制/深色主题校准（2026-10-26）
 
 ### 最新核对（2026-10-26 17:44 UTC）

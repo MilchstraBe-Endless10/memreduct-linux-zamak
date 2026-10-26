@@ -23,7 +23,15 @@ R3 中 Xvfb bulk APT 依赖在 Ubuntu Azure 镜像下载 108 MB 用时 31:18（5
 
 本轮仍有观察到的风险：`build-and-test` 的旧式 `Install system tools` 在 push 和 PR run 分别用时 7:42 / 8:43（均通过），该 job 上限 15 分钟且本轮没有改 `test.yml`。UI 几何/raster 阈值与 184/184、10/10、102/102、36/36 样本保持；1:1 NOT PASS；12 项简中来源差异仍 `DECISION_REQUIRED`。
 
-**P2C-4：字体/控件栅格/深色主题与菜单证据（进行中，2026-10-26）** — PR #7 仍 OPEN / Draft；当前推送 branch HEAD `eea82a8c2cafb16b25acf3d319e084335548356d`，与 origin 相同。工作树现含以修复前真实暗色截图取样为依据的 Canvas 暗色控件色校准：背景/导航、选中态、边线、字段、按钮、滚动条、树状点线，以及暗色下白色复选框面；Light 色值、字体、布局、窗口几何、语言文案、Windows goldens 与阈值保持不变。该修正尚未提交，需最终 HEAD hosted 截图验证。commit `eea82a8` 只修复隔离候选进程的 Fontconfig alias 与 Pango family 断言。Linux exact-head P2C run `40363399854` 的 Windows 原版来源/截图 job PASS，artifact `12670040771` / digest `sha256:74ca2a4a52afcde5fe04334918587a77b1fc6c469ffce03916dbb9920aa616c6`；Linux Xvfb job仍在依赖安装，无实时日志可核，根因未确认；视觉 compare 与 Liberation candidate 尚未执行。Linux exact-head P2B/Weston run `40363344884` 仍在依赖安装；不取消队列中的验收作业。
+**P2C-4：字体/控件栅格/深色主题与菜单证据（本轮范围完成，2026-10-27）** — PR #7 OPEN / Draft，Base `911a3d0b99b05f15bd0109dca475b0b5174e7888`，本轮生产源码/工作流 HEAD `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。P2C Windows native + Linux Xvfb/XTEST + comparator run `40373093546` 三个 job PASS；P2B Xvfb 与 Weston Headless/Pixman run `40373092535` 两个 job PASS；PR build/governance/safety `40373092652` 与 push build `40373081011` PASS。Artifacts：Windows `12673463315`、Linux `12674390489`、comparison `12673073193`；P2B X11 `12674265667`、Weston `12673517780`。
+
+暗色 10 组双语页面在固定 558×335 客户区全部完成采集、Overlay/Difference/Heatmap 对照；全页 changed pixels 为 5.9434%–73.2932%，全部 `PIXEL_IDENTITY_NOT_PASS`。Win32 控件几何 184/184、导航 10/10、树线 102/102、栅格样本 36/36 PASS，最大几何偏差 1.5 px；这些局部 PASS 不等于全页一致。GTK runner 是 Adwaita light，暗色由 app Canvas palette 单独切换。Windows 原生字体仍是未解析物理文件的 `MS Shell Dlg 2` alias；Linux 默认 DejaVu Sans + Noto Sans CJK SC。Liberation Sans 仅隔离候选，英文 64/66 样本改善、中文 12/54 改善且 12/54 退化，全页英文改善小、中文基本不变；未更改生产字体/字号，无字体文件进入仓库。Linux 四菜单双语和安全清理 dropdown 通过 XTEST；Windows tray/安全清理 popup/确认结果对话框仍 BLOCKED。12 项简中来源差异保持 `DECISION_REQUIRED`；整体 1:1 NOT PASS。完整指标及 artifact SHA 在 P2C-4 报告。
+
+下方保留的旧 P2C-4 条目记录初次 APT 超时阶段，是历史快照；不代表当前状态。
+
+### P2C-4 早期进度快照（历史记录；由上方完成状态覆盖）
+
+旧 HEAD `eea82a8c2cafb16b25acf3d319e084335548356d` 上的 Windows 截图成功，但当时的 P2C Linux APT 安装超时、P2B Weston 失败。超时日志显示 `fonts-noto-cjk` 包未完成下载，根因未确认。后续工作流修复及 `6502342` exact-head CI 已完成；旧快照保留供问题追溯。
 
 **17:44 UTC 状态更正：** P2C run `40363399854` 已结束 FAILURE，Xvfb APT install exit `124`（38 分钟超时），比较 job SKIPPED。APT log 指向尚未完成的 `fonts-noto-cjk` 61.2 MB 下载，底层网络/镜像根因未确认；诊断 artifact `12672670397`。P2B run `40363344884` 在当时仍处于依赖安装，不取消且不提前判定。共享 PR concurrency group 的 workflow 修正尚未提交/验证。
 
