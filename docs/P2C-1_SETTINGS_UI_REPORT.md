@@ -5,6 +5,7 @@ Upstream: Henry++ Mem Reduct `v.3.5.2`, source tag commit `2f5c55d15f69a2c88859e
 PR: [#7 — P2C-1 five-page settings UI](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7), OPEN / Draft
 Base: `feat/issue-3-p2b-main-window` at `911a3d0b99b05f15bd0109dca475b0b5174e7888`
 Production code tested: `d4f1ca97ac42bc1516a484163b9d4536ea9194b2`
+Latest full PR validation: documentation-only head `b473700f0513e91fc6f171fa2b0a8fc3abd3f7df`; production source files are unchanged from the tested code checkpoint.
 
 ## Current result
 
@@ -19,7 +20,7 @@ The isolated `windows-2022` GitHub-hosted runner resolved the official `v.3.5.2`
 | Evidence | Verified value |
 |---|---|
 | Windows runner | Microsoft Windows Server 2022 Datacenter, build 20348 / version 10.0.20348 |
-| Capture time | `2026-10-26T04:16:04Z` |
+| Capture time | `2026-10-26T04:31:57Z` |
 | Desktop | Interactive session 2; Explorer in current session; input desktop accessible |
 | Display | 1024×768; 96 DPI; 100% scaling |
 | Theme and font | Light theme; resource font `8pt Ms Shell Dlg` |
@@ -83,13 +84,14 @@ The GitHub build-and-test workflow also ran the full project shell syntax step a
 
 | Lane | Run and outcome |
 |---|---|
-| Production Xvfb/XTEST, push | [40268142444](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142444) — PASS; artifact [12627741039](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142444/artifacts/12627741039) |
-| Weston Headless/Pixman, push | [40268142444](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142444) — PASS; artifact [12626827840](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142444/artifacts/12626827840) |
-| Zamak/build-and-test, push | [40268142555](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142555) — PASS |
-| Windows native 3.5.2 baseline, push | [40268142370](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142370) — PASS; artifact [12626872531](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142370/artifacts/12626872531) |
-| Production Xvfb/XTEST, pull request | [40268148013](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268148013) — Xvfb job PASS; Weston job was still running at report capture. X11 artifact [12627113053](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268148013/artifacts/12627113053) |
-| Windows native 3.5.2 baseline, pull request | [40268148017](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268148017) — PASS; artifact [12626757929](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268148017/artifacts/12626757929) |
-| Zamak/build-and-test, pull request | [40268148055](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268148055) — PASS |
+| Production Xvfb/XTEST, push at code checkpoint | [40268142444](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142444) — PASS; artifact [12627741039](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142444/artifacts/12627741039) |
+| Weston Headless/Pixman, push at code checkpoint | [40268142444](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142444) — PASS; artifact [12626827840](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142444/artifacts/12626827840) |
+| Zamak/build-and-test, push at code checkpoint | [40268142555](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142555) — PASS |
+| Windows native 3.5.2 baseline, push at code checkpoint | [40268142370](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142370) — PASS; artifact [12626872531](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142370/artifacts/12626872531) |
+| Production Xvfb/XTEST, pull request at docs head `b473700` | [40269534094](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40269534094) — PASS; artifact [12627279867](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40269534094/artifacts/12627279867) |
+| Weston Headless/Pixman, pull request at docs head `b473700` | [40269534094](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40269534094) — PASS; artifact [12627990285](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40269534094/artifacts/12627990285) |
+| Zamak/build-and-test, pull request at docs head `b473700` | [40269534153](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40269534153) — PASS |
+| Windows native 3.5.2 baseline, pull request at docs head `b473700` | [40269534205](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40269534205) — PASS; artifact [12627309561](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40269534205/artifacts/12627309561) |
 
 Xvfb environment: Ubuntu 24.04 hosted runner, Xvfb 1024×768×24, GTK 3.24.41, scale 1, DPI 96, Adwaita light, DejaVu Sans and Noto Sans CJK SC. The production settings Canvas is 558×335. XTEST drives the isolated X server; it covers all five pages in both languages, navigation, disabled rows, language controls, Reset, Escape, Close, WM delete handling, and normal process exit. Settings exit returns to the main window; main exit status is 0.
 
@@ -97,7 +99,7 @@ The push Weston artifact uses Weston 13.0.0 Headless/Pixman with a private Wayla
 
 ### Production Linux settings screenshots
 
-X11 artifact: [12627741039](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142444/artifacts/12627741039). These are screenshots of the production Zamak program at code head `d4f1ca97ac42bc1516a484163b9d4536ea9194b2`; they are not screenshots of a simulation.
+X11 artifact: [12627279867](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40269534094/artifacts/12627279867). These are screenshots of the production Zamak program at docs head `b473700f0513e91fc6f171fa2b0a8fc3abd3f7df` with production sources identical to code head `d4f1ca97ac42bc1516a484163b9d4536ea9194b2`; they are not screenshots of a simulation.
 
 | Page | English SHA-256 | 简体中文 SHA-256 |
 |---|---|---|
@@ -120,16 +122,16 @@ Current production UI source/script SHA-256:
 
 ### Windows-native screenshot index
 
-Windows artifact: [12626872531](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40268142370/artifacts/12626872531). It contains the native main window in English and Simplified Chinese, plus every settings page in both locales. PNG SHA-256 values were recomputed from the downloaded artifact.
+Windows artifact: [12627309561](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40269534205/artifacts/12627309561). It contains the native main window in English and Simplified Chinese, plus every settings page in both locales. PNG SHA-256 values were recomputed from the downloaded artifact.
 
 | Page | English SHA-256 | 简体中文 SHA-256 |
 |---|---|---|
-| Main window | `851b99b2ad59552bf5caf2762e7233845109845ad0c4971557ff5b86b3fb808a` | `16344aaae9fdcd961d19b9dfd737787d59a391f3c47e37248c06726651097253` |
-| General | `128e547ffd90896e8628418fb27835123c4871e892db00c078e0b92a94addc01` | `e6cee612af061d003bcbe4ef0d65b6238abeabde4410c49c8606e32050c61f6a` |
-| Memory cleaning | `05ab4e0274e40de78a68ed987dd40b36dbd2d14ae05cdbed394456dd672bbb2e` | `c4ad3165eed1b9572894231cdc9b947b82232a3819b089c910f39fe6779ea7ea` |
-| Appearance | `cdc99ef9c27824b32c92dd4a296d82825409c00ab51b1034e75c1961f68f79c8` | `a03d296d7a9586bcbac13aa7005920d30ec20dd689ccd0d22af850c039573e4d` |
-| Tray icon | `2bc63f8ed3512130614eb1e3e4a9e6b77b61055fb0a86f1e5dec440449e07cb3` | `95caa7a7d7dfa3b76c3bd7f9cbb52c49c311389d9e2a4a4c925280b8b93b9bb7` |
-| Advanced | `afbe233ffedd8610ee4fa027d8a2cadb7d02ab1b8502601be7a5b41e3c1928f3` | `171e400ccc14aaef23790d0971edb9c69b6ed6fdf57b49b6af07ac3d3a6c7806` |
+| Main window | `7db5c0eb8c8d22a00103b4c17739516a077e3c2d6e7439ab9715bd9820738780` | `d781449593bf8122c4b812612f39ed2babeb0edb7197748eae53c013d10aca87` |
+| General | `a5670413aa059b67b027295a98bab477bff22f3cc440329f6af00700b0c8d651` | `50a8b7e2aca25d1044c3f547fbf40df301c21f946a12873f13b57ab2f4853df5` |
+| Memory cleaning | `a13f9effaef9cd1065a980c019a8edd81dd06244699736b0e3ff6c0c98f3dbd4` | `0ef7d01e21fc7703226c988c339843f6e04c32c40bcc8f0f720b54acb2ca8298` |
+| Appearance | `d05bf0a5e2ef8cd79ca5804e65587d257575a113096fccb8c88bf186bcc3484a` | `0c69f32f6483933446ceb704daa69393754bd51da3fe097b9fbb82da25957735` |
+| Tray icon | `ed72bb3408ee80d5c6856708c280c4a707b1c29adf65682a88e331af96c20428` | `1e7ab737fb2761b19b00d81fb190f34b8e33c8c3c7a42b5c4bff30581978a737` |
+| Advanced | `929fae137f5e86fbfa487221c56e57d7967eddc5997e7563062f579007d6d742` | `05b35d0ef4367c3e5c75511ce1728b2acd4607966f91d8ec3a2e7148502ad5b5` |
 
 ## Fidelity status and remaining work
 
