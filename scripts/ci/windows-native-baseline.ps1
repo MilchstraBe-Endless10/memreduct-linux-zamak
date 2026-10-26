@@ -329,12 +329,16 @@ public static class P2CWin32 {
                     $expectedIds = @($pageSentinels[$PageIndex].Split(',') | ForEach-Object { [int]$_ })
                     $missing = @($expectedIds | Where-Object { $_ -notin $visibleIds })
                     if ($missing.Count -gt 0) {
-                        Write-Status "BLOCKED Windows Native $Language page '$Label': IDC_NAV keyboard selection did not show expected resource IDs $($missing -join ',')."
+                        $statusLine = "BLOCKED Windows Native $Language page '$Label': IDC_NAV keyboard selection did not show expected resource IDs $($missing -join ',')."
+                        Add-Content -LiteralPath $statusFile -Value $statusLine -Encoding UTF8
+                        Write-Host $statusLine
                         return $false
                     }
                     $shotName = "windows-native-settings-$PageIndex-$Language.png"
                     & $captureWindow $settingsHwnd (Join-Path $artifactDir $shotName)
-                    Write-Status "CAPTURED Windows Native page=$Label language=$Language dpi=$settingsDpi screenshot=$shotName visible_resource_ids=$($pageSentinels[$PageIndex])"
+                    $statusLine = "CAPTURED Windows Native page=$Label language=$Language dpi=$settingsDpi screenshot=$shotName visible_resource_ids=$($pageSentinels[$PageIndex])"
+                    Add-Content -LiteralPath $statusFile -Value $statusLine -Encoding UTF8
+                    Write-Host $statusLine
                     return $true
                 }.GetNewClosure()
 
