@@ -169,6 +169,36 @@ def main() -> int:
     if set(page_states) != expected_states:
         raise ValueError(f"Expected 20 verified Windows experiment/page states; got {len(page_states)}: {sorted(page_states)}")
 
+    control_manifest = args.windows_dir / "windows-dark-state-controls.csv"
+    if not control_manifest.is_file():
+        raise FileNotFoundError("Windows artifact lacks page-scoped control visibility and enabled state")
+    controls_by_page: dict[tuple[str, int], dict[int, dict[str, str]]] = {}
+    with control_manifest.open(newline="", encoding="utf-8-sig") as stream:
+        for row in csv.DictReader(stream):
+            key = (row["experiment_id"], int(row["page_index"]))
+            resource_id = int(row["resource_id"])
+            if key not in page_states or row["page_resource_id"] != str(101 + key[1]) or resource_id <= 0:
+                raise ValueError(f"Control state is not attached to a verified page/resource: {row}")
+            if row["visible"].lower() not in {"true", "false"} or row["enabled"].lower() not in {"true", "false"}:
+                raise ValueError(f"Invalid Win32 control visibility/enabled state: {row}")
+            page_controls = controls_by_page.setdefault(key, {})
+            if resource_id in page_controls:
+                raise ValueError(f"Duplicate Win32 resource state for {key} resource={resource_id}")
+            page_controls[resource_id] = row
+    if set(controls_by_page) != expected_states:
+        raise ValueError(f"Expected page-scoped control state for all 20 Windows captures, got {len(controls_by_page)}")
+    for key, page_row in page_states.items():
+        controls = controls_by_page[key]
+        visible_ids = {resource for resource, control in controls.items() if control["visible"].lower() == "true"}
+        enabled_ids = {resource for resource, control in controls.items() if control["enabled"].lower() == "true"}
+        manifest_visible = {int(value) for value in page_row["visible_resource_ids"].split("|") if value}
+        manifest_enabled = {int(value) for value in page_row["enabled_resource_ids"].split("|") if value}
+        if visible_ids != manifest_visible or enabled_ids != manifest_enabled:
+            raise ValueError(f"Win32 page state summary disagrees with per-control visibility/enabled matrix for {key}")
+        page_index = key[1]
+        if not set(PAGE_SENTINELS[page_index]).issubset(visible_ids):
+            raise ValueError(f"Page control matrix does not show all visible identity sentinels for {key}")
+
     color_manifest = args.windows_dir / "windows-dark-state-colors.csv"
     if not color_manifest.is_file():
         raise FileNotFoundError("Windows artifact lacks per-page dark-theme color samples")

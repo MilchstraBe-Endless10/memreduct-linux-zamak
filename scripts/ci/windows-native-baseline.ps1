@@ -1394,12 +1394,10 @@ public static class P2CWin32 {
                     $activePages = @($currentChildren | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 })
                     if ($activePages.Count -ne 1) { throw "Experiment $($experiment.Id) expected one visible 390x273 child page after selecting '$selectedLabel'; found=$($activePages.Count)." }
                     $activePage = $activePages[0]
-                    $insidePage = @($currentChildren | Where-Object {
-                        $_.Visible -and $_.ControlId -ne 0 -and $_.Left -ge $activePage.Left -and $_.Top -ge $activePage.Top -and
-                        $_.Left -lt ($activePage.Left + $activePage.Width) -and $_.Top -lt ($activePage.Top + $activePage.Height)
-                    })
+                    $pageControls = @([P2CWin32]::GetChildWindows($activePage.Handle) | Where-Object { $_.ControlId -ne 0 })
+                    $insidePage = @($pageControls | Where-Object { $_.Visible })
                     $visibleIds = @($insidePage | ForEach-Object { $_.ControlId } | Sort-Object -Unique)
-                    $enabledIds = @($insidePage | Where-Object { $_.Enabled } | ForEach-Object { $_.ControlId } | Sort-Object -Unique)
+                    $enabledIds = @($pageControls | Where-Object { $_.Enabled } | ForEach-Object { $_.ControlId } | Sort-Object -Unique)
                     # These IDD child dialogs report GetDlgCtrlID=0 because they
                     # are hosted page windows, not resource-ID-bearing controls.
                     # Infer the active template from its unique visible resource
@@ -1438,7 +1436,7 @@ public static class P2CWin32 {
                         client_origin_x=($clientOrigin.X - $settingsRect.Left); client_origin_y=($clientOrigin.Y - $settingsRect.Top)
                         screenshot=$shotName; semantic_pair_valid=$semanticPair
                     } | Export-Csv -LiteralPath $darkExperimentPages -NoTypeInformation -Append -Encoding utf8
-                    foreach ($control in $insidePage) {
+                    foreach ($control in $pageControls) {
                         [pscustomobject]@{
                             experiment_id=$experiment.Id; page_index=$pageIndex; page_resource_id=$pageResourceId
                             resource_id=$control.ControlId; class=$control.ClassName; visible=$control.Visible; enabled=$control.Enabled
@@ -1494,13 +1492,11 @@ public static class P2CWin32 {
                 $reopenPages = @($reopenChildren | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 })
                 if ($reopenPages.Count -ne 1) { throw "Experiment $($experiment.Id) expected one visible Settings page after reopen; found=$($reopenPages.Count)." }
                 $reopenPage = $reopenPages[0]
+                if (-not $reopenNav) { throw "Experiment $($experiment.Id) Settings navigation IDC_NAV=104 was missing after reopen." }
                 $reopenLabel = if ($reopenNav) { [P2CWin32]::GetSelectedTreeText($reopenNav.Handle, [uint32]$trialProcess.Id) } else { '' }
                 $reopenMenu = & $getMenuSnapshot $trialMain
                 if (-not $reopenMenu.DarkChecked) { throw "Experiment $($experiment.Id) theme menu check did not survive Settings close and reopen." }
-                $reopenInside = @($reopenChildren | Where-Object {
-                    $_.Visible -and $_.ControlId -ne 0 -and $_.Left -ge $reopenPage.Left -and $_.Top -ge $reopenPage.Top -and
-                    $_.Left -lt ($reopenPage.Left + $reopenPage.Width) -and $_.Top -lt ($reopenPage.Top + $reopenPage.Height)
-                })
+                $reopenInside = @([P2CWin32]::GetChildWindows($reopenPage.Handle) | Where-Object { $_.Visible -and $_.ControlId -ne 0 })
                 $reopenVisibleIds = @($reopenInside | ForEach-Object { $_.ControlId } | Sort-Object -Unique)
                 $reopenPageIds = @(0..4 | Where-Object {
                     $candidateSentinels = $sentinelsByPage[$_]
@@ -1526,9 +1522,20 @@ public static class P2CWin32 {
 
                 [void][P2CWin32]::PostMessage($reopened.Handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
                 Start-Sleep -Milliseconds 300
-                [void]$trialProcess.CloseMainWindow()
+                $fileMenu = [P2CWin32]::GetSubMenu([P2CWin32]::GetMenu($trialMain), 0)
+                $exitLabel = $null
+                for ($menuIndex = 0; $menuIndex -lt [P2CWin32]::GetMenuItemCount($fileMenu); $menuIndex++) {
+                    if ([P2CWin32]::GetMenuItemID($fileMenu, $menuIndex) -eq 156) {
+                        $exitLabel = ([P2CWin32]::GetMenuItemText($fileMenu, $menuIndex) -replace '&', '').Trim()
+                        break
+                    }
+                }
+                if ($exitLabel -notmatch '^(Exit|退出)$') { throw "Experiment $($experiment.Id) could not verify source IDM_EXIT=156 in the current process locale; observed='$exitLabel'." }
+                if (-not [P2CWin32]::PostMessage($trialMain, 0x0111, [IntPtr]156, [IntPtr]::Zero)) { throw "Experiment $($experiment.Id) could not post normal File/$exitLabel IDM_EXIT=156." }
                 [void]$trialProcess.WaitForExit(5000)
-                if (-not $trialProcess.HasExited) { Stop-Process -Id $trialProcess.Id -Force -ErrorAction SilentlyContinue; throw "Experiment $($experiment.Id) process did not exit after its normal close request." }
+                if (-not $trialProcess.HasExited) { throw "Experiment $($experiment.Id) did not exit after the source-verified File/$exitLabel IDM_EXIT=156 command." }
+                if ($trialProcess.ExitCode -ne 0) { throw "Experiment $($experiment.Id) File/$exitLabel IDM_EXIT=156 returned exit code $($trialProcess.ExitCode), expected 0." }
+                Write-Status "R1 process exit experiment=$($experiment.Id) command=IDM_EXIT:156 label='$exitLabel' exit_code=$($trialProcess.ExitCode)"
                 $configs = @(Get-ChildItem -LiteralPath (Split-Path $trialExe -Parent) -Filter '*.ini' -File -ErrorAction SilentlyContinue)
                 if ($configs.Count -ne 1 -or $configs[0].Length -eq 0) { throw "Experiment $($experiment.Id) did not leave exactly one non-empty portable config beside its own executable; found=$($configs.Count)." }
                 $configFileName = "isolated-copy/$($experiment.Id)/$($configs[0].Name)"
