@@ -1,5 +1,15 @@
 # 短期记忆 / Latest Handoff
 
+## 最近记录：PR #4 改以 main 为 Base 并重新验收（2026-10-27）
+
+- 所有者授权后，仅将 PR #4 base 从 `fix/issue-1-zamak-build` 调整为 `main`；没有改 main、rebase、merge、标记 Ready 或处理 PR #5/#6/#7。PR 保持 OPEN / Draft。
+- 为保证 Base 编辑触发检查，提交 `ada1d82ef57ab76277dd6b088999e577e4f3a834`，在 `.github/workflows/p2a-r4-isolated-gui.yml` 显式加入 `pull_request.edited`；发现 `test.yml` 仍使用默认活动类型后，提交 `0067b97c6a9a3763af62e1a6990db413bc198820` 为 build-and-test 也加入 `edited`，并借真实 `synchronize` 事件取得最终 head 的完整 PR 检查。
+- 在 `0067b97c6a9a3763af62e1a6990db413bc198820` 上，PR Base 为 `main` SHA `86169a1c4c1da0150ff3495290ae165b8c80d49a`；GitHub 为 PR 合成 checkout `3d8927eac872b791ac70e08e2ae182876c56dfca`。main-base GUI run [40501262596](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40501262596) 的 Weston 与 Xvfb job 均 PASS；build run [40501262352](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40501262352) PASS。治理、shell、C 安全、Zamak 5 项单测和 Arch 原生构建均执行通过；探针 check/test/build 通过，12/12 测试通过。
+- Weston、Xvfb APT update/install 均有诊断记录且 `apt_exit_code=0`。Xvfb APT install 约 17 分钟后成功，尚无证据确认更深层原因；步骤设置 40 分钟时限。Alt+F4 触发 `CI_WINDOW_CLOSE` 与 `CI_APP_RETURNED`，两客户端退出码均为 0；Xvfb hover/press 与 press/release ROI 差各 8004 像素，语言切换差 4697，返回英文后差 0。
+- 本次 Wayland artifact ID `12733767416`，GitHub digest/独立 ZIP SHA-256 `cf6b5fcd1740df07996fa3756f431788d5f086241d3ba6f95c7e155f6c21dab9`；X11 artifact ID `12734377907`，GitHub digest/独立 ZIP SHA-256 `d9aa083317660cba7c29212fb6ebd1d62ac8199f1d1197bc54d7743fd3bb1b7f`。两包中的探针二进制 SHA-256 均为 `9f7cb6db085fc3b247a62203b2e7f60d994620639c7dc5d51997c6edd9204ce6`，源文件哈希核验通过。
+- 当前 PR #4 改动仍是隔离探针、报告/记忆及两个 CI 工作流；没有生产 UI 或特权功能改动。一个 inline review thread 仍未解决，内容是确保 Base 编辑触发检查；本轮已通过显式 `edited` 和 main-base PR CI 提供证据，留待 ChatGPT 正式复审。
+- 本记录对应已完整验收的 `0067b97…`。短期记忆随后单独提交时，必须对新 HEAD 重新运行 CI；不得将上述成功结果冒称为该后续 HEAD 的检查。
+
 ## 最近记录：P2A-R6 隔离 GUI CI 与规格提交（2026-10-25）
 
 - 规格分支 `docs/issue-3-p2a-ui-spec` 基于 P1 `11b0b9444cd94f0026b855abe3849a06106426f2`；已提交源码级规格首版 `367efce8dcdecb487595507ff7e9f275bedd96bc`，仍待更新最终 CI 记录和创建独立 Draft PR。
