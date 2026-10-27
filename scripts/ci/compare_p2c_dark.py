@@ -231,7 +231,10 @@ def main() -> int:
         for path in (windows_dark_path, windows_light_path, linux_dark_path, linux_light_path):
             if not path.is_file():
                 raise FileNotFoundError(f"Missing paired screenshot: {path.name}")
-        capture_locale = locale
+        # Windows manifests use the display label "English", while Linux
+        # capture logs use the locale key "en". Match the recorded Linux
+        # capture state using the locale key derived above.
+        capture_locale = locale_key
         if f"theme=dark locale={capture_locale} screenshot={linux_dark_path.name}" not in capture_log:
             raise ValueError(f"Linux capture log does not associate dark state with {linux_dark_path.name}")
 
