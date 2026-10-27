@@ -1,12 +1,14 @@
 # 短期记忆 / Latest Handoff
 
-## P2C-4R1 最终收口（2026-10-27）
-- PR #7 OPEN / Draft；Base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；exact-head `37d07453d60c4d1046f5aad6577c9425c271180a`。生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改；相对前一 evidence head `716a1ca` 本次只有文档/记忆更新。
-- Exact-head Actions：P2C `40454514318` 3/3 PASS；P2B `40454514305` 2/2 PASS；PR build `40454514283` 与 push build `40454508196` PASS。PR checks 7/7。Artifacts：P2C Windows/Linux/visual `12711803243` / `12712295452` / `12711458194`；P2B X11/Weston `12711258139` / `12711874600`。所有 digest、源/PNG SHA 与逐页指标在 P2C-4 报告。
-- Windows 原版四组新进程主题/语言次序均通过：20/20 页面语言、dark 勾选、导航、资源 ID 正确；200/200 控件可见；4/4 WM_CLOSE 后重开；10/10 同语言顺序对照像素差为 0。没有复现混合亮暗；104/104 区域颜色采样一致。旧错配链路仍未知。
-- 当前暗色 changed-pixel：General 10.2327%/9.1002%；Memory cleaning 12.6625%/12.4014%；Appearance 11.6311%/11.0057%；Tray icon 11.2534%/10.2744%；Advanced 5.9434%/5.4004%（EN/简中）。与 P2C-4 的旧简中读数差异为截图语义配对修正；整页 1:1 NOT PASS。
-- 回归：184/184 几何（最大 1.5 px）、导航 10/10、tree 102/102、raster 36/36 PASS；scroll 2/2 compare-only。Artifact SHA 核验 dark 155/155、visual 83/83、Linux PNG 44/44、P2C source 10/10、P2B X11 PNG 10/10、source/binary 8/8；Zamak 30/30、治理 33、Shell 4、C safety 3 PASS。
-- Weston 私有 Headless/Pixman socket 下客户端退出码 0；Wayland 输入 NOT RUN。保留 GDK seat critical、无 wl_seat 和 teardown layer `BUG`，无 SIGABRT/SEGV，根因未知。12 项中文来源差异仍 `DECISION_REQUIRED`；无真实清理、Polkit、Swap/ZRAM、root GUI、Hyprland IPC 或主机桌面输入。等待 ChatGPT 复审。
+## P2C-EXIT / P3A-PRE 当前交接（2026-10-27）
+
+- 当前工作分支 `feat/issue-3-p2c-settings-ui`；本轮起始及已复审 PR HEAD `556a727c100aad4af1a25c48c10513c4dd42c5c7`。生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；图形采集/比较源码 checkpoint `37d07453d60c4d1046f5aad6577c9425c271180a`。本轮文档增量后的最终 PR HEAD 需以推送后核验为准。
+- P2C exact-head run `40456081269` 3/3 PASS；P2B `40456081264` 2/2 PASS；PR build `40456081238`、push `40456075786` PASS。Artifacts：Windows `12711754557`、Linux Xvfb `12712308137`、visual/dark `12712685811`、P2B X11 `12712327547`、Weston `12712332463`。Digest 与 manifest counts见 P2C report。
+- 四组 Windows 新进程实验 4/4、页面语义 20/20、设置窗重开 4/4 PASS。几何 184/184（最大 1.5 px）、导航 10/10、树线 102/102、栅格 36/36 PASS；滚动状态 2/2 compare-only。深色 changed-pixel EN 5.9434%–12.6625%、简中 5.4004%–12.4014%；整页 1:1 NOT PASS。Wayland 输入 NOT RUN，Windows tray/清理对话框 BLOCKED，12 项中文差异 DECISION_REQUIRED。
+- 新增文档：`docs/PR_INTEGRATION_READINESS.md`、`docs/ADR/0004-user-preferences-persistence.md`（PROPOSED）、P2C-4 报告归档与 UI 交互矩阵 P3A 状态；long-term 仅更新已接受证据 snapshot，未把 ADR 草案升格为永久架构决策。
+- PR #2/#4/#5/#6/#7 全部 OPEN / Draft，没有合并。只读 merge-tree 发现 #4 与 P2A/P2B/P2C 的 `memory/SESSION_LOG.md`、`memory/SHORT_TERM.md` 冲突，集成必须人工合并保留双方记录。PR #4 的 12 项 probe tests 与生产 Xvfb/Weston tests 是不同能力，二者都要保留。
+- P3A 只规划语言和应用主题的用户级持久化；跟踪 Issue [#8](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/8)。目标 XDG 配置、schema 1、atomic/no-follow/0600 策略、Reset 事务与临时目录测试均见 ADR 草案。实现尚未开始；清理、Polkit、自动清理、Swap/ZRAM 仍禁用。
+- 没有执行真实清理、特权写入、用户桌面/Hyprland IPC、root GUI 或远端合并。本轮结束条件是文档审查和 Issue 交接；不进入清理功能阶段。
 ## P2C-4 前序图形证据 snapshot（历史；2026-10-27）
 
 - PR #7 OPEN / Draft；base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；当前截图/比较 evidence head `4f84fb9a9e247a5987a11cd435e5da4b05f78a53`。生产 UI 源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改；当时最新正式 ChatGPT Review 为 P2C-3R1；之后的 P2C-4 review 及 P2C-4R1 状态见本文件开头。

@@ -143,3 +143,11 @@
 - Exact-head P2C `40454514318` 3/3、P2B `40454514305` 2/2、PR build `40454514283`、push build `40454508196` 全部 PASS；PR checks 7/7。Artifact IDs/digests、逐页 PNG SHA、来源与二进制 SHA 写入 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。本地复算：visual 83/83、dark 155/155、Linux screenshots 44/44、P2C source 10/10、P2B X11 PNG 10/10、source/binary 8/8。
 - Windows 四组新进程实验 20/20 页面语义有效、10/10 顺序图像对照零像素差、4/4 WM_CLOSE 后重开、104/104 暗色区域采样未发现混合亮暗。旧错配图源头未知，不归因。当前五页双语暗色指标 5.4004%–12.6625%，整页像素 1:1 仍 NOT PASS；12 项语言来源差异维持 `DECISION_REQUIRED`。
 - Weston 13 Headless/Pixman 下主窗和设置窗客户端退出码 0；Wayland 输入 NOT RUN。保留 `gdk_seat_get_keyboard` critical、未广播 `wl_seat` 和 SIGTERM teardown layer `BUG`，根因未知。没有活动桌面操作、真实清理或特权写入。PR 等 ChatGPT 复审，不合并。
+## 2026-10-27 — P2C-EXIT / P3A-PRE 集成审计与无特权偏好设计
+
+- 基线分支 `feat/issue-3-p2c-settings-ui`，开始 HEAD `556a727c100aad4af1a25c48c10513c4dd42c5c7`，与远端一致；远端 main `080417e153d91bf2adac756e5154311fef49333f`，P1 `11b0b9444cd94f0026b855abe3849a06106426f2`，P2A `d89d74fde433da1863b4de0223f974c824fb590e`，P2B `911a3d0b99b05f15bd0109dca475b0b5174e7888`，P2C `556a727...`，probe `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1`。
+- 复核 #2/#4/#5/#6/#7 均 OPEN / Draft、GitHub mergeable=true、未授权合并。Current exact-head Actions：P2C `40456081269` 3/3、P2B `40456081264` 2/2、PR build `40456081238`、push build `40456075786` 均通过；复审要点与每个 PR 的文件范围记于 `docs/PR_INTEGRATION_READINESS.md`。
+- 只读 `git merge-tree` 模拟 sibling PR4 与 PR5/P2B/P2C 均在 `memory/SESSION_LOG.md`、`memory/SHORT_TERM.md` 内容冲突；未写工作树。PR4 12 项 probe tests 不在生产 P2B/P2C 分支，集成方案明确要求保留两类测试。
+- P2C 阶段按 ChatGPT review `5662810728` 归档：PR HEAD `556a727`、生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`、图形源码 checkpoint `37d07453d60c4d1046f5aad6577c9425c271180a`；20/20 页面语义、4/4 重开、184/184 几何 max 1.5 px、导航10/10、tree102/102、raster36/36。整页 1:1 NOT PASS；Wayland 输入 NOT RUN；tray/清理弹窗 BLOCKED；12 项中文来源差异 DECISION_REQUIRED。
+- 阅读 Zamak v0.2.0 官方 stdlib 文档：`std/fs` 有 read/write/mkdir/rename 等，但公开列表未提供 no-follow、mode、锁与 fsync API。新增 `docs/ADR/0004-user-preferences-persistence.md` PROPOSED 草案，仅支持语言与应用主题；新增 PR 集成准备度报告。未添加生产代码。
+- 已检索确认没有现成 P3A Issue，并按任务授权创建 [Issue #8](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/8)。后续将在 PR #7 留下本轮文档/设计交接链接；本轮不合并、不修改 main、不执行清理/Polkit/Swap/ZRAM/活动桌面操作。
