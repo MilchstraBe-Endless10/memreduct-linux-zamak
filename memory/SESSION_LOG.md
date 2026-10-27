@@ -100,3 +100,10 @@
 - Weston 的实际依赖安装成功但耗时 21m45，79.6 MB 以 61.6 kB/s 下载；无 DNS、包锁或包缺失证据，底层原因未确认。Wayland 主窗和设置窗客户端各退出码 0；`gdk_seat_get_keyboard` critical、未公告 `wl_seat` 与 SIGTERM 后 layer teardown `BUG` 均保留，不推断因果或声称 compositor 正常关闭。
 - 184/184 几何、10/10 导航、102/102 树线、36/36 控件栅格、2/2 中间滚动 PASS；全页像素仍 NOT PASS。Liberation Sans 未用于生产；12 项来源差异维持 `DECISION_REQUIRED`，Windows tray 与无安全清理路径的弹窗 `BLOCKED`。
 - 本轮只同步报告、交互矩阵和三层记忆，生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改。无真实清理、特权操作、本机 GUI 或活动 Hyprland 操作。
+
+## 2026-10-27 — P2C-4 evidence 修订与 Actions 最终核对（4f84fb9）
+
+- 对 PR #7 重新核对：OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`，现有正式 review 仍为 P2C-3R1，无新的 Review 或行内意见。远端和本地 evidence head `4f84fb9a9e247a5987a11cd435e5da4b05f78a53` 一致。
+- 精确 head 的 P2C run `40425954672`（Windows 原版、生产 Xvfb/XTEST、对照 3/3）、P2B `40425954460`（Xvfb/XTEST、Weston lifecycle 2/2）、PR build `40425954317` 与 push build `40425944842` 均 PASS；PR checks 7/7。artifact IDs、GitHub SHA-256 digests 和本地 manifest 计数见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
+- 最新度量 184/184 geometry，nav 10/10，tree 102/102，raster 36/36，scroll 2/2 PASS；亮色 changed-pixel 5.0741%–14.8853%，暗色 5.9434%–73.2932%，完整 1:1 NOT PASS。字体候选未进入生产；12 项原版简中来源差异保持 `DECISION_REQUIRED`。
+- 本次 APT 成功且诊断可追溯，过去下载变慢的根因仍未知。Weston 客户端退出 0，保留 GDK seat 和 Weston teardown 警告；Wayland 输入 NOT RUN。无真实清理、特权操作、活动 Hyprland 或用户桌面输入。

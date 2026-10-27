@@ -4,11 +4,11 @@
 
 ## P2C-4 最终 exact-head CI 复核
 
-PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；本轮完整截图与比较的 CI evidence head `748a61e62c597793e0acedb3f83bccb12f950285`。P2C run `40422156194` Windows 原版 + 生产 Xvfb/XTEST + visual comparison 3/3 PASS；P2B run `40422156208` production Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build `40422156138`、push build `40422151693` PASS，PR checks 7/7。Artifacts、digests、PNG/source SHA 与逐项指标见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。生产 UI 源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；本轮未改生产字体/字号/UI 源码或视觉阈值。
+PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；完整截图/比较 evidence head `4f84fb9a9e247a5987a11cd435e5da4b05f78a53`。P2C run `40425954672` Windows 原版 + 生产 Xvfb/XTEST + 比较 3/3 PASS；P2B run `40425954460` 生产 Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build `40425954317`、push build `40425944842` PASS，PR checks 7/7。Artifacts、digests、PNG/source SHA 与逐项指标见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。生产 UI 源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；本轮未改生产字体、字号、控件绘制或视觉阈值。
 
-184/184 resource geometry（最大 1.5 px）、nav 10/10、tree 102/102、raster 36/36、scroll 2/2 PASS；light changed-pixel 5.0741%–14.8853%，dark 5.9434%–73.2932%，整页 1:1 NOT PASS。深色图像是 GTK Adwaita:light runner 上应用 Canvas palette 的结果，不代表 GTK 桌面暗色主题。字体候选未应用生产；12 项简中来源差异仍 `DECISION_REQUIRED`。
+184/184 resource geometry（最大 1.5 px）、nav 10/10、tree 102/102、raster 36/36、scroll 2/2 PASS；light changed-pixel 5.0741%–14.8853%，dark 5.9434%–73.2932%，整页 1:1 NOT PASS。深色图像是在 GTK `Adwaita:light` runner 上切换应用 Canvas palette 的结果，不代表 GTK 桌面原生暗色主题。132 行文字度量记录中，120 个同源项目有 9 项宽高差≤2 px、111 项仍有差异；12 项来源/语言差异仍 `DECISION_REQUIRED`。隔离 Liberation Sans 候选未进生产：English 64/66 改善、1 退化、1 不变；简中 12/54 改善、12 退化、30 不变。
 
-APT 依赖安装均成功；P2B Weston job 的 update 成功，依赖安装 21m45s（79.6 MB / 21m32s，61.6 kB/s），未见 DNS、锁或缺包错误，根因未确认。Weston 主窗/设置窗客户端均退出 0；保留 `gdk_seat_get_keyboard` critical 与 SIGTERM teardown 的 `BUG: finalizing a layer with views still on it.` 诊断，客户端生命周期 PASS 不等于已证明 compositor clean shutdown。P2B 重复五页步骤条件跳过，由同 head P2C 覆盖。Windows tray、缺安全采集路径的清理弹窗/确认结果仍 BLOCKED；Wayland 输入 NOT RUN。没有真实清理、特权操作或活动桌面输入。
+本 head 的 APT update/install 均退出码 0：P2C Xvfb 101 MB / 13 秒，P2B Xvfb 101 MB / 7 秒，Weston 79.6 MB / 25 秒，Pillow 503 kB / 小于 1 秒。早前慢速下载的根因仍未确认。Weston 主窗/设置窗客户端均退出 0；保留 `gdk_seat_get_keyboard` critical、未公告 `wl_seat` 与 SIGTERM teardown `BUG: finalizing a layer with views still on it.` 诊断，客户端生命周期 PASS 不等于 compositor clean shutdown。P2B 重复五页步骤条件跳过，由同 head P2C 覆盖。Windows tray、缺安全采集路径的清理弹窗/确认结果仍 BLOCKED；Wayland 输入 NOT RUN。没有真实清理、特权操作或活动桌面输入。
 
 ### 前一个完整截图/对照 artifact snapshot（105d71d）
 
