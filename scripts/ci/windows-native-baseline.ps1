@@ -127,6 +127,8 @@ try {
         (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $expectedExe
     } | Select-Object -First 1
     if (-not $candidateExe) { throw 'The x64 release executable with the published SHA-256 was not found in the official archive.' }
+    $candidateExeRelativePath = $candidateExe.FullName.Substring($extractDir.Length).TrimStart(
+        [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar))
     $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($candidateExe.FullName)
     if ($version.FileVersion -notmatch '^3\.5\.2(?:\.0)?$' -and $version.ProductVersion -notmatch '^3\.5\.2(?:\.0)?$') {
         throw "Unexpected executable version: file=$($version.FileVersion), product=$($version.ProductVersion)"
@@ -1278,16 +1280,17 @@ public static class P2CWin32 {
             # Each fresh portable copy gets its own empty profile. The upstream
             # runtime treats portable.dat beside the executable as a portable
             # marker; all config writes must then resolve beside this copy.
-            foreach ($seedConfig in @(Get-ChildItem -LiteralPath $trialApp -Filter '*.ini' -File -ErrorAction SilentlyContinue)) {
+            foreach ($seedConfig in @(Get-ChildItem -LiteralPath $trialApp -Filter '*.ini' -File -Recurse -ErrorAction SilentlyContinue)) {
                 Write-Status "R1 experiment=$($experiment.Id) discarded only copied release config candidate=$(Split-Path $seedConfig.FullName -Leaf) sha256=$((Get-FileHash -Algorithm SHA256 -LiteralPath $seedConfig.FullName).Hash.ToLowerInvariant())"
                 Remove-Item -LiteralPath $seedConfig.FullName -Force
             }
-            [System.IO.File]::WriteAllBytes((Join-Path $trialApp 'portable.dat'), [byte[]]@())
-            $trialExe = Join-Path $trialApp 'memreduct.exe'
-            if (-not (Test-Path -LiteralPath $trialExe)) { $trialExe = (Get-ChildItem -LiteralPath $trialApp -Filter 'memreduct.exe' -File -Recurse | Select-Object -First 1).FullName }
-            if (-not $trialExe) { throw "Experiment $($experiment.Id) portable copy has no Mem Reduct executable." }
+            $trialExe = Join-Path $trialApp $candidateExeRelativePath
+            if (-not (Test-Path -LiteralPath $trialExe -PathType Leaf)) { throw "Experiment $($experiment.Id) does not contain the pinned executable at archive-relative path '$candidateExeRelativePath'." }
             $trialExeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $trialExe).Hash.ToLowerInvariant()
-            if ($trialExeHash -ne $expectedExe) { throw "Experiment $($experiment.Id) executable SHA does not match the pinned release asset." }
+            if ($trialExeHash -ne $expectedExe) { throw "Experiment $($experiment.Id) executable SHA mismatch at '$candidateExeRelativePath': expected=$expectedExe actual=$trialExeHash." }
+            $trialExeDirectory = Split-Path $trialExe -Parent
+            [System.IO.File]::WriteAllBytes((Join-Path $trialExeDirectory 'portable.dat'), [byte[]]@())
+            Write-Status "R1 experiment=$($experiment.Id) executable=archive-relative:$candidateExeRelativePath sha256=$trialExeHash portable_marker_directory=executable-directory"
             $trialVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($trialExe)
             $trialProcess = $null
             $trialSettings = $null

@@ -125,7 +125,7 @@ def main() -> int:
     match = WINDOW_RE.search(windows_result)
     if match is None:
         raise ValueError("Windows result.txt lacks measured settings client geometry")
-    outer_w, outer_h, client_w, client_h, origin_x, origin_y = map(int, match.groups())
+    outer_w, outer_h, client_w, client_h, legacy_origin_x, legacy_origin_y = map(int, match.groups())
     if (outer_w, outer_h, client_w, client_h) != (574, 374, 558, 335):
         raise ValueError(f"Unexpected Windows reference geometry: {outer_w}x{outer_h}/{client_w}x{client_h}")
 
@@ -182,7 +182,10 @@ def main() -> int:
             raise ValueError(f"Linux capture log does not associate dark state with {linux_dark_path.name}")
 
         win_dark = crop_windows(windows_dark_path, (int(row["client_origin_x"]), int(row["client_origin_y"])))
-        win_light = crop_windows(windows_light_path, (origin_x, origin_y))
+        # Legacy light screenshots come from the original capture sequence and
+        # use its measured client origin. The R1 dark window origin is read
+        # independently from each semantic page row above.
+        win_light = crop_windows(windows_light_path, (legacy_origin_x, legacy_origin_y))
         with Image.open(linux_dark_path) as source:
             linux_dark = source.convert("RGB")
         with Image.open(linux_light_path) as source:
