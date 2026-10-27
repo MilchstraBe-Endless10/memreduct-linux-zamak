@@ -67,3 +67,5 @@
 ### 本轮后续跟踪
 
 P3A-pre 的独立跟踪 Issue 已创建为 [#8](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/8)。这份报告中的 PR 状态、SHA、CI 和 Review 是上述审计快照；后续提交导致的 head/check 变化需在执行集成前重新核对。
+
+本报告和 ADR 随后提交至 PR #7。提交 `b1f2fd95333a26af1c3ea51e6fea4a245db640c9` 的 P2C/P2B/build-and-test PR/Push 检查均通过；该 head 仅有文档/记忆增量。最新 PR 状态与当前 head 以 GitHub PR 页面为准，不能把表格中的 `556a727` 当作当前 head。

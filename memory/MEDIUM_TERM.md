@@ -4,15 +4,15 @@
 
 ## P2C 阶段正式归档：P2C-4R1
 
-PR #7 当前仍 OPEN / Draft；已复审 HEAD `556a727c100aad4af1a25c48c10513c4dd42c5c7`，base #6 `911a3d0b99b05f15bd0109dca475b0b5174e7888`。生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；图形采集/比较源码 checkpoint `37d07453d60c4d1046f5aad6577c9425c271180a`。P2C review 接受该阶段的证据范围，但整页 1:1 未通过、Wayland 输入未运行、tray/清理弹窗仍 blocked。
+PR #7 保持 OPEN / Draft；P2C-4R1 已复审基线 HEAD `556a727c100aad4af1a25c48c10513c4dd42c5c7`，base #6 `911a3d0b99b05f15bd0109dca475b0b5174e7888`。生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；图形采集/比较源码 checkpoint `37d07453d60c4d1046f5aad6577c9425c271180a`。P2C review 接受该阶段的证据范围，但整页 1:1 未通过、Wayland 输入未运行、tray/清理弹窗仍 blocked。
 
-当前 exact-head P2C run `40456081269` 3/3 PASS；P2B run `40456081264` 2/2 PASS；PR build `40456081238`、push build `40456075786` PASS。P2C artifact：Windows `12711754557`、Linux Xvfb `12712308137`、visual/dark `12712685811`；P2B X11 `12712327547`、Weston `12712332463`。Windows PNG SHA 81/81、Linux 44/44、visual 83/83、dark 155/155 核验通过。精确 digest、PNG 集合与运行边界见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
+已复审基线 runs：P2C `40456081269` 3/3、P2B `40456081264` 2/2、PR build `40456081238`、push `40456075786` 均 PASS。随后文档回归 head `b1f2fd95333a26af1c3ea51e6fea4a245db640c9` 的 P2C `40461922846` 3/3、P2B `40461922577` 2/2、PR build `40461922736`、push `40461917796` 均 PASS，PR checks 7/7。新一轮 Windows/Linux/visual artifacts 为 `12714602648` / `12714528369` / `12714648221`，P2B X11/Weston 为 `12715275894` / `12714144687`；artifact digest 及源/PNG manifest 见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。随后纯文档提交不改产品或测试代码。
 
 四个隔离 Windows 3.5.2 进程实验 4/4 PASS；20/20 页面语义状态、4/4 Settings WM_CLOSE/reopen 通过，200/200 控件可见、196/200 启用。没有复现混合亮暗，旧错配图来源未知。几何 184/184（最大 1.5 px）、导航 10/10、树线 102/102、栅格 36/36 PASS；中间滚动 2/2 是 compare-only。有效深色配对 changed-pixel 为 English 5.9434%–12.6625%、简中 5.4004%–12.4014%；整页 1:1 `NOT PASS`。12 项中文来源差异为 `DECISION_REQUIRED`。
 
 Weston 13 Headless/Pixman 客户端退出 0；Wayland 输入 `NOT RUN`。保留 GDK seat critical、无 `wl_seat` 与 compositor teardown BUG，根因未知。没有真实清理、Polkit、Swap/ZRAM、root GUI、Hyprland IPC 或主机桌面输入。
 
-从生产 UI checkpoint 到图形源码 checkpoint 包括 `windows-native-baseline.ps1`、`compare_p2c_dark.py` 与 P2B/P2C workflow 变更；checkpoint 后到当前 HEAD 仅为报告、矩阵和记忆。详见报告中的逐文件类别，不把非 UI 改动笼统写成纯文档。
+从生产 UI checkpoint 到图形源码 checkpoint 包括 `windows-native-baseline.ps1`、`compare_p2c_dark.py` 与 P2B/P2C workflow 变更；后续 head 增量仅为报告、矩阵和记忆。详见报告中的逐文件类别，不把非 UI 改动笼统写成纯文档。
 
 ## P3A-pre：无特权偏好持久化设计
 
