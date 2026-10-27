@@ -1,12 +1,13 @@
 # 短期记忆 / Latest Handoff
 
-## 当前集成状态（2026-10-27；本地模拟，未推送）
+## 当前集成状态（2026-10-28；PR #5 Base 迁移前快照）
 
-- main 为 459415001a7e3538e9496eeb90b8ee75a7378f14；PR #2、#4 已合并。PR #5 仍 OPEN / Draft，base 为 fix/issue-1-zamak-build、head d89d74fde433da1863b4de0223f974c824fb590e；PR #6 仍以该 #5 head 为 base（head 911a3d0b99b05f15bd0109dca475b0b5174e7888）；PR #7 仍以 #6 head 为 base（head b7ea31e6aea121b0b606866704f52ac0ddfe8be8）。#5/#6/#7 均未合并，仍为 Draft。
-- P2B/P2C 生产 UI、Windows 原生采集与视觉比较均来自尚未合并的 #6/#7 分支证据，不代表当前 main；P2C-4R1 的几何为 184/184 PASS、最大偏差 1.5 px，整页 1:1 NOT PASS，Wayland/Hyprland 真实输入 NOT RUN，托盘及清理确认/结果受限。
-- 12 项简中来源差异仍为 DECISION_REQUIRED；未批准文案改动。
-- 本 worktree 从 #5 head d89d74f… 模拟并入 main 4594150…；只发现 SHORT_TERM.md 与 SESSION_LOG.md 两处冲突，已准备保留两侧历史的本地解决稿。该稿尚未提交或推送，不改变 PR Base、任何远端分支或 main。
-- 合并候选本地验证：治理检查 29 项、C/Python 安全测试 3 项、8 个 Shell 脚本语法、root Zamak 0.2.0 check/test（5/5）/build、独立探针 check/test（12/12）/build、`git diff --check` 和敏感内容审计均 PASS。探针源码 SHA-256 仍为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。
+- main 为 `459415001a7e3538e9496eeb90b8ee75a7378f14`；PR #2、#4 已合并。PR #5 仍 OPEN / Draft，当前旧 Base 为 `fix/issue-1-zamak-build`（`11b0b9444cd94f0026b855abe3849a06106426f2`）。其 P2A 集成 Merge Commit `4996c83103c72484f20a435118711cddc0aea244` 已推送到 `docs/issue-3-p2a-ui-spec`，Tree 为 `3afdf06d4dd3e1375ba7864d78f9572229950cca`；按序双亲是原 PR #5 Head `d89d74fde433da1863b4de0223f974c824fb590e`、main `459415001a7e3538e9496eeb90b8ee75a7378f14`。
+- 此快照记录的是 PR #5 改 Base 前状态，不能当作改 Base 后的当前目标。PR #6 仍 OPEN / Draft，Head `911a3d0b99b05f15bd0109dca475b0b5174e7888`，以 PR #5 分支为 Base；GitHub 当前报告 `mergeable=false`，需单独解决与复审。PR #7 仍 OPEN / Draft，Base 为 PR #6，Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`。#5/#6/#7 均未合并。
+- P2B/P2C 生产 UI、Windows 原生采集与视觉比较仍来自未合并的 #6/#7 分支，不代表当前 main；P2C-4R1 几何为 184/184 PASS，最大偏差 1.5 px；整页 1:1 NOT PASS，Wayland/Hyprland 真实输入 NOT RUN，托盘及清理确认/结果受限。
+- 12 项简中来源差异仍为 `DECISION_REQUIRED`；未批准文案改动。
+- 本地模拟集成的原始历史和来源 SHA 保留在下方及 `memory/SESSION_LOG.md`；该历史条目描述的是当时的本地模拟，不再代表 PR #5 当前远端状态。
+- 已推送集成树的本地验证记录：治理 29 项、C/Python 安全测试 3 项、Shell 语法、根项目 Zamak 0.2.0 check/test（5/5）/build、独立探针 check/test（12/12）/build、`git diff --check` 与敏感内容审计均 PASS。探针源码 SHA-256 为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。这些结果来自改 Base 前的 `4996c831…`。
 
 
 ## 历史验收记录：PR #4 main Base 迁移（2026-10-27）
