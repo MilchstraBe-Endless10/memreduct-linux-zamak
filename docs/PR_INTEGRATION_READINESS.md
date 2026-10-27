@@ -1,8 +1,8 @@
 # PR 集成准备度审计
 
-审计时间：2026-10-27；PR 元数据、Review、Actions 和只读合并模拟对应本轮开始时的远端快照。仅使用 GitHub PR 元数据、现有 review/Actions 结果、本地远端引用和 `git merge-tree` 的只读合并模拟；没有合并、改写或推送分支。
+审计时间：2026-10-27。下方表格保留开始审计时的快照（P2C head `556a727...`）；文末补充了随后精确核验的 `663a9d3...` 快照。PR 元数据、Review、Actions 和只读合并模拟来自 GitHub 与本地远端引用；集成模拟没有写入工作树、修改 PR base 或执行合并。本报告作为既有 PR #7 的文档增量交付。
 
-## 当前远端快照
+## 初始审计快照（P2C head `556a727...`）
 
 本地与 `origin` 的工作分支 HEAD 均为 `556a727c100aad4af1a25c48c10513c4dd42c5c7`，工作树干净。GitHub 当前可见的五个 PR 均为 OPEN / Draft，GitHub 的 mergeability 字段均为 `MERGEABLE`；这只表示 PR 的当前 base/head 能自动合并，不代表已获审查批准，也不代表 stacked PR 的最终集成无冲突。
 
@@ -24,7 +24,7 @@
 | #4 | 12 个文件：独立 workflow、Canvas probe、Xvfb/Weston 脚本、来源记录、测试说明与记忆 | 测试专用。原有 9 个事件路由测试函数保留，新增 3 项几何/语言测试，总计 12 项。 |
 | #5 | 14 个文件：上游 UI 规格、交互矩阵、兼容性、捕获清单、AGENTS/PRD/架构及记忆 | 规格与项目规则；保留 Windows v3.5.2 唯一基准及 Linux API 语义边界。 |
 | #6 | 16 个文件：生产 `src/main.zm`、`memory.zm`、`policy.zm`、几何、C UI 测试桥接、生产 Xvfb/Weston workflow 与报告 | 真实生产主窗口测试，不是 probe；内存清理仍关闭。 |
-| #7 | 28 个文件：生产设置 UI 与几何、C 测试桥接、Windows 采集/比较脚本、P2B/P2C workflow、视觉报告/交互矩阵/记忆 | 生产设置页和 Windows/Linux 证据比较；没有新增生产清理路径。Windows 原生二进制仅在隔离 Runner 验证，未列入仓库文件；Windows 专有字体未打包。 |
+| #7 | 30 个文件（当前 GitHub changed-file 列表）：生产设置 UI 与几何、C 测试桥接、Windows 采集/比较脚本、P2B/P2C workflow、视觉报告/交互矩阵/记忆 | 生产设置页和 Windows/Linux 证据比较；没有新增生产清理路径。Windows 原生二进制仅在隔离 Runner 验证，未列入仓库文件；Windows 专有字体未打包。 |
 
 ### PR #4 能力是否重复
 
@@ -69,3 +69,14 @@
 P3A-pre 的独立跟踪 Issue 已创建为 [#8](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/8)。这份报告中的 PR 状态、SHA、CI 和 Review 是上述审计快照；后续提交导致的 head/check 变化需在执行集成前重新核对。
 
 本报告和 ADR 随后提交至 PR #7。提交 `b1f2fd95333a26af1c3ea51e6fea4a245db640c9` 的 P2C/P2B/build-and-test PR/Push 检查均通过；该 head 仅有文档/记忆增量。最新 PR 状态与当前 head 以 GitHub PR 页面为准，不能把表格中的 `556a727` 当作当前 head。
+
+## PR #7 当前快照补充（2026-10-27；核验 head `663a9d3e627ccb2d9bcb884cd708f140006f58a5`）
+
+PR #7 仍 OPEN / Draft，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`；当前 GitHub 文件列表为 30 项。`663a9d3` 只更正了 P2C 报告中 `b1f2fd9` 的文件清单，没有生产 UI、测试脚本或 workflow 变化。
+
+- P2C Windows 原版采集、生产 Xvfb 和视觉比较 [run `40463959137`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40463959137) 的 3 个 job 全部通过。Artifacts：Windows `12715378285` (`sha256:74bb6d72079937afb32f6ff57ad384aef673d9a861e8b31f25b1280ce72032f2`)、Linux X11 `12716186528` (`sha256:11f27c8c728d6e8922b26aa36ef22a28d2fcc6a0751bade382bc34984739978d`)、比较 `12715319837` (`sha256:bfed79350d706676c6dc3ca972a73ff04d2b9e7736137d931002679fcc7811b7`)。
+- P2B 主窗口 [run `40463959086`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40463959086) 的 Xvfb 和 Weston 最终 attempt 2 均通过。首次 Weston attempt 因 15 秒内没有出现有界退出标记而超时；该失败日志与 artifact `12716375114` 保留。只重跑失败的 Weston job 后通过，最终 artifact `12716440984` (`sha256:8629bb9567ae529d431b251cd5777f845e2044662f4855ff2199060d08091704`)；X11 artifact `12716220331` (`sha256:8a7a626d1a8ffa15fc0cddb6237f5c724f52bc0fc8a3826f07b9576b75bf67d3`)。日志没有 compositor 崩溃证据；首次超时根因未确认。
+- PR build [run `40463959092`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40463959092) 与 push build [run `40463951002`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40463951002) 均通过；必要检查最终 7/7 通过。P2B 中重复的设置页 step 条件跳过，由同一 head 的 P2C Xvfb 作业实际覆盖。
+- 该 head 的几何 184/184（最大分量偏差 1.5 px）、导航 10/10、树线 102/102、控件栅格 36/36、中间滚动 2/2 compare-only。十组 light 对照为 5.0741%–14.8853%，均优于 P2C-2；整页像素 1:1 仍 NOT PASS。Windows 深色/语言独立实验 4/4、语义页面状态 20/20、设置窗重开 4/4；Wayland 输入仍 NOT RUN。
+
+此快照更新不更改建议的集成顺序或用户批准门槛；进入集成前仍须重新读取所有 PR 的远端 SHA、Review 和 checks。

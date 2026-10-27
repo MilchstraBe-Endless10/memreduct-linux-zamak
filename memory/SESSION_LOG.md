@@ -153,3 +153,10 @@
 - 已检索确认没有现成 P3A Issue，并按任务授权创建 [Issue #8](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/8)。PR #7 顶层交接评论为 [issuecomment-6435453708](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7#issuecomment-6435453708)；本轮不合并、不修改 main、不执行清理/Polkit/Swap/ZRAM/活动桌面操作。
 - 首次文档提交 `b1f2fd95333a26af1c3ea51e6fea4a245db640c9` 已推送到既有 PR #7。精确该 head 的 P2C/P2B/PR build/push Actions `40461922846` / `40461922577` / `40461922736` / `40461917796` 全成功；比较器再次报告 184/184 几何、36/36 栅格、10/10 导航、102/102 树线，整页 1:1 仍 NOT PASS。Artifacts 和 ZIP digest 已补入 P2C 报告。
 - 本轮本机只做了 `git diff --check` 和提交内容敏感路径扫描，没有运行本机项目测试；最新 GitHub hosted checks 是 b1f2fd9 上的成功作业。本会话最后追加的证据整理仍是文档/记忆变更，不改应用、测试脚本或 workflow。
+
+## 2026-10-27 — PR 集成报告校正与 663a9d3 exact-head 复核
+
+- 复核远端 PR #7 为 OPEN / Draft，head `663a9d3e627ccb2d9bcb884cd708f140006f58a5`、base #6 `911a3d0b99b05f15bd0109dca475b0b5174e7888`；PR checks 7/7 PASS。#2/#4/#5/#6 仍 OPEN / Draft，head/base 未变。PR #7 仍关联既有评论 `issuecomment-6435453708`。
+- 663a9d3 的 P2C run `40463959137` 3/3 PASS，P2B run `40463959086` 最终 2/2 PASS；PR build `40463959092`、push build `40463951002` PASS。P2B Weston 首次 attempt 超时（退出标记在 15 秒内未出现），失败 artifact `12716375114` 保留；只重跑该失败 job 后成功，artifact `12716440984`。日志没有 compositor crash 证据，超时根因未确认。P2C/P2B artifacts、GitHub digests 及几何/视觉值列在 `docs/PR_INTEGRATION_READINESS.md`。
+- `PR_INTEGRATION_READINESS.md` 将 #7 changed-file 数修正为 30，并将 556a727 初始审计标明为历史快照，避免与 663a9d3 当前状态混淆。只改文档/记忆，没有 UI、采集/比较源码或 workflow 变化。本机 `verify_project.py` 33 项、C/Python 安全 3/3、Shell 语法、Zamak 0.2.0 check/test/build（30/30）均通过。
+- P2C 接受基线、Wayland 输入 NOT RUN、tray/清理弹窗 BLOCKED、整页 1:1 NOT PASS、12 项中文差异 DECISION_REQUIRED 均保持原判定。Issue #8 开放；ADR-0004 仍 PROPOSED。无合并、强推、main/其他 PR 分支修改、特权操作或主机桌面触碰。

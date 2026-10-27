@@ -1,5 +1,13 @@
 # 短期记忆 / Latest Handoff
 
+## 最新复核（2026-10-27；P2C-EXIT / P3A-PRE）
+
+- 开始本轮时分支与 `origin/feat/issue-3-p2c-settings-ui` 同为 `663a9d3e627ccb2d9bcb884cd708f140006f58a5`；PR #7 OPEN / Draft，base #6 `911a3d0b99b05f15bd0109dca475b0b5174e7888`。本轮待提交内容是集成报告时间/文件数更正及记忆补录，未改生产 UI、测试源码或 workflow。
+- PR #7 当前 checks 7/7 PASS。P2C run [40463959137](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40463959137) 原版采集、生产 Xvfb、比较 3/3 PASS；P2B run [40463959086](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40463959086) 最终 Xvfb/Weston 2/2 PASS。Weston 首次 attempt 因 15 秒内无有界退出标记超时，失败 artifact `12716375114` 保留；只重跑失败 job 后 artifact `12716440984` 对应成功 attempt 2，根因仍未确认、无 compositor 崩溃证据。构建 PR/push runs `40463959092` / `40463951002` PASS。Artifact IDs、digests 及视觉指标详见集成报告。
+- 该 HEAD 的几何 184/184（最大偏差 1.5 px）、导航 10/10、树线 102/102、控件栅格 36/36、滚动比较 2/2；Windows 四组主题/语言实验 4/4、页面状态 20/20、设置窗重开 4/4。整页像素 1:1 NOT PASS，Wayland 输入 NOT RUN，Windows tray/清理弹窗 BLOCKED，12 项中文来源差异仍 `DECISION_REQUIRED`。
+- PR #2/#4/#5/#6/#7 均 OPEN / Draft，远端 head/base 与集成报告表格一致；无 PR 合并、main 或其他分支修改。P3A Issue [#8](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/8) 已建；ADR-0004 为 PROPOSED、未批准且未实现。实际仍无清理、Polkit、Swap/ZRAM、活动 Hyprland 或主机桌面操作。
+- 本轮本机验证：`verify_project.py` 33 项 PASS；C/Python 安全测试 3/3 PASS；Shell 语法 PASS；Zamak 0.2.0 `check` PASS、`test` 30/30、`build` PASS。仅文档和记忆有改动，未执行本机 GUI、Arch 安装构建或特权测试。
+
 ## P2C-EXIT / P3A-PRE 当前交接（2026-10-27）
 
 - 当前工作分支 `feat/issue-3-p2c-settings-ui`；P2C-4R1 已复审 HEAD `556a727c100aad4af1a25c48c10513c4dd42c5c7`，生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`，图形采集/比较源码 checkpoint `37d07453d60c4d1046f5aad6577c9425c271180a`。P2C-EXIT/P3A-pre 首次文档提交 `b1f2fd95333a26af1c3ea51e6fea4a245db640c9` 的 exact-head CI 已完成；本条目随后的提交只补充该运行证据与术语更正，不改生产或测试代码。

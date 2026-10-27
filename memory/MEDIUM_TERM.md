@@ -21,6 +21,8 @@ Weston 13 Headless/Pixman 客户端退出 0；Wayland 输入 `NOT RUN`。保留 
 ## PR 集成审计
 
 `docs/PR_INTEGRATION_READINESS.md` 记录 #2/#4/#5/#6/#7 当前 SHA、CI、Review、文件边界、PR #4 能力保留方案和模拟合并结果。只读 merge-tree 检查发现 #4 与 #5/#6/#7 的 `memory/SESSION_LOG.md`、`memory/SHORT_TERM.md` 有真实 sibling 冲突，须保留双方历史。五个 PR 全部 OPEN/Draft，当前不执行合并或 base 修改。
+
+2026-10-27 后续复核：PR #7 远端 HEAD 为 `663a9d3e627ccb2d9bcb884cd708f140006f58a5`，精确 HEAD checks 7/7 PASS。该快照的 P2B Weston 首次尝试超时、失败 artifact 保留；仅重跑失败 job 后生命周期 job 通过，超时根因未知。该更新不改变 P2C 归档结论或 P3A ADR 状态；P3A 仍待架构复审，不开始实现。
 ## P2C-4 前序 exact-head CI 复核（历史 snapshot）
 
 PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；完整截图/比较 evidence head `4f84fb9a9e247a5987a11cd435e5da4b05f78a53`。P2C run `40425954672` Windows 原版 + 生产 Xvfb/XTEST + 比较 3/3 PASS；P2B run `40425954460` 生产 Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build `40425954317`、push build `40425944842` PASS，PR checks 7/7。Artifacts、digests、PNG/source SHA 与逐项指标见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。生产 UI 源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；本轮未改生产字体、字号、控件绘制或视觉阈值。
