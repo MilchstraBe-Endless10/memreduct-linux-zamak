@@ -1,14 +1,12 @@
 # 短期记忆 / Latest Handoff
 
 ## P2C-4R1 当前收口（2026-10-27）
-
-- PR #7 OPEN / Draft；已完成图形证据对应 HEAD `c84771063e6b349828e012463222b82bc57dd479`，其测试/采集代码与 evidence source HEAD `7369db05f9d3e02c6e973f455922ee783b6b16cf` 相同，新增提交只同步报告、交互矩阵与记忆。生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`，本轮未改。
-- c847 exact-head P2C run `40448208937` 3/3 PASS；P2B run `40448208791` 2/2 PASS；PR build `40448208724` 和 push build `40448202360` PASS。Artifacts：P2C Windows/Linux/comparison `12709690360` / `12708759424` / `12709710212`，P2B X11/Weston `12708669133` / `12709227100`。所有 archive digest、截图/source SHA 和 manifest 计数见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
-- 四个隔离 Windows 进程实验分别覆盖 English→Dark→Settings、简中→Dark→Settings、Dark→简中→Settings、English→Dark→简中→English。20/20 页面语言/主题/导航/页面资源 ID 语义检查 PASS；同语言顺序截图 SHA 相同、十组顺序图像变化为 0；关闭再开设置窗 4/4 恢复。未复现混合亮暗。旧简中图 SHA `39798741089e5de00cfadd7d349448f4dabde7c6a22143be4fd6447726faf77c` 导航 Advanced、内容 General；错配根因未确认。
-- R1 有效暗色差异率 EN/简中：General 10.2327%/9.1002%；Memory cleaning 12.6625%/12.4014%；Appearance 11.6311%/11.0057%；Tray icon 11.2534%/10.2744%；Advanced 5.9434%/5.4004%。这是语义配对读数，不是视觉改善；全页 1:1 仍 NOT PASS。
-- 回归保持 184/184 几何、10/10 导航、102/102 树线、36/36 控件 raster、2/2 中间滚动 PASS。Windows PNG 81/81、Linux PNG 44/44、comparison 83/83、dark manifest 155/155、source 10/10；P2B X11 PNG/source-binary 10/10、8/8。
-- P2B 重复设置页 step 条件跳过，由同 SHA P2C Xvfb 五页测试覆盖。Wayland 仅客户端生命周期 PASS、输入 NOT RUN；保留 GDK seat critical、无 `wl_seat` 和 Weston teardown `BUG`。没有真实清理、Polkit、Swap/ZRAM、root GUI、本机 GUI、Hyprland IPC 或桌面输入注入。12 项简中来源差异仍 `DECISION_REQUIRED`。P2C 阶段现交 ChatGPT 复审；没有开始特权清理功能。
-
+- PR #7 OPEN / Draft；最终 exact-head 90b23084f0f5f31f15f7b5983b19999ea37a70bc，base 911a3d0b99b05f15bd0109dca475b0b5174e7888。生产 GUI checkpoint 6502342489e1e0a6dfc1877f826f89cab1ed0a9b 未改；图形/采集输入由 source manifest 绑定。
+- Exact-head P2C run 40449858329 3/3 PASS；P2B run 40449858347 2/2 PASS；PR build 40449858304 与 push build 40449852425 PASS。Artifacts：P2C Windows/Linux/comparison 12709528954 / 12710625392 / 12709712520；P2B X11/Weston 12709933995 / 12710380599。Archive digests 及 APT diagnostics 见 docs/P2C-4_FONT_THEME_MENU_REPORT.md。
+- 四个隔离 Windows v3.5.2 进程依次测试 English→Dark→Settings、简中→Dark→Settings、Dark→简中→Settings、English→Dark→简中→English。20/20 页语言/主题/导航/资源 ID 核对通过；顺序对照 10/10 零像素差；设置窗 WM_CLOSE 后重开 4/4 PASS。没有复现混合亮暗，旧截图错配环节仍未知。
+- 有效暗色差异率 EN/简中：General 10.2327%/9.1002%；Memory cleaning 12.6625%/12.4014%；Appearance 11.6311%/11.0057%；Tray icon 11.2534%/10.2744%；Advanced 5.9434%/5.4004%。是有效语义配对的比较数据，不是整体像素改善；全页 1:1 NOT PASS。
+- 回归：184/184 几何（最大 1.5 px）、10/10 导航、102/102 树线、36/36 栅格、2/2 中间滚动 PASS。SHA 复算：dark 155/155、visual 83/83、Linux PNG 44/44、P2C source 10/10、P2B X11 PNG 10/10、source/binary 8/8。zam test 30/30，Zamak check/build、治理 33、Shell 4、C 安全 3 均 PASS。
+- P2B 重复五页测试 step 条件 SKIPPED，由同 HEAD P2C Xvfb 完整覆盖。Wayland 仅客户端生命周期 PASS、输入 NOT RUN；保留 GDK seat critical、无 wl_seat 和 Weston layer teardown BUG 诊断。12 项中文来源差异仍 DECISION_REQUIRED；没有清理/Polkit/Swap/ZRAM/root GUI/Hyprland/用户桌面操作。
 ## P2C-4 最终图形证据 snapshot（2026-10-27）
 
 - PR #7 OPEN / Draft；base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；当前截图/比较 evidence head `4f84fb9a9e247a5987a11cd435e5da4b05f78a53`。生产 UI 源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改；最新正式 ChatGPT Review 仍为 P2C-3R1，无新 Review 或行内评论。
