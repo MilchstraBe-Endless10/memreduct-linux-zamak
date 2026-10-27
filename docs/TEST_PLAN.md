@@ -15,6 +15,27 @@
 | G10 packaging | clean Arch VM or disposable host | install → use → uninstall | all files tracked, helper perms correct |
 | G11 release | GitHub PR + CI | signed/traceable commit, checksum, binary audit | reproducible provenance, known risks in notes |
 
+## P1 — Zamak 0.2.0 qualification (2026-10-25)
+
+Environment: Omarchy 4.0.6 (Arch-based), Hyprland 0.56.2, Wayland, GTK 3.24.52, Zamak 0.2.0. Source branch `fix/issue-1-zamak-build`, based on `080417e153d91bf2adac756e5154311fef49333f`.
+
+| Command / exercise | Status | Evidence |
+|---|---|---|
+| `python3 scripts/verify_project.py` | PASS | 29 required project/governance checks passed. |
+| `python3 -m unittest discover -s tests -v` | PASS | 3 C safety tests passed, including dry-run and unprivileged denial coverage. |
+| `bash -n` on each `scripts/*.sh` | PASS | `build-arch.sh`, `install-arch.sh`, `uninstall-arch.sh`, and `publish-github.sh` parsed successfully. |
+| `zam --version` | PASS | `0.2.0`. |
+| `zam check .` | PASS | `CHECK OK memreduct_zamak`. |
+| `zam test .` | PASS | 5 passed, 0 failed. |
+| `zam build .` | PASS | Produced `build/memreduct_zamak-00ee9d44b77125b6721133332f35be3f1f9d3d518e7ab20b40d8265940928d57`. |
+| `bash scripts/build-arch.sh` | PASS | Re-ran Zamak check/tests/build and compiled `build/memreduct-zamak-helper`. |
+| `build/memreduct-zamak-helper --dry-run` | PASS | Reported no kernel state modified. |
+| GUI launch and refresh | PASS | Launched as the normal user on Wayland (`xwayland=false`); Chinese UI, RAM/cache/Swap readings, controls, periodic refresh, and normal close were observed; process exited 0. |
+
+GitHub Actions `build-and-test` passed on code SHA `1d4654867f59154981010007288cff1fda42f457` for both events: [push run 40170617141](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170617141) and [pull request run 40170634633](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170634633). The documentation follow-up at `9b5177e992eb1c86b72643a0ae2c0cda9a570555` also passed both events: [push run 40170749833](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170749833) and [pull request run 40170752581](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170752581).
+
+The installer candidate pattern matched the Zamak output name and excluded the `-test-` binary. `ldd` reported no missing libraries. The install/uninstall scripts were not executed because they modify `/usr`. Polkit authorization end-to-end was not exercised. No cleanup action or automatic mode was activated, and `/proc/sys/vm/drop_caches`, Swap, and ZRAM were not modified. GitHub Actions status is recorded in `memory/SHORT_TERM.md` after the PR run.
+
 ## Test reporting contract
 `command / platform / SHA / status(PASS|FAIL|NOT_RUN) / evidence / risk`. **NOT_RUN != PASS**.
 Track p95 UI response, cold-cache re-read latency, memory available before/after, and exact branch build. Avoid marketing “up to X% performance gain” unless independently benchmarked.

@@ -1,22 +1,37 @@
 # 短期记忆 / Latest Handoff
 
-日期：2026-10-25；任务：P0 GitHub bootstrap、远端核验及 P1 编译验收 Issue 交接。
+日期：2026-10-25；任务：P1 Zamak 0.2.0 编译与原生构建验收。
 
 ## 执行范围
-保留 v0.2.0 原型源码；按 `scripts/publish-github.sh` 建立目标 PUBLIC 仓库并推送 `main`，核验远端 SHA/可见性，记录测试和 CI 证据，创建 P1 编译验收 Issue。未新增功能。
+按 Issue #1 修复 Zamak 0.2.0 编译/构建问题，保留现有 GUI 与特权边界；运行本机 Arch/Omarchy 验收，准备关联 Issue 的 Draft PR。工作分支 `fix/issue-1-zamak-build`，基于 `origin/main` / `080417e153d91bf2adac756e5154311fef49333f`。未修改 main，未扩展功能。
 
-## 事实和证据
-- 初始工作目录尚无 `.git`；`gh api user --jq .login` 返回目标账号 `MilchstraBe-Endless10`。发布脚本的 PUBLIC 精确短语确认已按提示完成。
-- 仓库：<https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak>，visibility `PUBLIC`，默认分支 `main`。
-- 初次 bootstrap 提交：`02ca561b41d55611a131338bdca50243e78c4aa7`；当时 `git rev-parse HEAD` 与 `git ls-remote origin refs/heads/main` 完全一致。
-- 提交作者邮箱使用该 GitHub 账号的 noreply 地址；未把本机 Git 个人邮箱写入提交。发布前扫描未发现凭据格式、本机绝对路径、`.pem`/`.key`/`.env`/`id_rsa` 文件。
-- `python3 scripts/verify_project.py`：PASS，29 项项目/治理文件存在且许可证与 manifest 检查通过。
-- `python3 -m unittest discover -s tests -v`：PASS，3 项 C 安全测试通过；没有写真实 `/proc/sys/vm/drop_caches`。
-- `bash -n`：`scripts/build-arch.sh`、`scripts/install-arch.sh`、`scripts/publish-github.sh`、`scripts/uninstall-arch.sh` 全部通过。
-- 发布主机 `zam --version`：NOT RUN，主机未安装 `zam`（命令退出 127）。
-- GitHub Actions `build-and-test` run [40169273278](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40169273278)：FAIL。CI 安装并报告 Zamak `0.2.0`，治理检查、shell syntax、3 项 C 测试均通过；`zam check .` 失败，原文 `zam: project.name must be an identifier`。`zam test .` 与 native build 因此跳过。
-- P1 Issue #1：<https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/1>，范围为 Zamak 0.2.0 检查/测试/构建验收。
-- P0 未验证 Zamak 原生构建、Hyprland GUI、Polkit 授权端到端或真实缓存写操作。
+## 实际改动
+- `zam.toml`：Zamak `project.name` 从非法连字符形式改为合法标识符 `memreduct_zamak`；产品显示名、仓库名、安装命令和 helper 仍保留 `memreduct-zamak`。
+- `src/memory.zm`：将不存在的无参 `split()` 调整为 Zamak 0.2.0 支持的 `words()`，并正确传播解析错误。
+- `scripts/install-arch.sh`：按 `memreduct_zamak-<hex-hash>` 匹配 GUI 二进制，避免把 `-test-` 测试产物当作应用。
+- `scripts/verify_project.py`：将 manifest 标识符检查同步为 `memreduct_zamak`。
 
-## 下一步
-按 P1 Issue #1 在 Arch 实机修复 manifest/toolchain 构建问题，记录真实 `zam check/test/build` 结果；不要扩展功能，也不要把 skipped 命令报为 PASS。
+## 本机验证证据
+环境：Omarchy 4.0.6、Hyprland 0.56.2、Wayland、GTK 3.24.52、Zamak 0.2.0。
+
+| 命令 / 验收 | 状态与实际结果 |
+|---|---|
+| `python3 scripts/verify_project.py` | PASS，29 项检查。 |
+| `python3 -m unittest discover -s tests -v` | PASS，3 项 C 安全测试。 |
+| `bash -n`，逐个检查 `scripts/*.sh` | PASS，4 个脚本。 |
+| `zam --version` | PASS，`0.2.0`。 |
+| `zam check .` | PASS，`CHECK OK memreduct_zamak`。 |
+| `zam test .` | PASS，5 passed，0 failed。 |
+| `zam build .` | PASS，输出 `build/memreduct_zamak-00ee9d44b77125b6721133332f35be3f1f9d3d518e7ab20b40d8265940928d57`。 |
+| `bash scripts/build-arch.sh` | PASS；Zamak 检查/测试/构建及 C Helper 均成功。 |
+| Helper `--dry-run` | PASS；未修改内核状态。 |
+| Hyprland GUI smoke test | PASS；普通用户 Wayland 窗口，中文/内存数据/控件/刷新可见，`xwayland=false`，正常关闭，退出码 0。未点击清理、未启用自动清理。 |
+
+安装器候选扫描只匹配 GUI 产物；之前的动态库检查未发现缺失库。未执行涉及 `/usr` 的安装/卸载；Polkit E2E、真实 `drop_caches`、Swap/ZRAM 操作均未运行。无任何真实内核清理写入。
+
+## GitHub / 下一步
+- 当前已验证 `gh` 账号为目标 `MilchstraBe-Endless10`；目标仓库仅为 `MilchstraBe-Endless10/memreduct-linux-zamak`。
+- 代码提交 `1d4654867f59154981010007288cff1fda42f457` 使用 GitHub noreply 邮箱；文档验收记录后续提交 `9b5177e992eb1c86b72643a0ae2c0cda9a570555`。记录该状态时，`git ls-remote` 与本地 HEAD 相同，工作树干净。
+- Draft PR #2：<https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/2>，base `main`，该次核验的 head 为 `9b5177e992eb1c86b72643a0ae2c0cda9a570555`，正文 `Refs #1`。PR 仍为 OPEN / Draft。
+- Actions `build-and-test` 对代码提交成功：push run [40170617141](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170617141)，pull_request run [40170634633](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170634633)。只含文档记录的后续提交也成功：push run [40170749833](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170749833)，pull_request run [40170752581](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170752581)。
+- 等待 ChatGPT 复审及用户决定是否合并；不得自动合并或进入 P2。

@@ -1,5 +1,5 @@
 [project]
-name = "memreduct-zamak"
+name = "memreduct_zamak"
 version = "0.2.0"
 description = "Unofficial Linux-native memory cache manager built with Zamak"
 entry = "src/main.zm"

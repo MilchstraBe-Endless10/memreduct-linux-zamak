@@ -16,6 +16,6 @@ if missing:
     raise SystemExit('Missing required files: '+', '.join(missing))
 if 'GNU GENERAL PUBLIC LICENSE' not in (root/'LICENSE').read_text():
     raise SystemExit('License content does not look like GPL')
-if 'name = "memreduct-zamak"' not in (root/'zam.toml').read_text():
+if 'name = "memreduct_zamak"' not in (root/'zam.toml').read_text():
     raise SystemExit('Unexpected Zamak project identifier')
 print(f'PASS: {len(required)} required project and governance files present; GPL and manifest sanity checked')

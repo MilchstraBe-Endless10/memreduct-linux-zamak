@@ -24,7 +24,7 @@ pub fn read_key(text: &string, key: &string) -> i64:
         let parts = line.split(":")
         if len(parts) < 2: continue
         if parts[0] != key: continue
-        let fields = parts[1].trim().split()
+        let fields = parts[1].words()
         if len(fields) == 0: return 0
         return string.parse_i64(fields[0]) catch e: 0
     return 0
@@ -44,7 +44,7 @@ pub fn parse(text: &string) -> Snapshot!string:
 
 pub fn sample() -> Snapshot!string:
     let text = fs.read("/proc/meminfo")?
-    parse(text)
+    parse(text)?
 
 pub fn mib(kib: i64) -> i64:
     kib // 1024
