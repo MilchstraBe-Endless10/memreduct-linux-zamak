@@ -1367,7 +1367,7 @@ public static class P2CWin32 {
                 $outerHeight = $settingsRect.Bottom - $settingsRect.Top
                 $clientWidth = $settingsClientRect.Right - $settingsClientRect.Left
                 $clientHeight = $settingsClientRect.Bottom - $settingsClientRect.Top
-                if (($outerWidth, $outerHeight, $clientWidth, $clientHeight) -ne (574, 374, 558, 335)) {
+                if ($outerWidth -ne 574 -or $outerHeight -ne 374 -or $clientWidth -ne 558 -or $clientHeight -ne 335) {
                     throw "Experiment $($experiment.Id) Settings geometry changed: outer=${outerWidth}x${outerHeight} client=${clientWidth}x${clientHeight}."
                 }
                 $localeFromSettings = $null
