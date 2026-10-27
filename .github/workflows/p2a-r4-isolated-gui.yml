@@ -7,24 +7,46 @@ on:
   pull_request:
     branches:
       - fix/issue-1-zamak-build
+      - main
 
 permissions:
   contents: read
+
+# Separate push/PR evidence; never cancel an in-progress evidence run.
+concurrency:
+  group: p2a-r4-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   wayland-headless:
     name: GTK Canvas lifecycle (Weston Headless / Pixman)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # R5 run-resolved v4 commit
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # R5 run-resolved v4 commit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, Node 24
         with:
           node-version: '22'
-      - name: Install runner-only dependencies
+      - name: Update APT indexes (Weston runner)
+        timeout-minutes: 10
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2a-r4-wayland
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libgtk-3-dev pkg-config weston wayland-utils
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh update
+      - name: Install Weston runner dependencies
+        timeout-minutes: 40
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2a-r4-wayland
+        run: |
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config weston wayland-utils
       - name: Install pinned Zamak
         run: npm install --global @veyralux/zamak@0.2.0
       - name: Build probe and run 12 tests (nine preserved)
@@ -37,26 +59,42 @@ jobs:
         run: bash scripts/ci/p2a-wayland-headless.sh "$RUNNER_TEMP/p2a-r4-wayland/probe/p2a_r4_canvas_probe"
       - name: Upload Wayland evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # R5 run-resolved v4 commit
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
         with:
           name: p2a-r4-wayland-headless
           path: ${{ runner.temp }}/p2a-r4-wayland
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   x11-input:
     name: GTK Canvas input (Xvfb / XTEST)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # R5 run-resolved v4 commit
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # R5 run-resolved v4 commit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, Node 24
         with:
           node-version: '22'
-      - name: Install runner-only dependencies
+      - name: Update APT indexes (X11 runner)
+        timeout-minutes: 10
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2a-r4-x11
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential libgtk-3-dev pkg-config xvfb xdotool x11-utils imagemagick openbox
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh update
+      - name: Install X11 runner dependencies
+        timeout-minutes: 40
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2a-r4-x11
+        run: |
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config xvfb xdotool x11-utils imagemagick openbox
       - name: Install pinned Zamak
         run: npm install --global @veyralux/zamak@0.2.0
       - name: Build probe and run 12 tests (nine preserved)
@@ -69,9 +107,9 @@ jobs:
         run: bash scripts/ci/p2a-xvfb-gui.sh "$RUNNER_TEMP/p2a-r4-x11/probe/p2a_r4_canvas_probe"
       - name: Upload X11 evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # R5 run-resolved v4 commit
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
         with:
           name: p2a-r4-x11-input
           path: ${{ runner.temp }}/p2a-r4-x11
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
