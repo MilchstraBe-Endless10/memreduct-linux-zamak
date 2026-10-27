@@ -92,3 +92,11 @@
 - P2C Artifacts: Windows `12695303623`, Linux X11 `12694879677`, visual/dark/font `12694609240`; P2B: X11 `12696373914`, Weston `12695762656`;诊断附件和每个 ZIP digest 记录在 P2C-4 report。复核 P2B X11 10/10 screenshot SHA、6 个源码 SHA 及 production/helper 二进制 SHA；生产窗口正常关闭 exit 0。P2C PNG 清单 Windows 41/41、Linux 44/44、visual 83/83、dark 70/70、source 10/10 匹配。
 - 几何/局部栅格保持 184/184、导航 10/10、tree 102/102、raster 36/36、中段滚动 2/2 PASS；明/暗全页差异率范围仍分别 5.0741%–14.8853% / 5.9434%–73.2932%，1:1 NOT PASS。12 项来源差异 `DECISION_REQUIRED`；Windows tray 和没有无副作用获取路径的 clean popup/confirmation/result 仍 BLOCKED。
 - 无生产源代码改动；本次提交仅同步 exact-head 报告/交互矩阵/记忆。未执行清理、Polkit、Swap/ZRAM、root GUI、活动 Hyprland IPC 或主机桌面输入；推送后按 PR 页面核对新文档 head 的 Actions。
+
+## 2026-10-27 — P2C-4 最终 exact-head 闭环（748a61e）
+
+- 对 PR #7 的最新正式 Review 与所有行内评论完成复核；最新仍是 P2C-3R1，CI gate 接受、整体 1:1 NOT PASS。PR 为 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`。
+- 对应 evidence head `748a61e62c597793e0acedb3f83bccb12f950285` 的 P2C run `40422156194` (3/3)、P2B run `40422156208` (2/2)、PR build `40422156138`、push build `40422151693` 均 PASS，PR checks 7/7。Windows/Linux/visual artifacts、APT diagnostics、digest 与 PNG/source SHA 清单记录于 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
+- Weston 的实际依赖安装成功但耗时 21m45，79.6 MB 以 61.6 kB/s 下载；无 DNS、包锁或包缺失证据，底层原因未确认。Wayland 主窗和设置窗客户端各退出码 0；`gdk_seat_get_keyboard` critical、未公告 `wl_seat` 与 SIGTERM 后 layer teardown `BUG` 均保留，不推断因果或声称 compositor 正常关闭。
+- 184/184 几何、10/10 导航、102/102 树线、36/36 控件栅格、2/2 中间滚动 PASS；全页像素仍 NOT PASS。Liberation Sans 未用于生产；12 项来源差异维持 `DECISION_REQUIRED`，Windows tray 与无安全清理路径的弹窗 `BLOCKED`。
+- 本轮只同步报告、交互矩阵和三层记忆，生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改。无真实清理、特权操作、本机 GUI 或活动 Hyprland 操作。
