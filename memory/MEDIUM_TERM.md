@@ -126,3 +126,10 @@ PR #7 的 Xvfb/XTEST + Weston run `40284909745` 两项通过，Windows native ba
 - ADR-0002: 独立最小权限 helper + 手动缓存回收优先。
 - ADR-0003: GitHub + 三层记忆 + 双 AI 审核制。
 - 下一行动：P2C-4R1 证据已闭环，等待 ChatGPT 对 PR #7 的独立复审及用户对 12 项原版简中来源差异的产品决策；本次不合并 PR，也不开始特权清理开发。真实 Windows/Linux 全页像素 1:1 验收仍未通过。
+
+
+## P3A-PRE-R1 文档架构复核（2026-10-27）
+- 当前复审对象 PR #7 基线 `629fc3f88ee91d0cc3582d6be1789991fc3f72b6`，仍 OPEN / Draft，base #6 `911a3d0b99b05f15bd0109dca475b0b5174e7888`。ChatGPT review `5663699910` 接受 P2C-EXIT/集成审计，ADR-0004 仅条件接受且仍 PROPOSED；没有 P3A 实现授权。
+- ADR 修正覆盖：预 rename 失败保持旧目标；rename 成功后新名已可见；目录 fsync 失败为 `VISIBLE_DURABILITY_UNCERTAIN`，安全回读协调 UI；普通保存锁内重读并拒绝覆盖损坏、不可读、future schema 或不安全配置；Reset/未来 schema 降级需要不同确认和备份；XDG/HOME 根 symlink 目录以已校验 dirfd 为锚，app/叶节点 no-follow；稳定 `preferences.lock` 校验 UID/mode/nlink，释放不 unlink。
+- 推荐默认 `zh-CN + light` 仍待所有者确认。范围仍只有语言、应用主题；12 项上游简中来源差异保持 `DECISION_REQUIRED`。
+- 最新集成快照和五 PR 状态/检查链接、#4 probe 保留和 memory 冲突规则、PR #6 内存失败重绘 evidence 与拟回复已更新到 `docs/PR_INTEGRATION_READINESS.md`。当前 PR #6 thread `discussion_r4371210356` 仍 unresolved/non-outdated；现有 exact-head Xvfb 证据已核验，但本轮未回复或关闭线程。

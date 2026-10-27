@@ -80,3 +80,80 @@ PR #7 仍 OPEN / Draft，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15
 - 该 head 的几何 184/184（最大分量偏差 1.5 px）、导航 10/10、树线 102/102、控件栅格 36/36、中间滚动 2/2 compare-only。十组 light 对照为 5.0741%–14.8853%，均优于 P2C-2；整页像素 1:1 仍 NOT PASS。Windows 深色/语言独立实验 4/4、语义页面状态 20/20、设置窗重开 4/4；Wayland 输入仍 NOT RUN。
 
 此快照更新不更改建议的集成顺序或用户批准门槛；进入集成前仍须重新读取所有 PR 的远端 SHA、Review 和 checks。
+
+
+## P3A-PRE-R1 当前复核快照（2026-10-27；审计对象 head `629fc3f88ee91d0cc3582d6be1789991fc3f72b6`）
+
+本节更新此前过期的 #7 快照，不删除历史状态。核验时工作树与 `origin/feat/issue-3-p2c-settings-ui` 均为 `629fc3f88ee91d0cc3582d6be1789991fc3f72b6`，干净；PR #7 仍 OPEN / Draft，base #6 `911a3d0b99b05f15bd0109dca475b0b5174e7888`。五个 PR 都是 OPEN / Draft，GitHub 对各自**当前 base/head** 返回 MERGEABLE；这不是审批或合并授权。
+
+| PR | 当前 head → base | 最新可核验检查 | 当前审查状态 |
+|---|---|---|---|
+| [#2](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/2) | `11b0b9444cd94f0026b855abe3849a06106426f2` → `main` `080417e153d91bf2adac756e5154311fef49333f` | build-and-test PR/Push `40170875463` / `40170872595`：2/2 成功 | 仍为 Draft；P1 编译门槛接受，安装/Polkit/内核清理未验收。 |
+| [#4](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/4) | `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1` → P1 `11b0b9444cd94f0026b855abe3849a06106426f2` | GUI PR/Push `40192531809` / `40192528601`：Xvfb 与 Weston 通过；build `40192531948` / `40192528611`：通过；当前 rollup 6/6 | P2A-R6 测试里程碑接受，PR 仍 Draft。保留独立探针，不以 #6/#7 生产 GUI 测试替代。 |
+| [#5](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/5) | `d89d74fde433da1863b4de0223f974c824fb590e` → P1 `11b0b9444cd94f0026b855abe3849a06106426f2` | build PR/Push `40198617901` / `40198615044`：2/2 成功 | 文档规格 PR 仍 Draft；在真正集成前须以当前源文件重做完整复审。 |
+| [#6](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/6) | `911a3d0b99b05f15bd0109dca475b0b5174e7888` → #5 `d89d74fde433da1863b4de0223f974c824fb590e` | 生产 Xvfb/Weston `40208944364` 2/2；build `40208944120`；当前 rollup 6/6 | P2B-2 技术范围接受；像素验收未通过。采样失败重绘线程仍未解决且非 outdated，见下文证据与拟回复。 |
+| [#7](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7) | `629fc3f88ee91d0cc3582d6be1789991fc3f72b6` → #6 `911a3d0b99b05f15bd0109dca475b0b5174e7888` | P2C `40465893251` 3/3；P2B Xvfb/Weston `40465893241` 2/2；build PR `40465893268` 与 push `40465886984` 通过；PR 当前 rollup 7/7 | P2C-4R1 工程证据范围接受；整页像素 1:1 未通过，Wayland 输入未运行，托盘/清理窗口受阻，12 项简中来源差异仍 `DECISION_REQUIRED`。最新 P3A-PRE review `5663699910` 接受 P2C-EXIT/集成审计，但 ADR-0004 仍条件接受且**未批准实现**。 |
+
+### P2C-4R1 归档基线
+
+- 已复审历史 HEAD：`556a727c100aad4af1a25c48c10513c4dd42c5c7`；生产 UI checkpoint：`6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。
+- Windows 四组隔离语言/主题顺序实验 4/4、页面语义状态 20/20、设置窗口关闭重开 4/4；控件几何 184/184（最大分量偏差 1.5 px）、导航 10/10、树线 102/102、控件栅格 36/36。
+- 有效深色配对 changed-pixel 为 5.4004%–12.6625%；整页 1:1 `NOT PASS`。Wayland 真实输入 `NOT RUN`；托盘与清理弹窗 `BLOCKED`；12 项上游简中来源差异 `DECISION_REQUIRED`。
+- 旧混合主题错配截图继续保留为历史无效配对；新复验没有证明其根因，也没有复现该现象，不得删除旧源图或反向声称已确认缺陷原因。
+
+### PR #4 独立探针保留与触发器
+
+PR #4 的 12 项独立 Canvas probe 测试（其中原有 9 项事件路由函数保持）以及它自己的 Xvfb/XTEST、Weston 脚本和来源说明在 #6/#7 中没有被复制。#6/#7 测试的是生产应用，能力对象不同；集成后两个测试族都必须保留并运行。
+
+已从 PR #4 head 分支读取 `.github/workflows/p2a-r4-isolated-gui.yml`：
+
+```yaml
+on:
+  push:
+    branches:
+      - test/issue-3-isolated-gui
+  pull_request:
+    branches:
+      - fix/issue-1-zamak-build
+permissions:
+  contents: read
+```
+
+若 #4 的 base 未来改到 `main`，在改 base 之前须把 `pull_request.branches` 改为 `main` 并复核 `push` 的意图；不可以假设 PR 事件会因分支名称相近而触发。保持 `contents: read`、12 项测试、真实 XTEST/Weston 步骤和 artifacts，不因生产测试重叠而删除探针。
+
+### 记忆文件冲突处理规则
+
+只读 sibling 合并模拟确认 #4 与 #5/#6/#7 在 `memory/SHORT_TERM.md` 和 `memory/SESSION_LOG.md` 存在冲突。解决时：
+
+1. 两侧按日期追加各自阶段记录，保留原始 SHA、测试事实和来源；不得整文件选择一侧或删除旧记录。
+2. 将共同事件去重时只删除可证明完全相同的重复段，不能合并掉不同分支独有证据；每段注明来源 PR/分支和被测 SHA。
+3. 最新状态另加短摘要，历史段仍保留。若无法确认事实冲突，保留两条并标为待核，不自行折中。
+4. 冲突处理提交后重新运行治理检查，并在每一次实际合并后重新检查祖先关系、PR head/base 以及新的 exact-main CI。
+
+### PR #6 采样失败重绘线程：代码与证据
+
+线程 [`discussion_r4371210356`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/6#discussion_r4371210356) 仍为未解决、非 outdated。本轮只核验证据并给出拟回复，不关闭或直接回复该线程。
+
+- 在当前 PR #6 源码中，`src/main.zm` 的 `refresh()` 失败分支（约 327–339 行）将 `sample_ok=false`，清零旧样本字段，更新状态，随后明确调用 `s.canvas.redraw()` 再返回；test mode 记录 `CI_MEMORY_INVALIDATED redraw_requested=true`。
+- `scripts/ci/p2b-production-xvfb.sh` 第 277–312 行先截取成功样本，再通过 CI-only C bridge 注入非特权采样失败，等待 `CI_MEMORY_INVALIDATED` 与 `CI_DRAW_SAMPLE state=unavailable values=em-dash`，重新截屏并用 `assert_changed` 验证 ROI 像素变化，同时要求错误必须是指定注入错误，并核对清理保持 `action=none`。
+- exact-head Actions [run `40465893241`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40465893241)，Xvfb job `122061088384` 成功。关联 X11 artifact `12717146938`，GitHub digest `sha256:d9c99dcaa330aa76c25be8ef60332ad61cb082e5a951fd3ca153369ff9f8bfd5`；下载后 `client.log` SHA-256 `39ef3d24f255df6cd3ccbdd90fd7cf280105933ea130a8351aeccc84c06d08c2`，其中实际出现上述三个标记。该 artifact 对应 PR #7 head `629fc3f...` 的 CI merge ref；生产代码来自 #6 的 `911a3d0...`。源码 Git blob `src/main.zm=ef5d77d0d7a24b6ed40d5aee174b90ddb0010d05`，Xvfb 脚本 blob `bdaaf32175b4e39983633464293b388836b22b33`。
+- 此证据证明隔离 Xvfb 中注入失败后 UI 发出重绘请求、进入 em-dash 状态且图像变化；它不证明 Wayland、Hyprland 或系统级写入审计。
+
+**拟回复文本（保留给审查线程，不在本轮代替审查者关闭）：**
+
+> Fixed in the P2B-2 source at `src/main.zm`: the failed-sample branch clears the previous values, marks the sample unavailable, calls `s.canvas.redraw()`, and only then returns. The production Xvfb test injects a later non-privileged sampling failure after live samples, requires `CI_MEMORY_INVALIDATED redraw_requested=true` and `CI_DRAW_SAMPLE state=unavailable values=em-dash`, and checks a changed readout crop. This passed on the PR #7 exact-head workflow run 40465893241 (Xvfb job 122061088384); artifact 12717146938 contains the client log and before/after screenshots. This verifies the isolated Xvfb failure-to-redraw path; it does not claim Wayland input or syscall-level kernel-write auditing. Please re-review this evidence before resolving the thread.
+
+### P3A-PRE-R1 ChatGPT Review 对应表
+
+| Review 要点 | 文档处理 | 仍需复审/边界 |
+|---|---|---|
+| [review `5663699910`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7#pullrequestreview-5663699910)：P2C-EXIT 与集成审计接受；ADR 条件接受、不可实现 | 本节补入 P2C 固定验收基线与五 PR 当前快照；ADR 状态继续为 `PROPOSED`，明确不授权实现。 | P2C 的 1:1、Wayland 输入、tray/清理弹窗依旧未验收。 |
+| [thread `4386187875`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7#discussion_r4386187875)：rename 成功后目录 fsync 失败必须表达不确定 | ADR §2.1–2.4 增加 `VISIBLE_DURABILITY_UNCERTAIN`、安全回读、运行时协调、状态转换和注入测试。 | 不确定时不假装回滚；重试不得重放 rename。 |
+| [thread `4386187883`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7#discussion_r4386187883)：锁内重读异常不能被默认值静默覆盖 | ADR §2.2、§3、§6 区分损坏/不可读/未来 schema/权限与安全对象状态；普通保存失败关闭，Reset/恢复独立确认。 | future schema 需额外降级警告并先制作安全备份。 |
+| [thread `4386187887`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7#discussion_r4386187887)：祖先路径、合法根 symlink、锁文件和权限 | ADR §1.1–1.2 规定根目录 fd 锚定、允许用户配置的根目录 symlink、拒绝 app/叶节点 symlink、openat2/openat 回退、固定稳定锁文件、UID/mode/nlink 检查及不 unlink。 | 仅普通用户权限；无 root、Polkit 或路径兜底写入。 |
+
+PR #7 的五个旧 inline 线程在该快照均为 outdated；上述三个新 ADR 线程当时未解决且非 outdated。本次只记录逐项处理，不批量 resolve。PR #6 的采样线程也保持未关闭，等待审查者核对上述拟回复。
+
+### 后续集成顺序与门槛
+
+候选顺序仍为 #2 → #4 → #5 → #6 → #7，需项目所有者对每一次实际合并单独批准。#4 改 base 前更新并验证 workflow 分支过滤；#4 与 #5 合入时按上文 append-only 规则人工解决记忆冲突；依赖 PR 在父项合并后重读祖先关系并审查新的 diff；每次实际合并后先运行新的 exact-main CI，再开始下一项。最后从最终 main 完成 Arch 原生构建、Zamak check/test/build、项目治理、C/Python 安全与 shell 检查。此节仅为只读准备方案，不改变任何 PR base、分支或 main。

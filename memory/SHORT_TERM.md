@@ -267,3 +267,11 @@
 - Draft PR #2：<https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/2>，base `main`，该次核验的 head 为 `9b5177e992eb1c86b72643a0ae2c0cda9a570555`，正文 `Refs #1`。PR 仍为 OPEN / Draft。
 - Actions `build-and-test` 对代码提交成功：push run [40170617141](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170617141)，pull_request run [40170634633](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170634633)。只含文档记录的后续提交也成功：push run [40170749833](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170749833)，pull_request run [40170752581](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40170752581)。
 - 等待 ChatGPT 复审及用户决定是否合并；不得自动合并或进入 P2。
+
+
+## P3A-PRE-R1 当前进度（2026-10-27；基线 629fc3f）
+- 远端 fetch 后本地/远端 P2C 分支一致 `629fc3f88ee91d0cc3582d6be1789991fc3f72b6`，工作树开始时干净；未切换分支、未合并、未改 base/main。
+- 核对 ChatGPT review `5663699910` 和三个新 ADR 线程：`4386187875`（rename 后 fsync 状态）、`4386187883`（损坏配置保存）、`4386187887`（路径/锁/权限）。ADR 保持 PROPOSED，修订详见 `docs/ADR/0004-user-preferences-persistence.md`。
+- 当前 exact baseline PR #7 checks 7/7：P2C `40465893251`、P2B `40465893241`、build PR `40465893268`；P2B push build `40465886984` 也通过。证据检查 artifact `12717146938` digest `sha256:d9c99dcaa330aa76c25be8ef60332ad61cb082e5a951fd3ca153369ff9f8bfd5`，client.log SHA-256 `39ef3d24f255df6cd3ccbdd90fd7cf280105933ea130a8351aeccc84c06d08c2`。该 Xvfb 日志含失败注入、立即 redraw 请求和 em-dash 状态标记。
+- PR #4 workflow 触发器已从远端文件核实：push `test/issue-3-isolated-gui`，pull_request base filter `fix/issue-1-zamak-build`，权限 `contents: read`。若改 base 到 main，须先更新 PR 过滤条件。独立的 12 项 probe tests 不得被生产 GUI 测试替代。
+- 本地验证 PASS：`python3 scripts/verify_project.py` 33 项；`python3 -m unittest discover -s tests -v` 3/3；`bash -n scripts/*.sh scripts/ci/*.sh`；Zamak 0.2.0 `check`、`test` 30/30、`build`；`git diff --check`。本轮仅文档/记忆改动，未运行图形或桌面操作。

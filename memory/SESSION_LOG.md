@@ -160,3 +160,13 @@
 - 663a9d3 的 P2C run `40463959137` 3/3 PASS，P2B run `40463959086` 最终 2/2 PASS；PR build `40463959092`、push build `40463951002` PASS。P2B Weston 首次 attempt 超时（退出标记在 15 秒内未出现），失败 artifact `12716375114` 保留；只重跑该失败 job 后成功，artifact `12716440984`。日志没有 compositor crash 证据，超时根因未确认。P2C/P2B artifacts、GitHub digests 及几何/视觉值列在 `docs/PR_INTEGRATION_READINESS.md`。
 - `PR_INTEGRATION_READINESS.md` 将 #7 changed-file 数修正为 30，并将 556a727 初始审计标明为历史快照，避免与 663a9d3 当前状态混淆。只改文档/记忆，没有 UI、采集/比较源码或 workflow 变化。本机 `verify_project.py` 33 项、C/Python 安全 3/3、Shell 语法、Zamak 0.2.0 check/test/build（30/30）均通过。
 - P2C 接受基线、Wayland 输入 NOT RUN、tray/清理弹窗 BLOCKED、整页 1:1 NOT PASS、12 项中文差异 DECISION_REQUIRED 均保持原判定。Issue #8 开放；ADR-0004 仍 PROPOSED。无合并、强推、main/其他 PR 分支修改、特权操作或主机桌面触碰。
+
+
+## 2026-10-27 — P3A-PRE-R1 ADR 与集成审计修正
+
+- 基线 `629fc3f88ee91d0cc3582d6be1789991fc3f72b6`，PR #7 OPEN / Draft。先复核 AGENTS、长期/中期/短期记忆、P2C 报告、UI 矩阵、测试计划、ADR、Issue #8 和 ChatGPT review `5663699910`。
+- PR #2/#4/#5/#6/#7 仍全 OPEN / Draft；未做 merge/base/ref 修改。#4 远端 workflow 过滤条件、PR #6 尚未解决的采样失败线程及 exact-head CI artifact 均实查。
+- 已修订 ADR-0004：明确定义类型化 load/store 结果、rename 与目录 fsync 的状态转换、不确定提交回读协调、重试和幂等规则、损坏/future-schema 恢复/Reset、路径根 symlink 与 fd-relative 安全策略、稳定锁文件及故障注入测试。默认和实现授权仍待产品/架构审批。
+- 已更新 `docs/PR_INTEGRATION_READINESS.md` 的当前 PR 快照、P2C-4R1 归档、#4 测试能力保留、记忆文件冲突处理、PR #6 Review 拟回复和 P3A Review 对应表。三个 ADR inline 线程仅记录处理，不直接 resolve；PR #6 thread 仍未回复/未关闭。
+- exact-head #7 CI 基线 runs `40465893251`、`40465893241`、`40465893268` 均成功；PR#7 7/7。已下载 Xvfb artifact `12717146938` 并核验 `client.log` 中采样失败、失效 redraw 与 unavailable/em-dash 标记；artifact digest 和日志 SHA 写入集成报告。
+- 本地验证 PASS：治理检查 33 项、Python/C 安全测试 3/3、Shell 语法、Zamak 0.2.0 check/test/build（30/30）、`git diff --check`。变更仅文档/记忆。待提交推送后检查新 HEAD Actions，再向 Issue #8 添加带最终 SHA/CI 结果的 P3A-PRE-R1 评论。
