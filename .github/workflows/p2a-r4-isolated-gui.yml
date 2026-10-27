@@ -5,6 +5,11 @@ on:
     branches:
       - test/issue-3-isolated-gui
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
     branches:
       - fix/issue-1-zamak-build
       - main
