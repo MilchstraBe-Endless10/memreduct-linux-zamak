@@ -1290,7 +1290,7 @@ public static class P2CWin32 {
             if ($trialExeHash -ne $expectedExe) { throw "Experiment $($experiment.Id) executable SHA mismatch at '$candidateExeRelativePath': expected=$expectedExe actual=$trialExeHash." }
             $trialExeDirectory = Split-Path $trialExe -Parent
             [System.IO.File]::WriteAllBytes((Join-Path $trialExeDirectory 'portable.dat'), [byte[]]@())
-            Write-Status "R1 experiment=$($experiment.Id) executable=archive-relative:$candidateExeRelativePath sha256=$trialExeHash portable_marker_directory=executable-directory"
+            & $writeStatusClosure "R1 experiment=$($experiment.Id) executable=archive-relative:$candidateExeRelativePath sha256=$trialExeHash portable_marker_directory=executable-directory"
             $trialVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($trialExe)
             $trialProcess = $null
             $trialSettings = $null
