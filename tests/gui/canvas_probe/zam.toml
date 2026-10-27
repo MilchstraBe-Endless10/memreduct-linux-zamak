@@ -1,0 +1,6 @@
+[project]
+name = "p2a_r4_canvas_probe"
+version = "0.2.0"
+description = "Non-privileged Zamak Canvas interaction probe; not Mem Reduct"
+entry = "src/main.zm"
+modules = "src"
