@@ -1197,7 +1197,7 @@ public static class P2CWin32 {
                 language_menu_checked=$Snapshot.LanguageMenuChecked; dark_menu_state=$Snapshot.DarkMenuState
                 dark_checked=$Snapshot.DarkChecked; screenshot=$Screenshot; semantic_state=$SemanticState; notes=$Notes
             } | Export-Csv -LiteralPath $darkExperimentTransitions -NoTypeInformation -Append -Encoding utf8
-            Write-Status "R1 experiment=$Experiment step=$Step action=$Action menu_locale=$($Snapshot.MenuLocale) language_checked=$($Snapshot.LanguageMenuChecked) theme_menu_state=$($Snapshot.DarkMenuState) dark_checked=$($Snapshot.DarkChecked) screenshot=$Screenshot semantic=$SemanticState"
+            & $writeStatusClosure "R1 experiment=$Experiment step=$Step action=$Action menu_locale=$($Snapshot.MenuLocale) language_checked=$($Snapshot.LanguageMenuChecked) theme_menu_state=$($Snapshot.DarkMenuState) dark_checked=$($Snapshot.DarkChecked) screenshot=$Screenshot semantic=$SemanticState"
         }.GetNewClosure()
 
         $selectLanguage = {
