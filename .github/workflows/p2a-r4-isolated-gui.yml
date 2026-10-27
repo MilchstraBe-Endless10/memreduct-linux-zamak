@@ -32,6 +32,7 @@ jobs:
         env:
           APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2a-r4-wayland
         run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
           sudo env \
             "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
             "ImageOS=${ImageOS:-unknown}" \
@@ -42,6 +43,7 @@ jobs:
         env:
           APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2a-r4-wayland
         run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
           sudo env \
             "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
             "ImageOS=${ImageOS:-unknown}" \
@@ -80,6 +82,7 @@ jobs:
         env:
           APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2a-r4-x11
         run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
           sudo env \
             "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
             "ImageOS=${ImageOS:-unknown}" \
@@ -90,6 +93,7 @@ jobs:
         env:
           APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2a-r4-x11
         run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
           sudo env \
             "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
             "ImageOS=${ImageOS:-unknown}" \
