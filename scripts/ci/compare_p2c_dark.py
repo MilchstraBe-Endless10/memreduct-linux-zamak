@@ -16,6 +16,8 @@ from PIL import Image, ImageChops, ImageStat
 PAGES = ("General", "Memory cleaning", "Appearance", "Tray icon", "Advanced")
 PAGES_ZH = ("常规", "内存清理", "外观", "托盘图标", "高级")
 EXPERIMENT_LOCALES = {"A": "English", "B": "zh-CN", "C": "zh-CN", "D": "English"}
+PAGE_SENTINELS = ((116, 123), (124, 125, 131), (133, 139, 140), (141, 148, 152), (153, 154))
+PAGE_IDENTITY_METHOD = "unique-visible-resource-sentinels+IDC_NAV-text"
 WINDOW_RE = re.compile(
     r"settings geometry outer=(\d+)x(\d+) client=(\d+)x(\d+).*?client_origin_in_window=(\d+),(\d+)"
 )
@@ -141,10 +143,17 @@ def main() -> int:
             expected_nav = PAGES[page_index] if locale == "English" else PAGES_ZH[page_index]
             if locale is None or row["locale_expected"] != locale or row["locale_from_settings"] != locale:
                 raise ValueError(f"Unverified language state for experiment={experiment}, page={page_index}: {row}")
-            if row["dark_checked"].lower() != "true" or row["page_resource_id"] != str(101 + page_index):
+            if (row["menu_locale"] != locale or row["dark_checked"].lower() != "true"
+                    or int(row["dark_menu_state"], 16) & 0x8 == 0
+                    or row["page_resource_id"] != str(101 + page_index)
+                    or row.get("page_identity_method") != PAGE_IDENTITY_METHOD
+                    or row.get("page_root_control_id") != "0"):
                 raise ValueError(f"Unverified dark/menu or Win32 page resource for experiment={experiment}, page={page_index}: {row}")
             if row["selected_nav"] != expected_nav or row["semantic_pair_valid"].lower() != "true":
                 raise ValueError(f"Navigation selection does not match the actual page for experiment={experiment}, page={page_index}: {row}")
+            visible_ids = {int(value) for value in row["visible_resource_ids"].split("|") if value}
+            if not set(PAGE_SENTINELS[page_index]).issubset(visible_ids):
+                raise ValueError(f"Visible Win32 child controls do not identify IDD {101 + page_index}: {row}")
             if row["settings_outer"] != "574x374" or row["settings_client"] != "558x335":
                 raise ValueError(f"Unexpected fresh-process Settings geometry for experiment={experiment}, page={page_index}")
             origin_x, origin_y = int(row["client_origin_x"]), int(row["client_origin_y"])
@@ -159,6 +168,21 @@ def main() -> int:
     expected_states = {(experiment, page) for experiment in EXPERIMENT_LOCALES for page in range(5)}
     if set(page_states) != expected_states:
         raise ValueError(f"Expected 20 verified Windows experiment/page states; got {len(page_states)}: {sorted(page_states)}")
+
+    color_manifest = args.windows_dir / "windows-dark-state-colors.csv"
+    if not color_manifest.is_file():
+        raise FileNotFoundError("Windows artifact lacks per-page dark-theme color samples")
+    color_counts: dict[tuple[str, int], int] = {}
+    with color_manifest.open(newline="", encoding="utf-8-sig") as stream:
+        for row in csv.DictReader(stream):
+            key = (row["experiment_id"], int(row["page_index"]))
+            if key not in page_states or row["page_resource_id"] != str(101 + key[1]):
+                raise ValueError(f"Dark-theme color sample is not bound to a verified page: {row}")
+            if row["semantic_state"] != "dark_menu_checked=True" or not re.fullmatch(r"#[0-9A-Fa-f]{6}", row["rgb"]):
+                raise ValueError(f"Invalid theme state or RGB sample in Windows color matrix: {row}")
+            color_counts[key] = color_counts.get(key, 0) + 1
+    if set(color_counts) != expected_states or any(count < 5 for count in color_counts.values()):
+        raise ValueError(f"Expected at least five state-bound color samples for each Windows page; got {color_counts}")
 
     out = args.output_dir / "dark-theme"
     out.mkdir(parents=True, exist_ok=True)

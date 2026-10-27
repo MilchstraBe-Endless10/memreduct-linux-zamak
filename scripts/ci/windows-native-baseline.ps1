@@ -1135,7 +1135,7 @@ public static class P2CWin32 {
 
         'experiment_id,sequence,process_id,step,action,expected_locale,menu_locale,language_menu_checked,dark_menu_state,dark_checked,screenshot,semantic_state,notes' |
             Set-Content -LiteralPath $darkExperimentTransitions -Encoding UTF8
-        'experiment_id,sequence,process_id,locale_expected,locale_from_settings,menu_locale,dark_menu_state,dark_checked,page_index,page_resource_id,selected_nav,visible_resource_ids,enabled_resource_ids,settings_outer,settings_client,client_origin_x,client_origin_y,screenshot,semantic_pair_valid' |
+        'experiment_id,sequence,process_id,locale_expected,locale_from_settings,menu_locale,dark_menu_state,dark_checked,page_index,page_resource_id,page_root_control_id,page_identity_method,selected_nav,visible_resource_ids,enabled_resource_ids,settings_outer,settings_client,client_origin_x,client_origin_y,screenshot,semantic_pair_valid' |
             Set-Content -LiteralPath $darkExperimentPages -Encoding UTF8
         'experiment_id,page_index,page_resource_id,resource_id,class,visible,enabled,x,y,width,height' |
             Set-Content -LiteralPath $darkExperimentControls -Encoding UTF8
@@ -1392,20 +1392,26 @@ public static class P2CWin32 {
                     $selectedLabel = [P2CWin32]::GetSelectedTreeText($nav.Handle, [uint32]$trialProcess.Id)
                     $currentChildren = @([P2CWin32]::GetChildWindows($trialSettings.Handle))
                     $activePages = @($currentChildren | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 })
-                    $activePage = $activePages | Where-Object { $_.ControlId -eq (101 + $pageIndex) } | Select-Object -First 1
-                    if (-not $activePage) {
-                        $candidateIds = ($activePages | ForEach-Object { $_.ControlId }) -join '|'
-                        throw "Experiment $($experiment.Id) selected '$selectedLabel' but visible page dialog resource ID did not equal $((101 + $pageIndex)); observed=$candidateIds."
-                    }
+                    if ($activePages.Count -ne 1) { throw "Experiment $($experiment.Id) expected one visible 390x273 child page after selecting '$selectedLabel'; found=$($activePages.Count)." }
+                    $activePage = $activePages[0]
                     $insidePage = @($currentChildren | Where-Object {
                         $_.Visible -and $_.ControlId -ne 0 -and $_.Left -ge $activePage.Left -and $_.Top -ge $activePage.Top -and
                         $_.Left -lt ($activePage.Left + $activePage.Width) -and $_.Top -lt ($activePage.Top + $activePage.Height)
                     })
                     $visibleIds = @($insidePage | ForEach-Object { $_.ControlId } | Sort-Object -Unique)
                     $enabledIds = @($insidePage | Where-Object { $_.Enabled } | ForEach-Object { $_.ControlId } | Sort-Object -Unique)
-                    $missingSentinels = @($sentinelsByPage[$pageIndex] | Where-Object { $_ -notin $visibleIds })
-                    if ($missingSentinels.Count -gt 0) { throw "Experiment $($experiment.Id) page IDD=$((101 + $pageIndex)) is missing visible resource IDs: $($missingSentinels -join ',')." }
-                    if ($selectedLabel -ne $expectedLabel -or $activePage.ControlId -ne (101 + $pageIndex)) { throw "Experiment $($experiment.Id) navigation/page mismatch on page $pageIndex." }
+                    # These IDD child dialogs report GetDlgCtrlID=0 because they
+                    # are hosted page windows, not resource-ID-bearing controls.
+                    # Infer the active template from its unique visible resource
+                    # sentinels, then cross-check the independently read tree label.
+                    $matchingPageIds = @(0..4 | Where-Object {
+                        $candidateSentinels = $sentinelsByPage[$_]
+                        @($candidateSentinels | Where-Object { $_ -notin $visibleIds }).Count -eq 0
+                    } | ForEach-Object { 101 + $_ })
+                    $pageResourceId = 101 + $pageIndex
+                    if ($selectedLabel -ne $expectedLabel -or $matchingPageIds.Count -ne 1 -or $matchingPageIds[0] -ne $pageResourceId) {
+                        throw "Experiment $($experiment.Id) navigation/page mismatch: nav='$selectedLabel', expected='$expectedLabel', visible_page_IDDs=$($matchingPageIds -join '|'), expected_IDD=$pageResourceId, controls=$($visibleIds -join '|')."
+                    }
 
                     if ($pageIndex -eq 0) {
                         $languageState = & $readSettingsLocale $trialSettings.Handle $experiment.Id
@@ -1420,12 +1426,13 @@ public static class P2CWin32 {
                     $shotName = "windows-r1-$($experiment.Id)-settings-$pageIndex-$($experiment.FinalLocale).png"
                     [void][P2CWin32]::SetForegroundWindow($trialSettings.Handle)
                     & $captureWindow $trialSettings.Handle (Join-Path $artifactDir $shotName)
-                    $semanticPair = ($pageLocale -eq $experiment.FinalLocale -and $selectedLabel -eq $expectedLabel -and $activePage.ControlId -eq (101 + $pageIndex) -and $currentMenu.DarkChecked)
+                    $semanticPair = ($pageLocale -eq $experiment.FinalLocale -and $selectedLabel -eq $expectedLabel -and $matchingPageIds.Count -eq 1 -and $matchingPageIds[0] -eq $pageResourceId -and $currentMenu.DarkChecked)
                     [pscustomobject]@{
                         experiment_id=$experiment.Id; sequence=$experiment.Sequence; process_id=$trialProcess.Id
                         locale_expected=$experiment.FinalLocale; locale_from_settings=$pageLocale; menu_locale=$currentMenu.MenuLocale
                         dark_menu_state=$currentMenu.DarkMenuState; dark_checked=$currentMenu.DarkChecked
-                        page_index=$pageIndex; page_resource_id=$activePage.ControlId; selected_nav=$selectedLabel
+                        page_index=$pageIndex; page_resource_id=$pageResourceId; page_root_control_id=$activePage.ControlId
+                        page_identity_method='unique-visible-resource-sentinels+IDC_NAV-text'; selected_nav=$selectedLabel
                         visible_resource_ids=($visibleIds -join '|'); enabled_resource_ids=($enabledIds -join '|')
                         settings_outer="${outerWidth}x${outerHeight}"; settings_client="${clientWidth}x${clientHeight}"
                         client_origin_x=($clientOrigin.X - $settingsRect.Left); client_origin_y=($clientOrigin.Y - $settingsRect.Top)
@@ -1433,13 +1440,13 @@ public static class P2CWin32 {
                     } | Export-Csv -LiteralPath $darkExperimentPages -NoTypeInformation -Append -Encoding utf8
                     foreach ($control in $insidePage) {
                         [pscustomobject]@{
-                            experiment_id=$experiment.Id; page_index=$pageIndex; page_resource_id=$activePage.ControlId
+                            experiment_id=$experiment.Id; page_index=$pageIndex; page_resource_id=$pageResourceId
                             resource_id=$control.ControlId; class=$control.ClassName; visible=$control.Visible; enabled=$control.Enabled
                             x=($control.Left - $clientOrigin.X); y=($control.Top - $clientOrigin.Y); width=$control.Width; height=$control.Height
                         } | Export-Csv -LiteralPath $darkExperimentControls -NoTypeInformation -Append -Encoding utf8
                     }
                     $pageCount++
-                    Write-Status "R1 page state experiment=$($experiment.Id) locale=$pageLocale theme=dark menu_checked=$($currentMenu.DarkChecked) nav='$selectedLabel' page_resource_id=$($activePage.ControlId) visible_controls=$($insidePage.Count) enabled_ids=$($enabledIds -join '|') screenshot=$shotName semantic_pair=$semanticPair"
+                    Write-Status "R1 page state experiment=$($experiment.Id) locale=$pageLocale theme=dark menu_checked=$($currentMenu.DarkChecked) nav='$selectedLabel' inferred_page_resource_id=$pageResourceId page_root_control_id=$($activePage.ControlId) identity=unique-visible-resource-sentinels+IDC_NAV-text visible_controls=$($insidePage.Count) enabled_ids=$($enabledIds -join '|') screenshot=$shotName semantic_pair=$semanticPair"
 
                     $bitmap = [System.Drawing.Bitmap]::FromFile((Join-Path $artifactDir $shotName))
                     try {
@@ -1447,7 +1454,7 @@ public static class P2CWin32 {
                         $offsetY = $clientOrigin.Y - $settingsRect.Top
                         $addSample = {
                             param([string]$Name, [int]$ClientX, [int]$ClientY)
-                            & $readPixel $bitmap $experiment.Id $pageIndex $activePage.ControlId $Name ($offsetX + $ClientX) ($offsetY + $ClientY) $currentMenu.DarkChecked
+                            & $readPixel $bitmap $experiment.Id $pageIndex $pageResourceId $Name ($offsetX + $ClientX) ($offsetY + $ClientY) $currentMenu.DarkChecked
                         }.GetNewClosure()
                         & $addSample 'settings-client-background' 4 4
                         $navPointX = $nav.Left - $clientOrigin.X
@@ -1484,13 +1491,28 @@ public static class P2CWin32 {
                 $reopened = & $openSettings $trialMain $trialProcess.Id $experiment.Id
                 $reopenChildren = @([P2CWin32]::GetChildWindows($reopened.Handle))
                 $reopenNav = $reopenChildren | Where-Object { $_.ControlId -eq 104 -and $_.ClassName -eq 'SysTreeView32' } | Select-Object -First 1
-                $reopenPage = @([P2CWin32]::GetChildWindows($reopened.Handle) | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 }) | Select-Object -First 1
+                $reopenPages = @($reopenChildren | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 })
+                if ($reopenPages.Count -ne 1) { throw "Experiment $($experiment.Id) expected one visible Settings page after reopen; found=$($reopenPages.Count)." }
+                $reopenPage = $reopenPages[0]
                 $reopenLabel = if ($reopenNav) { [P2CWin32]::GetSelectedTreeText($reopenNav.Handle, [uint32]$trialProcess.Id) } else { '' }
                 $reopenMenu = & $getMenuSnapshot $trialMain
                 if (-not $reopenMenu.DarkChecked) { throw "Experiment $($experiment.Id) theme menu check did not survive Settings close and reopen." }
-                if (-not $reopenPage -or $reopenPage.ControlId -lt 101 -or $reopenPage.ControlId -gt 105) { throw "Experiment $($experiment.Id) Settings did not restore a measurable page resource after reopen." }
-                $reopenIndex = $reopenPage.ControlId - 101
-                if ($reopenLabel -ne $labelsByLocale[$experiment.FinalLocale][$reopenIndex]) { throw "Experiment $($experiment.Id) reopened navigation '$reopenLabel' does not match page resource ID $($reopenPage.ControlId)." }
+                $reopenInside = @($reopenChildren | Where-Object {
+                    $_.Visible -and $_.ControlId -ne 0 -and $_.Left -ge $reopenPage.Left -and $_.Top -ge $reopenPage.Top -and
+                    $_.Left -lt ($reopenPage.Left + $reopenPage.Width) -and $_.Top -lt ($reopenPage.Top + $reopenPage.Height)
+                })
+                $reopenVisibleIds = @($reopenInside | ForEach-Object { $_.ControlId } | Sort-Object -Unique)
+                $reopenPageIds = @(0..4 | Where-Object {
+                    $candidateSentinels = $sentinelsByPage[$_]
+                    @($candidateSentinels | Where-Object { $_ -notin $reopenVisibleIds }).Count -eq 0
+                } | ForEach-Object { 101 + $_ })
+                if ($reopenPageIds.Count -ne 1) { throw "Experiment $($experiment.Id) could not infer one reopened page IDD from visible controls: $($reopenVisibleIds -join '|')." }
+                $reopenPageId = $reopenPageIds[0]
+                $reopenIndex = $reopenPageId - 101
+                if ($reopenLabel -ne $labelsByLocale[$experiment.FinalLocale][$reopenIndex]) { throw "Experiment $($experiment.Id) reopened navigation '$reopenLabel' does not match inferred page IDD $reopenPageId." }
+                $reopenShot = "windows-r1-$($experiment.Id)-settings-reopened.png"
+                & $captureWindow $reopened.Handle (Join-Path $artifactDir $reopenShot)
+                & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'settings-reopened-page' "WM_CLOSE->IDM_SETTINGS;restored_nav=$reopenLabel;inferred_restored_page_id=$reopenPageId;root_control_id=$($reopenPage.ControlId);visible_ids=$($reopenVisibleIds -join '|')" $experiment.FinalLocale $reopenShot $true 'theme check and restored navigation/page relationship inferred from unique visible resource IDs' $reopenMenu
                 $reopenPageName = $labelsByLocale[$experiment.FinalLocale][0]
                 $reopenGeneralItem = $null
                 foreach ($item in @([P2CWin32]::GetTreeItems($reopenNav.Handle))) {
@@ -1500,9 +1522,7 @@ public static class P2CWin32 {
                 Start-Sleep -Milliseconds 250
                 $reopenLocale = & $readSettingsLocale $reopened.Handle $experiment.Id
                 if ($reopenLocale.Locale -ne $experiment.FinalLocale) { throw "Experiment $($experiment.Id) IDC_LANGUAGE after reopen is '$($reopenLocale.Label)', expected $($experiment.FinalLocale)." }
-                $reopenShot = "windows-r1-$($experiment.Id)-settings-reopened.png"
-                & $captureWindow $reopened.Handle (Join-Path $artifactDir $reopenShot)
-                & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'settings-reopened' "WM_CLOSE->IDM_SETTINGS;restored_nav=$reopenLabel;restored_page_id=$($reopenPage.ControlId);IDC_LANGUAGE=$($reopenLocale.Label)" $experiment.FinalLocale $reopenShot $true 'theme check, restored nav/page relationship, and IDC_LANGUAGE verified after reopening' $reopenMenu
+                & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'settings-locale-after-reopen' "IDC_NAV-selected=$reopenPageName;IDC_LANGUAGE=$($reopenLocale.Label)" $experiment.FinalLocale '' $true 'locale read from the source IDC_LANGUAGE=123 combo after explicitly selecting General; reopened-page screenshot is separately recorded above' $reopenMenu
 
                 [void][P2CWin32]::PostMessage($reopened.Handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
                 Start-Sleep -Milliseconds 300
