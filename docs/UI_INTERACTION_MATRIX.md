@@ -168,3 +168,13 @@ Exact-head calibration at source `06be74b740e8906e64d837d8ac77e0255bea1081` samp
 - 当前截图 artifact 和哈希清单在 [P2C-4 报告](P2C-4_FONT_THEME_MENU_REPORT.md) 索引；`12` 项简中来源差异仍 `DECISION_REQUIRED`，不擅自替换 Linux 当前完整中文翻译。没有执行清理、Polkit、Swap/ZRAM、root GUI 或活动桌面操作。
 - 历史 exact-head 回归（40405594197、40416882722、40422156194）保留各自 run 的截图和 metrics，不与当前 artifacts 混用；各版本均保持几何/局部栅格阈值，整页像素 1:1 未通过。
 - 当前 exact-head evidence `4f84fb9a9e247a5987a11cd435e5da4b05f78a53`：P2C `40425954672` 3/3、P2B `40425954460` 2/2、PR build `40425954317`、push build `40425944842` PASS，PR checks 7/7。五页双语亮/暗截图实际采集；文本度量 132 项中 9 项同源文本宽高差≤2 px、111 项仍不同、12 项为来源/语言差异。具体 artifact digest、SHA manifests、字体结果与限制见 [P2C-4 报告](P2C-4_FONT_THEME_MENU_REPORT.md)。
+
+## 11. P2C-4R1 深色主题与切换顺序复验
+
+- Windows 原版固定为 v.3.5.2 / tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。在相互独立进程中执行 English→Dark→Settings、简中→Dark→Settings、Dark→简中→Settings、English→Dark→简中→English；每个实验均采集 General、Memory cleaning、Appearance、Tray icon、Advanced 五页。
+- 20/20 页面均验证应用暗色菜单 checked、语言正确、导航选中项与实际页面资源 ID 相符。A/D 英文截图逐页 SHA 相同，B/C 简中截图逐页 SHA 相同，十组状态顺序图像差异为 0。典型深色背景：设置页/导航/`IDC_REGIONS` 为 `#171717`，Reset/Close 为 `#272727`。未在有效新实验中复现简中导航或地区列表留亮色的混合主题。
+- 每个独立进程均通过原生 `WM_CLOSE` 关闭 Settings 后再次调用 `IDM_SETTINGS`；4/4 重开成功，导航文本与可见页面资源 ID 一致，语言组合框与预期语言一致，View 的暗色菜单仍 checked。
+- 旧简中截图曾出现导航 Advanced、内容 General；新独立进程的页面资源与导航对应。旧图不再作为有效语义配对；采集链哪一环造成错配尚无证据，原因标记 **UNCONFIRMED**，不能归因于原版缺陷。
+- R1 changed-pixel 比例（EN / 简中）：General `10.2327% / 9.1002%`；Memory cleaning `12.6625% / 12.4014%`；Appearance `11.6311% / 11.0057%`；Tray icon `11.2534% / 10.2744%`；Advanced `5.9434% / 5.4004%`。这是语义状态有效的比较数据，不是像素验收 PASS。旧报告中的不匹配截图差异率保留为历史数据，不与 R1 指标混用。
+- P2C run `40443810060` 在 HEAD `ff5794f096317da50f84200bd0ac0bc663cbabb2` 上 Windows native、Linux production Xvfb/XTEST、comparison 三个 job 均 PASS。Artifact 与 hash 核验详见 [P2C-4R1 报告](P2C-4_FONT_THEME_MENU_REPORT.md)。生产 UI 与已通过的 558×335 客户区、184 项几何、导航、树线、栅格和滚动基准均未改；12 项中文来源差异仍为 `DECISION_REQUIRED`。
+- Linux 深色模式由应用 Canvas palette 绘制；GTK runner 仍为 `Adwaita:light`。Windows/Linux 全页 1:1 仍 `NOT PASS`，Win32/GTK 原生控件 raster、字体与抗锯齿差异独立记录。

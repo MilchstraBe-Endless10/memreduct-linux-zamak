@@ -1,6 +1,24 @@
 # P2C-4 — 字体、控件绘制与深色主题校准
 
-状态：P2C-4 字体候选、控件栅格、深色主题和安全菜单证据已完成；PR #7 仍 OPEN / Draft，不合并。最新完整截图与对照由 P2C run `40425954672` 在 evidence head `4f84fb9a9e247a5987a11cd435e5da4b05f78a53` 生成；生产 UI 源码 checkpoint 为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。当前分支工作树已同步该证据；整体像素 1:1 仍 NOT PASS，12 项简中来源差异仍待产品决策。
+## P2C-4R1 — Windows 原版深色主题与语言顺序复验（2026-10-27）
+
+本节是本轮最新证据摘要；下方 `4f84fb9` 等章节为历史快照，不代表当前 HEAD。PR #7 继续 OPEN / Draft。复验仅针对采集状态语义，不改生产 UI、字体、几何阈值或像素验收标准。
+
+- 源码 HEAD：`ff5794f096317da50f84200bd0ac0bc663cbabb2`；生产 GUI checkpoint 仍为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。R1 唯一代码改动是 `scripts/ci/compare_p2c_dark.py` 的语言 ID 关联修复；该脚本 SHA-256 为 `5faaf75133000ddd3e78ee38ff3a1b1082d5a4e9e435416fec4c92ee14785d2d`，工作流与生产 UI 未改。
+- Windows 基准为官方 Mem Reduct v.3.5.2，tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`，运行文件 SHA-256 `dd55a81d56e8c32918e5190b2ec2a1f2a7edbbca884627439b4b619fdfb5602d`。隔离 runner：Windows Server 2022 build 20348，1024×768，96 DPI / 100%；系统 Apps 主题为 light，应用 `Use dark theme` 菜单项为 checked。Linux 在 Ubuntu 24.04/Xvfb，GTK `Adwaita:light`，暗色由应用 Canvas 调色板绘制。
+- 四个互相独立的新进程实验均有效：A English → Dark → Settings；B 简体中文 → Dark → Settings；C Dark → 简体中文 → Settings；D English → Dark → 简体中文 → English。每次均采集五个设置页；20/20 页面通过语言、暗色菜单状态、导航选中项与实际页面资源 ID 一致性检查。A/D 五页对应截图 SHA 一致，B/C 五页对应截图 SHA 一致；十组顺序对照的像素变化均为 0。切换顺序没有留下可见的部分重绘差异。
+- 四个进程都单独测试了设置窗口 `WM_CLOSE` 后再次通过 `IDM_SETTINGS` 打开：4/4 正常关闭并重开，恢复的导航文本与根据可见资源控件识别出的页面一致，重新打开后语言组合框仍匹配实验语言，主窗口深色菜单状态仍 checked。此项验证只覆盖隔离 Windows runner 内的应用窗口，不对用户桌面发送输入。
+- 4 组实验中 200/200 页面控件可见、196/200 启用。唯一被禁用的控件为 `IDC_HOTKEY_CLEAN=132`；这与 Linux 安全禁用状态无关，属于 Windows 基准采集到的控件状态。典型暗色采样：页面、导航和 `IDC_REGIONS` 背景 `#171717`；Reset/Close `#272727`。本轮证据未观察到简中导航/list 保持亮色的混合主题。
+- 先前简中暗色截图 `39798741089e5de00cfadd7d349448f4dabde7c6a22143be4fd6447726faf77c` 的导航高亮为 Advanced、页面内容却是 General；新实验 B 的 General 页面截图 SHA 为 `675deab21870b7326ad7a533dc52f115810b43c6d9889b34b3389370a3bfa8ed`，页面和导航匹配。新证据表明旧图不适合做语义配对；目前没有证据定位旧状态不匹配发生于应用、采集脚本还是截图归档环节，根因仍未确认。
+- 新有效暗色配对的 changed-pixel 比例（仅比较指标，不是通过阈值）：General EN `10.2327%` / 简中 `9.1002%`；Memory cleaning `12.6625%` / `12.4014%`；Appearance `11.6311%` / `11.0057%`；Tray icon `11.2534%` / `10.2744%`；Advanced `5.9434%` / `5.4004%`。完整像素 1:1 仍 **NOT PASS**。Windows 原生控件与 GTK 绘制差异仍需分项处理。
+- [R1 P2C Windows/Linux/compare run 40443810060](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40443810060) 在 `ff5794f` 上 3/3 jobs PASS。Windows artifact `12707093733`（archive digest `sha256:4561199a427e6be68297c5973655916a0ab70c7135b0db016a5107db726f5598`）；Linux Xvfb artifact `12706823610`（`sha256:00eb81d89f000d9877a0707edb5a5320e8705f06a854f49036863f8f356f0d7e`）；视觉比较、overlay/difference/heatmap、状态矩阵 artifact `12706903621`（`sha256:4b41c4755ef38bd58bc6ed126d6ed7d83e831ec20808be28c6188085b841ecb7`）。哈希核验：Windows PNG 81/81、Linux PNG 44/44、暗色 manifest 155/155 匹配。
+- P2C 比较脚本曾连续两次因语言标识不同而拒绝关联截图：Windows manifest 使用 `English`/`简体中文`，Linux 文件名使用 `en`/`zh`，Linux 日志使用 `en`/`zh-CN`。在不放宽像素标准的前提下，R1 分别显式解析三类标识；两次失败 run `40442378668`、`40443248002` 是比较器关联失败，不是图像差异失败。`40443810060` 对最终映射 3/3 PASS。
+- 与前次 P2C-4 的差异率相比，本轮有效配对采用统一的语言、暗色菜单、导航与页面资源状态；因此新值替换的是不可靠配对的比较读数，不代表 UI 代码优化。此前 P2C-4 十页暗色范围 `5.9434%–73.2932%`；混合错页的旧简中图不再作为有效页面配对。亮色范围和字体结论没有变化。
+- 基准仍冻结：客户区 `558×335`；控件几何 `184/184 PASS`，最大分量偏差 `1.5 px`；导航 `10/10`、树线 `102/102`、控件栅格 `36/36`、中间滚动 `2/2`。字体候选不进入生产；12 项简中来源差异保持 `DECISION_REQUIRED`。Windows/Linux 1:1 像素验收 NOT PASS。
+- P2B 生命周期 run [40443810053](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40443810053) 的 Weston Headless/Pixman job PASS；Xvfb job在本次核对时仍处于依赖安装阶段，不能据 Weston 单 job 宣称 P2B run 全部完成。该 Xvfb 作业状态及本轮所有新 HEAD CI 最终结果将在最终交付前补录。
+- 无真实内存清理、Polkit、Swap/ZRAM 或内核缓存写入；没有 root GUI、Hyprland IPC、用户桌面输入注入或本机 GUI 操作。12 项中文资源差异未改变。
+
+状态：P2C-4R1 深色语言状态复验已完成，当前 R1 比较证据来自 HEAD `ff5794f096317da50f84200bd0ac0bc663cbabb2`；下方 `4f84fb9` 和更早内容是历史 snapshot。生产 UI checkpoint 为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。PR #7 仍 OPEN / Draft，不合并；整体像素 1:1 仍 NOT PASS，12 项简中来源差异仍待产品决策。
 
 ## 截图与比较 evidence snapshot：4f84fb9（2026-10-27）
 

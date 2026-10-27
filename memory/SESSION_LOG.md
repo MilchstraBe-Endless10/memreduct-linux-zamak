@@ -107,3 +107,10 @@
 - 精确 head 的 P2C run `40425954672`（Windows 原版、生产 Xvfb/XTEST、对照 3/3）、P2B `40425954460`（Xvfb/XTEST、Weston lifecycle 2/2）、PR build `40425954317` 与 push build `40425944842` 均 PASS；PR checks 7/7。artifact IDs、GitHub SHA-256 digests 和本地 manifest 计数见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
 - 最新度量 184/184 geometry，nav 10/10，tree 102/102，raster 36/36，scroll 2/2 PASS；亮色 changed-pixel 5.0741%–14.8853%，暗色 5.9434%–73.2932%，完整 1:1 NOT PASS。字体候选未进入生产；12 项原版简中来源差异保持 `DECISION_REQUIRED`。
 - 本次 APT 成功且诊断可追溯，过去下载变慢的根因仍未知。Weston 客户端退出 0，保留 GDK seat 和 Weston teardown 警告；Wayland 输入 NOT RUN。无真实清理、特权操作、活动 Hyprland 或用户桌面输入。
+
+## 2026-10-27 — P2C-4R1 Windows 深色/语言状态复验（ff5794f）
+
+- 对固定 Windows Mem Reduct v.3.5.2 基准执行四种互相独立的语言/深色顺序。20/20 页的语言、应用暗色勾选、导航选中项与页面资源 ID 匹配；相同语言顺序截图 SHA 相同，十组顺序对照变化为 0。每个进程均 WM_CLOSE 设置页后重新打开，4/4 恢复导航/页面/语言和暗色菜单状态。新实验没有复现简中暗色混合亮暗控件。
+- 旧简中图存在导航与页面不对应；状态证据见 R1 报告。旧采集错配的具体发生环节未确认，不归咎于原版应用或 Linux。比较器语言关联已修复；最终 R1 P2C run `40443810060` 3/3 PASS，Artifacts `12707093733` / `12706823610` / `12706903621`。
+- R1 暗色语义配对的五页英文/简中差异率、截图 SHA 与环境写入 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`；交互状态矩阵写入 `docs/UI_INTERACTION_MATRIX.md`。几何、控件栅格、截图阈值、12 项 `DECISION_REQUIRED` 文案均未更改。
+- R1 代码改动仅比较脚本的语言 ID 映射；生产 UI 源码仍是 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。未进行主机桌面操作、清理或特权写入。最终提交 SHA 与 P2B/PR/push exact-head CI 结果在收尾时补录。

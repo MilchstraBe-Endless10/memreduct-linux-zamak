@@ -1,5 +1,15 @@
 # 短期记忆 / Latest Handoff
 
+## P2C-4R1 当前复验（2026-10-27）
+
+- PR #7 OPEN / Draft；当前代码 HEAD `ff5794f096317da50f84200bd0ac0bc663cbabb2`；生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。R1 仅修正 `scripts/ci/compare_p2c_dark.py` 的语言标识关联，没有改生产 UI、workflow、比较阈值或原图。
+- P2C run [40443810060](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40443810060) 3/3 PASS；Windows artifact `12707093733`，Linux Xvfb `12706823610`，visual/status/overlay artifact `12706903621`。Archive digest 与截图核验见报告；Windows PNG 81/81、Linux PNG 44/44、暗色 manifest 155/155。
+- 四个独立 Windows 进程实验覆盖 English→Dark→Settings、简中→Dark→Settings、Dark→简中→Settings、English→Dark→简中→English。20/20 页面语言/主题/导航/资源 ID 语义校验 PASS；相同语言切换顺序截图逐页 SHA 相同，十组图像变化 0。各进程都执行 WM_CLOSE→再次打开设置，4/4 页面/导航、语言及暗色菜单状态正确恢复。旧简中图导航 Advanced、内容 General；旧图 SHA `39798741089e5de00cfadd7d349448f4dabde7c6a22143be4fd6447726faf77c`。R1 新 B/General SHA `675deab21870b7326ad7a533dc52f115810b43c6d9889b34b3389370a3bfa8ed`。旧图无效配对的确切根因未确认；新实验没有复现混合亮暗控件。
+- 新有效暗色配对 EN/简中差异率：General 10.2327%/9.1002%；Memory cleaning 12.6625%/12.4014%；Appearance 11.6311%/11.0057%；Tray icon 11.2534%/10.2744%；Advanced 5.9434%/5.4004%。这是新语义匹配下的比较，不表示 UI 代码改善；全页 1:1 仍 NOT PASS。
+- Windows v3.5.2 binary SHA `dd55a81d56e8c32918e5190b2ec2a1f2a7edbbca884627439b4b619fdfb5602d`；Windows Server 2022 build 20348、96 DPI/100%，Apps 系统主题 light、应用菜单暗色项 checked。Linux Ubuntu 24.04/Xvfb，GTK `Adwaita:light`，暗色由 Canvas palette 实现。
+- P2B run `40443810053` Weston job PASS，Xvfb job当时仍在安装依赖。最终是否全绿、PR build/push build 与新 commit 下 exact-head artifacts 待最终核验。
+- 没有真实内存清理、Polkit、Swap/ZRAM、内核缓存写入、root GUI、本机 GUI、Hyprland IPC 或主桌面输入注入。12 项简中来源差异仍 `DECISION_REQUIRED`。
+
 ## P2C-4 最终图形证据 snapshot（2026-10-27）
 
 - PR #7 OPEN / Draft；base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；当前截图/比较 evidence head `4f84fb9a9e247a5987a11cd435e5da4b05f78a53`。生产 UI 源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改；最新正式 ChatGPT Review 仍为 P2C-3R1，无新 Review 或行内评论。

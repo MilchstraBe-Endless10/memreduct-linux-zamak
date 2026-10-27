@@ -2,6 +2,14 @@
 
 更新时间：2026-10-27；仅已见到的证据，未经推测。
 
+## P2C-4R1 最新状态：Windows 深色主题/语言顺序复验
+
+PR #7 OPEN / Draft；R1 比较器修正 HEAD `ff5794f096317da50f84200bd0ac0bc663cbabb2`，生产 GUI checkpoint 仍为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。P2C run `40443810060` 的 Windows native、Linux Xvfb/XTEST、视觉比较 3/3 PASS；Windows/Linux/比较 artifacts 分别为 `12707093733`、`12706823610`、`12706903621`。前两次 run `40442378668`、`40443248002` 因语言标识关联失败；R1 明确兼容 Windows manifest、Linux 文件名、Linux 日志的不同标识，未放宽图像标准。
+
+四种独立进程主题/语言顺序均采集五页，20/20 通过语言、暗色菜单、页面资源与导航状态核对；相同语言的顺序对照截图差异 0。四个进程都通过 `WM_CLOSE` 后重开 Settings，4/4 恢复正确导航/页面、语言与深色菜单状态。有效暗色 changed-pixel 范围为 `5.4004%–12.6625%`，仍是 compare-only，整体像素 1:1 NOT PASS。之前出现的简中导航/内容错配未在新实验复现，旧采集错配的具体环节仍未确认。固定基准未回退：558×335、184/184 几何（最大 1.5 px）、10/10 导航、102/102 tree、36/36 raster、2/2 滚动；12 项中文来源差异仍 `DECISION_REQUIRED`。
+
+P2B run `40443810053` 的 Weston Headless/Pixman job 已 PASS；Xvfb job在本次核对时仍运行依赖安装，最终状态待补。完整 R1 证据和差异率见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。未改生产 GUI、未操作本机桌面或执行特权清理。
+
 ## P2C-4 最终 exact-head CI 复核
 
 PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；完整截图/比较 evidence head `4f84fb9a9e247a5987a11cd435e5da4b05f78a53`。P2C run `40425954672` Windows 原版 + 生产 Xvfb/XTEST + 比较 3/3 PASS；P2B run `40425954460` 生产 Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build `40425954317`、push build `40425944842` PASS，PR checks 7/7。Artifacts、digests、PNG/source SHA 与逐项指标见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。生产 UI 源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；本轮未改生产字体、字号、控件绘制或视觉阈值。
