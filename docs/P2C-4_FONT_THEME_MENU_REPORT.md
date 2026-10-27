@@ -38,7 +38,7 @@ P2C-4R1 的工程与 CI 证据按以下 checkpoint 区分，避免把生产代�
 
 ### P2C-EXIT 文档交接 HEAD 回归（`b1f2fd95333a26af1c3ea51e6fea4a245db640c9`）
 
-P2C-4R1 接受基线之后，P2C-EXIT/P3A-pre 文档提交 `b1f2fd9` 只变更报告、交互矩阵与项目记忆，没有生产 UI、采集/比较脚本或 workflow 代码变化。GitHub 在该提交上重新执行完整 PR 检查：P2C run [40461922846](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40461922846) 3/3、P2B run [40461922577](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40461922577) 2/2、PR build [40461922736](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40461922736) 与 push build [40461917796](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40461917796) 均成功，PR checks 7/7。
+P2C-4R1 接受基线之后，P2C-EXIT/P3A-pre 文档提交 `b1f2fd9` 变更 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`、`docs/PR_INTEGRATION_READINESS.md`、`docs/ADR/0004-user-preferences-persistence.md`、`docs/UI_INTERACTION_MATRIX.md` 与项目记忆；没有生产 UI、采集/比较脚本或 workflow 代码变化。GitHub 在该提交上重新执行完整 PR 检查：P2C run [40461922846](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40461922846) 3/3、P2B run [40461922577](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40461922577) 2/2、PR build [40461922736](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40461922736) 与 push build [40461917796](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40461917796) 均成功，PR checks 7/7。
 
 | b1f2fd9 回归证据 | Artifact | GitHub SHA-256 digest |
 |---|---:|---|
