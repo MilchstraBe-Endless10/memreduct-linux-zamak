@@ -10,6 +10,11 @@ New-Item -ItemType Directory -Force -Path $artifactDir, $workDir | Out-Null
 $statusFile = Join-Path $artifactDir 'result.txt'
 $geometryFile = Join-Path $artifactDir 'windows-settings-geometry.csv'
 $fontMetricsFile = Join-Path $artifactDir 'windows-control-font-metrics.csv'
+$darkExperimentSummary = Join-Path $artifactDir 'windows-dark-state-experiments.csv'
+$darkExperimentTransitions = Join-Path $artifactDir 'windows-dark-state-transitions.csv'
+$darkExperimentPages = Join-Path $artifactDir 'windows-dark-state-pages.csv'
+$darkExperimentControls = Join-Path $artifactDir 'windows-dark-state-controls.csv'
+$darkExperimentColors = Join-Path $artifactDir 'windows-dark-state-colors.csv'
 $appProcess = $null
 
 function Write-Status([string]$Line) {
@@ -157,6 +162,10 @@ public static class P2CWin32 {
     public IntPtr pszText; public int cchTextMax; public int iImage; public IntPtr lParam;
     public int iIndent; public int iGroupId; public uint cColumns; public IntPtr puColumns; public IntPtr piColFmt; public int iGroup;
   }
+  [StructLayout(LayoutKind.Sequential, CharSet=System.Runtime.InteropServices.CharSet.Unicode)] public struct TVITEMW {
+    public uint mask; public IntPtr hItem; public uint state; public uint stateMask; public IntPtr pszText;
+    public int cchTextMax; public int iImage; public int iSelectedImage; public int cChildren; public IntPtr lParam;
+  }
   public sealed class FontTextMetrics {
     public string FaceName; public string ResolvedFaceName; public int LogFontHeight; public int LogFontWidth; public int LogFontWeight;
     public int LogFontCharSet; public int TextMetricHeight; public int TextMetricAscent; public int TextMetricDescent; public int TextMetricWeight;
@@ -164,12 +173,18 @@ public static class P2CWin32 {
   }
   public sealed class WindowInfo {
     public IntPtr Handle; public uint ProcessId; public string Title; public string ClassName;
-    public bool Visible; public int Left; public int Top; public int Width; public int Height; public int ControlId;
+    public bool Visible; public bool Enabled; public int Left; public int Top; public int Width; public int Height; public int ControlId;
   }
   private delegate bool EnumWindowsCallback(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
+  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr GetMenu(IntPtr hWnd);
+  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr GetSubMenu(IntPtr hMenu, int position);
+  [DllImport("user32.dll", SetLastError=true)] public static extern int GetMenuItemCount(IntPtr hMenu);
+  [DllImport("user32.dll", SetLastError=true)] public static extern int GetMenuItemID(IntPtr hMenu, int position);
+  [DllImport("user32.dll", EntryPoint="GetMenuStringW", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetMenuString(IntPtr hMenu, uint item, System.Text.StringBuilder text, int maxCount, uint flags);
+  [DllImport("user32.dll", SetLastError=true)] public static extern uint GetMenuState(IntPtr hMenu, uint item, uint flags);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SetFocus(IntPtr hWnd);
@@ -188,6 +203,7 @@ public static class P2CWin32 {
   [DllImport("kernel32.dll", SetLastError=true)] private static extern bool CloseHandle(IntPtr handle);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW", SetLastError=true)] private static extern IntPtr SendMessageText(IntPtr hWnd, uint message, IntPtr wParam, System.Text.StringBuilder lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll", SetLastError=true)] public static extern bool IsWindowEnabled(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int maxCount);
   [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder className, int maxCount);
@@ -266,7 +282,7 @@ public static class P2CWin32 {
         var title = new System.Text.StringBuilder(512); GetWindowText(hWnd, title, title.Capacity);
         var className = new System.Text.StringBuilder(256); GetClassName(hWnd, className, className.Capacity);
         windows.Add(new WindowInfo { Handle=hWnd, ProcessId=owner, Title=title.ToString(), ClassName=className.ToString(),
-          Visible=IsWindowVisible(hWnd), Left=rect.Left, Top=rect.Top, Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top, ControlId=GetDlgCtrlID(hWnd) });
+          Visible=IsWindowVisible(hWnd), Enabled=IsWindowEnabled(hWnd), Left=rect.Left, Top=rect.Top, Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top, ControlId=GetDlgCtrlID(hWnd) });
       }
       return true;
     }, IntPtr.Zero);
@@ -278,7 +294,7 @@ public static class P2CWin32 {
       var rect = new RECT(); GetWindowRect(hWnd, out rect);
       var title = new System.Text.StringBuilder(512); GetWindowText(hWnd, title, title.Capacity);
       var className = new System.Text.StringBuilder(256); GetClassName(hWnd, className, className.Capacity);
-      windows.Add(new WindowInfo { Handle=hWnd, Title=title.ToString(), ClassName=className.ToString(), Visible=IsWindowVisible(hWnd),
+      windows.Add(new WindowInfo { Handle=hWnd, Title=title.ToString(), ClassName=className.ToString(), Visible=IsWindowVisible(hWnd), Enabled=IsWindowEnabled(hWnd),
         Left=rect.Left, Top=rect.Top, Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top, ControlId=GetDlgCtrlID(hWnd) });
       return true;
     }, IntPtr.Zero);
@@ -390,6 +406,53 @@ public static class P2CWin32 {
     IntPtr root=SendMessage(tree, 0x110A, IntPtr.Zero, IntPtr.Zero);
     AppendTreeSiblings(tree, root, items);
     return items.ToArray();
+  }
+  public static string GetTreeItemText(IntPtr tree, IntPtr item, uint processId) {
+    const uint PROCESS_VM_OPERATION=0x0008, PROCESS_VM_READ=0x0010, PROCESS_VM_WRITE=0x0020;
+    const uint TVM_GETITEMW=0x113E, SMTO_ABORTIFHUNG=0x0002, MESSAGE_TIMEOUT_MS=3000;
+    const int TVIF_TEXT=0x0001, MAX_TEXT_CHARS=512;
+    IntPtr process=OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, false, processId);
+    if (process == IntPtr.Zero) throw new InvalidOperationException("OpenProcess for Win32 tree text failed; last-error=" + Marshal.GetLastWin32Error());
+    UIntPtr itemSize=new UIntPtr((uint)Marshal.SizeOf(typeof(TVITEMW)));
+    UIntPtr textSize=new UIntPtr((uint)(MAX_TEXT_CHARS * sizeof(char)));
+    IntPtr remoteItem=IntPtr.Zero, remoteText=IntPtr.Zero, localItem=IntPtr.Zero, localText=IntPtr.Zero;
+    try {
+      remoteItem=VirtualAllocEx(process, IntPtr.Zero, itemSize, 0x3000, 0x04);
+      remoteText=VirtualAllocEx(process, IntPtr.Zero, textSize, 0x3000, 0x04);
+      if (remoteItem == IntPtr.Zero || remoteText == IntPtr.Zero) throw new InvalidOperationException("VirtualAllocEx for Win32 tree text failed; last-error=" + Marshal.GetLastWin32Error());
+      localItem=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(TVITEMW)));
+      localText=Marshal.AllocHGlobal(MAX_TEXT_CHARS * sizeof(char));
+      var value=new TVITEMW { mask=TVIF_TEXT, hItem=item, pszText=remoteText, cchTextMax=MAX_TEXT_CHARS };
+      Marshal.StructureToPtr(value, localItem, false);
+      UIntPtr bytesWritten;
+      if (!WriteProcessMemoryRaw(process, remoteItem, localItem, itemSize, out bytesWritten) || bytesWritten.ToUInt64() != itemSize.ToUInt64())
+        throw new InvalidOperationException("WriteProcessMemory for Win32 tree text failed; last-error=" + Marshal.GetLastWin32Error());
+      IntPtr result;
+      if (SendMessageTimeoutValue(tree, TVM_GETITEMW, IntPtr.Zero, remoteItem, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out result) == IntPtr.Zero || result == IntPtr.Zero)
+        throw new TimeoutException("Win32 TVM_GETITEMW failed or timed out after 3000 ms; last-error=" + Marshal.GetLastWin32Error());
+      UIntPtr bytesRead;
+      if (!ReadProcessMemoryRaw(process, remoteText, localText, textSize, out bytesRead) || bytesRead.ToUInt64() != textSize.ToUInt64())
+        throw new InvalidOperationException("ReadProcessMemory for Win32 tree text failed; last-error=" + Marshal.GetLastWin32Error());
+      return Marshal.PtrToStringUni(localText) ?? String.Empty;
+    } finally {
+      if (localText != IntPtr.Zero) Marshal.FreeHGlobal(localText);
+      if (localItem != IntPtr.Zero) Marshal.FreeHGlobal(localItem);
+      if (remoteText != IntPtr.Zero) VirtualFreeEx(process, remoteText, UIntPtr.Zero, 0x8000);
+      if (remoteItem != IntPtr.Zero) VirtualFreeEx(process, remoteItem, UIntPtr.Zero, 0x8000);
+      CloseHandle(process);
+    }
+  }
+  public static string GetSelectedTreeText(IntPtr tree, uint processId) {
+    const uint TVM_GETNEXTITEM=0x110A, TVGN_CARET=9, SMTO_ABORTIFHUNG=0x0002, MESSAGE_TIMEOUT_MS=3000;
+    IntPtr selected;
+    if (SendMessageTimeoutValue(tree, TVM_GETNEXTITEM, new IntPtr((int)TVGN_CARET), IntPtr.Zero, SMTO_ABORTIFHUNG, MESSAGE_TIMEOUT_MS, out selected) == IntPtr.Zero || selected == IntPtr.Zero)
+      throw new InvalidOperationException("Win32 IDC_NAV has no readable selected tree item.");
+    return GetTreeItemText(tree, selected, processId);
+  }
+  public static string GetMenuItemText(IntPtr menu, int position) {
+    var text=new System.Text.StringBuilder(512);
+    if (GetMenuString(menu, (uint)position, text, text.Capacity, 0x0400) == 0) return String.Empty; // MF_BYPOSITION
+    return text.ToString();
   }
   public static bool SelectTreeItem(IntPtr tree, IntPtr item) {
     return SendMessage(tree, 0x110B, new IntPtr(9), item) != IntPtr.Zero;
@@ -1059,6 +1122,417 @@ public static class P2CWin32 {
             }
         }
     }
+
+    if ($captureWindow -and $desktopAccessible -and $mainHwnd -ne [IntPtr]::Zero) {
+        # End the legacy capture process before starting isolated trials. Only
+        # this workflow-created process is closed here.
+        if ($appProcess -and -not $appProcess.HasExited) {
+            try { $appProcess.CloseMainWindow() | Out-Null; [void]$appProcess.WaitForExit(5000) } catch { }
+            if (-not $appProcess.HasExited) { Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue }
+        }
+
+        'experiment_id,sequence,process_id,step,action,expected_locale,menu_locale,language_menu_checked,dark_menu_state,dark_checked,screenshot,semantic_state,notes' |
+            Set-Content -LiteralPath $darkExperimentTransitions -Encoding UTF8
+        'experiment_id,sequence,process_id,locale_expected,locale_from_settings,menu_locale,dark_menu_state,dark_checked,page_index,page_resource_id,selected_nav,visible_resource_ids,enabled_resource_ids,settings_outer,settings_client,client_origin_x,client_origin_y,screenshot,semantic_pair_valid' |
+            Set-Content -LiteralPath $darkExperimentPages -Encoding UTF8
+        'experiment_id,page_index,page_resource_id,resource_id,class,visible,enabled,x,y,width,height' |
+            Set-Content -LiteralPath $darkExperimentControls -Encoding UTF8
+        'experiment_id,page_index,page_resource_id,area,x,y,rgb,semantic_state' |
+            Set-Content -LiteralPath $darkExperimentColors -Encoding UTF8
+        'experiment_id,sequence,process_id,app_version,app_sha256,windows_version,windows_build,screen,dpi,scale_percent,windows_apps_theme,locale_final,dark_final,settings_pages,config_file,config_sha256,isolated_config_verified,status' |
+            Set-Content -LiteralPath $darkExperimentSummary -Encoding UTF8
+
+        $labelsByLocale = @{
+            'English' = @('General', 'Memory cleaning', 'Appearance', 'Tray icon', 'Advanced')
+            'zh-CN' = @('常规', '内存清理', '外观', '托盘图标', '高级')
+        }
+        $sentinelsByPage = @{
+            0 = @(116, 123)
+            1 = @(124, 125, 131)
+            2 = @(133, 139, 140)
+            3 = @(141, 148, 152)
+            4 = @(153, 154)
+        }
+
+        $getMenuSnapshot = {
+            param([IntPtr]$Window)
+            $rootMenu = [P2CWin32]::GetMenu($Window)
+            if ($rootMenu -eq [IntPtr]::Zero) { throw 'The native main window has no menu handle.' }
+            $viewMenu = [P2CWin32]::GetSubMenu($rootMenu, 1) # IDM_MAIN View popup in resource.rc
+            $languageMenu = [P2CWin32]::GetSubMenu($viewMenu, 4) # Language submenu in resource.rc
+            if ($viewMenu -eq [IntPtr]::Zero -or $languageMenu -eq [IntPtr]::Zero) { throw 'The native View/Language menu handles are unavailable.' }
+            $items = [System.Collections.Generic.List[object]]::new()
+            for ($index = 0; $index -lt [P2CWin32]::GetMenuItemCount($languageMenu); $index++) {
+                $commandId = [P2CWin32]::GetMenuItemID($languageMenu, $index)
+                $label = [P2CWin32]::GetMenuItemText($languageMenu, $index)
+                if ($commandId -ge 0 -and $label) {
+                    $state = [P2CWin32]::GetMenuState($languageMenu, [uint32]$commandId, 0)
+                    $items.Add([pscustomobject]@{ command_id=$commandId; label=$label; checked=(($state -band 0x8) -ne 0); state=('0x{0:X}' -f $state) })
+                }
+            }
+            $checkedItems = @($items | Where-Object { $_.checked })
+            $menuLocale = if ($checkedItems.Count -eq 1) {
+                if ($checkedItems[0].label -match '(?i)^English') { 'English' }
+                elseif ($checkedItems[0].label -match '(?i)Chinese.*Simplified|Simplified Chinese|简体中文') { 'zh-CN' }
+                else { $checkedItems[0].label }
+            } else { 'UNMARKED_OR_AMBIGUOUS' }
+            $darkState = [P2CWin32]::GetMenuState($rootMenu, [uint32]159, 0) # IDM_USEDARKTHEME
+            [pscustomobject]@{
+                DarkMenuState = ('0x{0:X}' -f $darkState)
+                DarkChecked = (($darkState -band 0x8) -ne 0)
+                MenuLocale = $menuLocale
+                LanguageItems = @($items)
+                LanguageMenuChecked = (($checkedItems | ForEach-Object { $_.label }) -join '|')
+            }
+        }.GetNewClosure()
+
+        $recordTransition = {
+            param([string]$Experiment, [string]$Sequence, [int]$ProcessId, [string]$Step, [string]$Action,
+                [string]$ExpectedLocale, [string]$Screenshot, [bool]$SemanticState, [string]$Notes, $Snapshot)
+            [pscustomobject]@{
+                experiment_id=$Experiment; sequence=$Sequence; process_id=$ProcessId; step=$Step; action=$Action
+                expected_locale=$ExpectedLocale; menu_locale=$Snapshot.MenuLocale
+                language_menu_checked=$Snapshot.LanguageMenuChecked; dark_menu_state=$Snapshot.DarkMenuState
+                dark_checked=$Snapshot.DarkChecked; screenshot=$Screenshot; semantic_state=$SemanticState; notes=$Notes
+            } | Export-Csv -LiteralPath $darkExperimentTransitions -NoTypeInformation -Append -Encoding utf8
+            Write-Status "R1 experiment=$Experiment step=$Step action=$Action menu_locale=$($Snapshot.MenuLocale) language_checked=$($Snapshot.LanguageMenuChecked) theme_menu_state=$($Snapshot.DarkMenuState) dark_checked=$($Snapshot.DarkChecked) screenshot=$Screenshot semantic=$SemanticState"
+        }.GetNewClosure()
+
+        $selectLanguage = {
+            param([IntPtr]$Window, [string]$Experiment, [string]$Sequence, [int]$ProcessId, [string]$Locale, [string]$Step)
+            $snapshot = & $getMenuSnapshot $Window
+            $pattern = if ($Locale -eq 'English') { '(?i)^&?English' } else { '(?i)Chinese.*Simplified|Simplified Chinese|简体中文' }
+            $target = @($snapshot.LanguageItems | Where-Object { $_.label -match $pattern }) | Select-Object -First 1
+            if (-not $target) { throw "Experiment $Experiment cannot find the source-native $Locale command in the View/Language submenu." }
+            if (-not [P2CWin32]::PostMessage($Window, 0x0111, [IntPtr]$target.command_id, [IntPtr]::Zero)) {
+                throw "Experiment $Experiment could not post the locale command $($target.command_id)."
+            }
+            Start-Sleep -Milliseconds 500
+            $snapshot = & $getMenuSnapshot $Window
+            $semantic = ($snapshot.MenuLocale -eq $Locale)
+            & $recordTransition $Experiment $Sequence $ProcessId $Step "language-command:$Locale(id=$($target.command_id))" $Locale '' $semantic "locale command posted to isolated process; menu_locale=$($snapshot.MenuLocale)" $snapshot
+            return $snapshot
+        }.GetNewClosure()
+
+        $toggleDark = {
+            param([IntPtr]$Window, [string]$Experiment, [string]$Sequence, [int]$ProcessId, [string]$Locale, [string]$Step)
+            $before = & $getMenuSnapshot $Window
+            if ($before.DarkChecked) { throw "Experiment $Experiment did not start from a light application palette in its fresh portable configuration." }
+            if (-not [P2CWin32]::PostMessage($Window, 0x0111, [IntPtr]159, [IntPtr]::Zero)) { throw "Experiment $Experiment could not post IDM_USEDARKTHEME." }
+            Start-Sleep -Milliseconds 500
+            $after = & $getMenuSnapshot $Window
+            if (-not $after.DarkChecked) { throw "Experiment $Experiment did not show IDM_USEDARKTHEME checked after the transition." }
+            $shot = "windows-r1-$Experiment-$Step-main.png"
+            & $captureWindow $Window (Join-Path $artifactDir $shot)
+            & $recordTransition $Experiment $Sequence $ProcessId $Step 'IDM_USEDARKTHEME=159' $Locale $shot $true 'View menu checkmark verified after repaint; screenshot retained for palette samples.' $after
+            return $after
+        }.GetNewClosure()
+
+        $openSettings = {
+            param([IntPtr]$MainWindow, [int]$ProcessId, [string]$Experiment)
+            if (-not [P2CWin32]::PostMessage($MainWindow, 0x0111, [IntPtr]155, [IntPtr]::Zero)) { throw "Experiment $Experiment could not post IDM_SETTINGS=155." }
+            $settings = $null
+            for ($attempt = 0; $attempt -lt 24 -and -not $settings; $attempt++) {
+                Start-Sleep -Milliseconds 250
+                $settings = @([P2CWin32]::GetProcessWindows([uint32]$ProcessId)) |
+                    Where-Object { $_.Visible -and $_.Handle -ne $MainWindow -and $_.Width -gt 200 -and $_.Height -gt 100 } |
+                    Select-Object -First 1
+            }
+            if (-not $settings) { throw "Experiment $Experiment could not observe a visible Settings window after IDM_SETTINGS." }
+            return $settings
+        }.GetNewClosure()
+
+        $readSettingsLocale = {
+            param([IntPtr]$SettingsWindow, [string]$Experiment)
+            $language = @([P2CWin32]::GetChildWindows($SettingsWindow) | Where-Object { $_.ControlId -eq 123 -and $_.ClassName -eq 'ComboBox' -and $_.Visible }) | Select-Object -First 1
+            if (-not $language) { throw "Experiment $Experiment General page does not expose IDC_LANGUAGE=123." }
+            $items = @([P2CWin32]::GetComboItems($language.Handle))
+            $index = [P2CWin32]::GetComboSelection($language.Handle)
+            if ($index -lt 0 -or $index -ge $items.Count) { throw "Experiment $Experiment IDC_LANGUAGE selection index $index is invalid." }
+            $label = $items[$index]
+            $locale = if ($label -match '(?i)^English') { 'English' } elseif ($label -match '(?i)Chinese.*Simplified|Simplified Chinese|简体中文') { 'zh-CN' } else { "UNKNOWN:$label" }
+            [pscustomobject]@{ Locale=$locale; Label=$label; Index=$index; Items=($items -join '|') }
+        }.GetNewClosure()
+
+        $readPixel = {
+            param($Bitmap, [string]$Experiment, [int]$PageIndex, [int]$PageId, [string]$Area, [int]$X, [int]$Y, [bool]$DarkState)
+            if ($X -lt 0 -or $Y -lt 0 -or $X -ge $Bitmap.Width -or $Y -ge $Bitmap.Height) { throw "Color sample $Area is outside the captured settings window ($X,$Y / $($Bitmap.Width)x$($Bitmap.Height))." }
+            $color = $Bitmap.GetPixel($X, $Y)
+            $rgb = '#{0:X2}{1:X2}{2:X2}' -f $color.R, $color.G, $color.B
+            [pscustomobject]@{ experiment_id=$Experiment; page_index=$PageIndex; page_resource_id=$PageId; area=$Area; x=$X; y=$Y; rgb=$rgb; semantic_state="dark_menu_checked=$DarkState" } |
+                Export-Csv -LiteralPath $darkExperimentColors -NoTypeInformation -Append -Encoding utf8
+        }.GetNewClosure()
+
+        $experimentDefinitions = @(
+            [pscustomobject]@{ Id='A'; Sequence='English -> Dark -> Settings'; FinalLocale='English'; StartLocale='English'; Transition='locale-dark-settings' },
+            [pscustomobject]@{ Id='B'; Sequence='Simplified Chinese -> Dark -> Settings'; FinalLocale='zh-CN'; StartLocale='zh-CN'; Transition='locale-dark-settings' },
+            [pscustomobject]@{ Id='C'; Sequence='Dark -> Simplified Chinese -> Settings'; FinalLocale='zh-CN'; StartLocale='English'; Transition='dark-locale-settings' },
+            [pscustomobject]@{ Id='D'; Sequence='English -> Dark -> Simplified Chinese -> English'; FinalLocale='English'; StartLocale='English'; Transition='locale-dark-locale-locale' }
+        )
+
+        foreach ($experiment in $experimentDefinitions) {
+            $trialRoot = Join-Path (Join-Path $workDir 'dark-state-experiments') $experiment.Id
+            $trialApp = Join-Path $trialRoot 'app'
+            New-Item -ItemType Directory -Force -Path $trialApp | Out-Null
+            Copy-Item -Path (Join-Path $extractDir '*') -Destination $trialApp -Recurse -Force
+            # Each fresh portable copy gets its own empty profile. The upstream
+            # runtime treats portable.dat beside the executable as a portable
+            # marker; all config writes must then resolve beside this copy.
+            foreach ($seedConfig in @(Get-ChildItem -LiteralPath $trialApp -Filter '*.ini' -File -ErrorAction SilentlyContinue)) {
+                Write-Status "R1 experiment=$($experiment.Id) discarded only copied release config candidate=$(Split-Path $seedConfig.FullName -Leaf) sha256=$((Get-FileHash -Algorithm SHA256 -LiteralPath $seedConfig.FullName).Hash.ToLowerInvariant())"
+                Remove-Item -LiteralPath $seedConfig.FullName -Force
+            }
+            [System.IO.File]::WriteAllBytes((Join-Path $trialApp 'portable.dat'), [byte[]]@())
+            $trialExe = Join-Path $trialApp 'memreduct.exe'
+            if (-not (Test-Path -LiteralPath $trialExe)) { $trialExe = (Get-ChildItem -LiteralPath $trialApp -Filter 'memreduct.exe' -File -Recurse | Select-Object -First 1).FullName }
+            if (-not $trialExe) { throw "Experiment $($experiment.Id) portable copy has no Mem Reduct executable." }
+            $trialExeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $trialExe).Hash.ToLowerInvariant()
+            if ($trialExeHash -ne $expectedExe) { throw "Experiment $($experiment.Id) executable SHA does not match the pinned release asset." }
+            $trialVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($trialExe)
+            $trialProcess = $null
+            $trialSettings = $null
+            $pageCount = 0
+            $configFileName = ''
+            $configHash = ''
+            $finalMenu = $null
+            try {
+                $trialProcess = Start-Process -FilePath $trialExe -WorkingDirectory (Split-Path $trialExe -Parent) -PassThru
+                for ($attempt = 0; $attempt -lt 24; $attempt++) {
+                    Start-Sleep -Milliseconds 250
+                    $trialProcess.Refresh()
+                    $trialMain = $trialProcess.MainWindowHandle
+                    if ($trialMain -ne [IntPtr]::Zero) { break }
+                    if ($trialProcess.HasExited) { throw "Experiment $($experiment.Id) process exited before exposing its main window; exit=$($trialProcess.ExitCode)." }
+                }
+                if ($trialMain -eq [IntPtr]::Zero) { throw "Experiment $($experiment.Id) main window did not appear within 6 seconds." }
+                [void][P2CWin32]::SetForegroundWindow($trialMain)
+                $initialMenu = & $getMenuSnapshot $trialMain
+                if ($initialMenu.DarkChecked) { throw "Experiment $($experiment.Id) fresh portable config unexpectedly starts in dark mode." }
+                $startupShot = "windows-r1-$($experiment.Id)-startup-main.png"
+                & $captureWindow $trialMain (Join-Path $artifactDir $startupShot)
+                & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'startup' 'fresh-process;portable.dat;empty-profile' $experiment.StartLocale $startupShot ($initialMenu.MenuLocale -eq 'English' -or $initialMenu.MenuLocale -eq 'zh-CN') 'fresh executable copy and independent portable profile' $initialMenu
+
+                if ($experiment.Id -eq 'A' -or $experiment.Id -eq 'B') {
+                    $languageState = & $selectLanguage $trialMain $experiment.Id $experiment.Sequence $trialProcess.Id $experiment.StartLocale 'locale'
+                    $localeShot = "windows-r1-$($experiment.Id)-locale-main.png"
+                    & $captureWindow $trialMain (Join-Path $artifactDir $localeShot)
+                    & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'locale-selected' "language-command:$($experiment.StartLocale)" $experiment.StartLocale $localeShot ($languageState.MenuLocale -eq $experiment.StartLocale) 'language chosen from source View/Language menu before theme change' $languageState
+                    $finalMenu = & $toggleDark $trialMain $experiment.Id $experiment.Sequence $trialProcess.Id $experiment.StartLocale 'dark'
+                } elseif ($experiment.Id -eq 'C') {
+                    $finalMenu = & $toggleDark $trialMain $experiment.Id $experiment.Sequence $trialProcess.Id 'English' 'dark-first'
+                    $finalMenu = & $selectLanguage $trialMain $experiment.Id $experiment.Sequence $trialProcess.Id 'zh-CN' 'locale-after-dark'
+                    if (-not $finalMenu.DarkChecked) { throw 'Experiment C lost its dark menu check after changing language.' }
+                    $localeShot = "windows-r1-C-locale-after-dark-main.png"
+                    & $captureWindow $trialMain (Join-Path $artifactDir $localeShot)
+                    & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'locale-selected-after-dark' 'language-command:zh-CN;dark-state-preserved' 'zh-CN' $localeShot $true 'dark checked state read back after the language transition' $finalMenu
+                } else {
+                    $finalMenu = & $selectLanguage $trialMain $experiment.Id $experiment.Sequence $trialProcess.Id 'English' 'english-first'
+                    $finalMenu = & $toggleDark $trialMain $experiment.Id $experiment.Sequence $trialProcess.Id 'English' 'dark'
+                    $finalMenu = & $selectLanguage $trialMain $experiment.Id $experiment.Sequence $trialProcess.Id 'zh-CN' 'chinese-after-dark'
+                    if (-not $finalMenu.DarkChecked) { throw 'Experiment D lost its dark menu check after switching to Simplified Chinese.' }
+                    $zhShot = 'windows-r1-D-chinese-after-dark-main.png'
+                    & $captureWindow $trialMain (Join-Path $artifactDir $zhShot)
+                    & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'chinese-after-dark' 'language-command:zh-CN;dark-state-preserved' 'zh-CN' $zhShot $true 'intermediate locale state captured after menu command' $finalMenu
+                    $finalMenu = & $selectLanguage $trialMain $experiment.Id $experiment.Sequence $trialProcess.Id 'English' 'english-after-chinese'
+                    if (-not $finalMenu.DarkChecked) { throw 'Experiment D lost its dark menu check after returning to English.' }
+                    $enShot = 'windows-r1-D-english-after-chinese-main.png'
+                    & $captureWindow $trialMain (Join-Path $artifactDir $enShot)
+                    & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'english-after-chinese' 'language-command:English;dark-state-preserved' 'English' $enShot ($finalMenu.MenuLocale -eq 'English') 'final locale state captured after Chinese then English transition' $finalMenu
+                }
+
+                if ($experiment.Id -ne 'D') {
+                    if (-not $finalMenu.DarkChecked) { throw "Experiment $($experiment.Id) is not in verified app-dark state before Settings." }
+                    $settingsShot = "windows-r1-$($experiment.Id)-settings-open.png"
+                    $trialSettings = & $openSettings $trialMain $trialProcess.Id $experiment.Id
+                    & $captureWindow $trialSettings.Handle (Join-Path $artifactDir $settingsShot)
+                    $openMenu = & $getMenuSnapshot $trialMain
+                    & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'settings-open' 'IDM_SETTINGS=155' $experiment.FinalLocale $settingsShot $true 'Settings opened after required locale/theme order' $openMenu
+                }
+                else {
+                    $trialSettings = & $openSettings $trialMain $trialProcess.Id $experiment.Id
+                    $openMenu = & $getMenuSnapshot $trialMain
+                    & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'sequence-complete' 'English->Dark->Chinese->English;Settings opened only after the sequence' 'English' '' $true 'D ordered transition completed on the main window before opening Settings for state inspection' $openMenu
+                }
+
+                $settingsRect = [P2CWin32+RECT]::new()
+                $settingsClientRect = [P2CWin32+RECT]::new()
+                $clientOrigin = [P2CWin32+POINT]::new()
+                if (-not [P2CWin32]::GetWindowRect($trialSettings.Handle, [ref]$settingsRect) -or
+                    -not [P2CWin32]::GetClientRect($trialSettings.Handle, [ref]$settingsClientRect) -or
+                    -not [P2CWin32]::ClientToScreen($trialSettings.Handle, [ref]$clientOrigin)) { throw "Experiment $($experiment.Id) cannot read Settings geometry." }
+                $outerWidth = $settingsRect.Right - $settingsRect.Left
+                $outerHeight = $settingsRect.Bottom - $settingsRect.Top
+                $clientWidth = $settingsClientRect.Right - $settingsClientRect.Left
+                $clientHeight = $settingsClientRect.Bottom - $settingsClientRect.Top
+                if (($outerWidth, $outerHeight, $clientWidth, $clientHeight) -ne (574, 374, 558, 335)) {
+                    throw "Experiment $($experiment.Id) Settings geometry changed: outer=${outerWidth}x${outerHeight} client=${clientWidth}x${clientHeight}."
+                }
+                $localeFromSettings = $null
+                $currentMenu = & $getMenuSnapshot $trialMain
+                if (-not $currentMenu.DarkChecked) { throw "Experiment $($experiment.Id) IDM_USEDARKTHEME is not checked when Settings opens." }
+
+                foreach ($pageIndex in 0..4) {
+                    $settingsChildren = @([P2CWin32]::GetChildWindows($trialSettings.Handle))
+                    $nav = $settingsChildren | Where-Object { $_.ControlId -eq 104 -and $_.ClassName -eq 'SysTreeView32' } | Select-Object -First 1
+                    if (-not $nav) { throw "Experiment $($experiment.Id) Settings page $pageIndex lacks IDC_NAV=104 SysTreeView32." }
+                    $expectedLabel = $labelsByLocale[$experiment.FinalLocale][$pageIndex]
+                    $treeItems = @([P2CWin32]::GetTreeItems($nav.Handle))
+                    $targetItem = $null
+                    foreach ($item in $treeItems) {
+                        $itemText = [P2CWin32]::GetTreeItemText($nav.Handle, $item, [uint32]$trialProcess.Id)
+                        if ($itemText -eq $expectedLabel) { $targetItem = $item; break }
+                    }
+                    if ($targetItem -eq $null -or -not [P2CWin32]::SelectTreeItem($nav.Handle, $targetItem)) {
+                        throw "Experiment $($experiment.Id) cannot select localized navigation label '$expectedLabel'."
+                    }
+                    Start-Sleep -Milliseconds 300
+                    $selectedLabel = [P2CWin32]::GetSelectedTreeText($nav.Handle, [uint32]$trialProcess.Id)
+                    $currentChildren = @([P2CWin32]::GetChildWindows($trialSettings.Handle))
+                    $activePages = @($currentChildren | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 })
+                    $activePage = $activePages | Where-Object { $_.ControlId -eq (101 + $pageIndex) } | Select-Object -First 1
+                    if (-not $activePage) {
+                        $candidateIds = ($activePages | ForEach-Object { $_.ControlId }) -join '|'
+                        throw "Experiment $($experiment.Id) selected '$selectedLabel' but visible page dialog resource ID did not equal $((101 + $pageIndex)); observed=$candidateIds."
+                    }
+                    $insidePage = @($currentChildren | Where-Object {
+                        $_.Visible -and $_.ControlId -ne 0 -and $_.Left -ge $activePage.Left -and $_.Top -ge $activePage.Top -and
+                        $_.Left -lt ($activePage.Left + $activePage.Width) -and $_.Top -lt ($activePage.Top + $activePage.Height)
+                    })
+                    $visibleIds = @($insidePage | ForEach-Object { $_.ControlId } | Sort-Object -Unique)
+                    $enabledIds = @($insidePage | Where-Object { $_.Enabled } | ForEach-Object { $_.ControlId } | Sort-Object -Unique)
+                    $missingSentinels = @($sentinelsByPage[$pageIndex] | Where-Object { $_ -notin $visibleIds })
+                    if ($missingSentinels.Count -gt 0) { throw "Experiment $($experiment.Id) page IDD=$((101 + $pageIndex)) is missing visible resource IDs: $($missingSentinels -join ',')." }
+                    if ($selectedLabel -ne $expectedLabel -or $activePage.ControlId -ne (101 + $pageIndex)) { throw "Experiment $($experiment.Id) navigation/page mismatch on page $pageIndex." }
+
+                    if ($pageIndex -eq 0) {
+                        $languageState = & $readSettingsLocale $trialSettings.Handle $experiment.Id
+                        $localeFromSettings = $languageState.Locale
+                        if ($localeFromSettings -ne $experiment.FinalLocale) { throw "Experiment $($experiment.Id) IDC_LANGUAGE reads '$($languageState.Label)' ($localeFromSettings), expected $($experiment.FinalLocale)." }
+                        $currentMenu = & $getMenuSnapshot $trialMain
+                        & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'settings-locale-verified' "IDC_LANGUAGE=123;index=$($languageState.Index);label=$($languageState.Label)" $experiment.FinalLocale '' $true "combo_items=$($languageState.Items);menu_locale=$($currentMenu.MenuLocale)" $currentMenu
+                    }
+                    $currentMenu = & $getMenuSnapshot $trialMain
+                    if (-not $currentMenu.DarkChecked) { throw "Experiment $($experiment.Id) dark theme menu state changed before page $pageIndex capture." }
+                    $pageLocale = if ($localeFromSettings) { $localeFromSettings } else { $experiment.FinalLocale }
+                    $shotName = "windows-r1-$($experiment.Id)-settings-$pageIndex-$($experiment.FinalLocale).png"
+                    [void][P2CWin32]::SetForegroundWindow($trialSettings.Handle)
+                    & $captureWindow $trialSettings.Handle (Join-Path $artifactDir $shotName)
+                    $semanticPair = ($pageLocale -eq $experiment.FinalLocale -and $selectedLabel -eq $expectedLabel -and $activePage.ControlId -eq (101 + $pageIndex) -and $currentMenu.DarkChecked)
+                    [pscustomobject]@{
+                        experiment_id=$experiment.Id; sequence=$experiment.Sequence; process_id=$trialProcess.Id
+                        locale_expected=$experiment.FinalLocale; locale_from_settings=$pageLocale; menu_locale=$currentMenu.MenuLocale
+                        dark_menu_state=$currentMenu.DarkMenuState; dark_checked=$currentMenu.DarkChecked
+                        page_index=$pageIndex; page_resource_id=$activePage.ControlId; selected_nav=$selectedLabel
+                        visible_resource_ids=($visibleIds -join '|'); enabled_resource_ids=($enabledIds -join '|')
+                        settings_outer="${outerWidth}x${outerHeight}"; settings_client="${clientWidth}x${clientHeight}"
+                        client_origin_x=($clientOrigin.X - $settingsRect.Left); client_origin_y=($clientOrigin.Y - $settingsRect.Top)
+                        screenshot=$shotName; semantic_pair_valid=$semanticPair
+                    } | Export-Csv -LiteralPath $darkExperimentPages -NoTypeInformation -Append -Encoding utf8
+                    foreach ($control in $insidePage) {
+                        [pscustomobject]@{
+                            experiment_id=$experiment.Id; page_index=$pageIndex; page_resource_id=$activePage.ControlId
+                            resource_id=$control.ControlId; class=$control.ClassName; visible=$control.Visible; enabled=$control.Enabled
+                            x=($control.Left - $clientOrigin.X); y=($control.Top - $clientOrigin.Y); width=$control.Width; height=$control.Height
+                        } | Export-Csv -LiteralPath $darkExperimentControls -NoTypeInformation -Append -Encoding utf8
+                    }
+                    $pageCount++
+                    Write-Status "R1 page state experiment=$($experiment.Id) locale=$pageLocale theme=dark menu_checked=$($currentMenu.DarkChecked) nav='$selectedLabel' page_resource_id=$($activePage.ControlId) visible_controls=$($insidePage.Count) enabled_ids=$($enabledIds -join '|') screenshot=$shotName semantic_pair=$semanticPair"
+
+                    $bitmap = [System.Drawing.Bitmap]::FromFile((Join-Path $artifactDir $shotName))
+                    try {
+                        $offsetX = $clientOrigin.X - $settingsRect.Left
+                        $offsetY = $clientOrigin.Y - $settingsRect.Top
+                        $addSample = {
+                            param([string]$Name, [int]$ClientX, [int]$ClientY)
+                            & $readPixel $bitmap $experiment.Id $pageIndex $activePage.ControlId $Name ($offsetX + $ClientX) ($offsetY + $ClientY) $currentMenu.DarkChecked
+                        }.GetNewClosure()
+                        & $addSample 'settings-client-background' 4 4
+                        $navPointX = $nav.Left - $clientOrigin.X
+                        $navPointY = $nav.Top - $clientOrigin.Y
+                        & $addSample 'navigation-background' ($navPointX + $nav.Width - 10) ($navPointY + $nav.Height - 10)
+                        $pagePointX = $activePage.Left - $clientOrigin.X
+                        $pagePointY = $activePage.Top - $clientOrigin.Y
+                        & $addSample 'page-surface' ($pagePointX + $activePage.Width - 7) ($pagePointY + $activePage.Height - 7)
+                        foreach ($buttonId in @(105, 106)) {
+                            $button = $currentChildren | Where-Object { $_.ControlId -eq $buttonId -and $_.Visible } | Select-Object -First 1
+                            if ($button) {
+                                $area = if ($buttonId -eq 105) { 'reset-button' } else { 'close-button' }
+                                & $addSample $area (($button.Left - $clientOrigin.X) + $button.Width - 8) (($button.Top - $clientOrigin.Y) + [int]($button.Height / 2))
+                            }
+                        }
+                        $regions = $insidePage | Where-Object { $_.ControlId -eq 124 } | Select-Object -First 1
+                        if ($regions) {
+                            & $addSample 'IDC_REGIONS-list' (($regions.Left - $clientOrigin.X) + $regions.Width - 18) (($regions.Top - $clientOrigin.Y) + $regions.Height - 10)
+                        }
+                    } finally { $bitmap.Dispose() }
+                }
+
+                # Close, reopen, and verify persistence within this isolated
+                # process; no cleanup command or privileged operation is sent.
+                [void][P2CWin32]::PostMessage($trialSettings.Handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+                $settingsClosed = $false
+                for ($attempt = 0; $attempt -lt 12; $attempt++) {
+                    Start-Sleep -Milliseconds 250
+                    $stillVisible = @([P2CWin32]::GetProcessWindows([uint32]$trialProcess.Id) |
+                        Where-Object { $_.Visible -and $_.Handle -ne $trialMain -and $_.Width -gt 200 -and $_.Height -gt 100 })
+                    if ($stillVisible.Count -eq 0) { $settingsClosed = $true; break }
+                }
+                if (-not $settingsClosed) { throw "Experiment $($experiment.Id) WM_CLOSE did not dismiss the Settings window before reopening." }
+                $reopened = & $openSettings $trialMain $trialProcess.Id $experiment.Id
+                $reopenChildren = @([P2CWin32]::GetChildWindows($reopened.Handle))
+                $reopenNav = $reopenChildren | Where-Object { $_.ControlId -eq 104 -and $_.ClassName -eq 'SysTreeView32' } | Select-Object -First 1
+                $reopenPage = @([P2CWin32]::GetChildWindows($reopened.Handle) | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 }) | Select-Object -First 1
+                $reopenLabel = if ($reopenNav) { [P2CWin32]::GetSelectedTreeText($reopenNav.Handle, [uint32]$trialProcess.Id) } else { '' }
+                $reopenMenu = & $getMenuSnapshot $trialMain
+                if (-not $reopenMenu.DarkChecked) { throw "Experiment $($experiment.Id) theme menu check did not survive Settings close and reopen." }
+                if (-not $reopenPage -or $reopenPage.ControlId -lt 101 -or $reopenPage.ControlId -gt 105) { throw "Experiment $($experiment.Id) Settings did not restore a measurable page resource after reopen." }
+                $reopenIndex = $reopenPage.ControlId - 101
+                if ($reopenLabel -ne $labelsByLocale[$experiment.FinalLocale][$reopenIndex]) { throw "Experiment $($experiment.Id) reopened navigation '$reopenLabel' does not match page resource ID $($reopenPage.ControlId)." }
+                $reopenPageName = $labelsByLocale[$experiment.FinalLocale][0]
+                $reopenGeneralItem = $null
+                foreach ($item in @([P2CWin32]::GetTreeItems($reopenNav.Handle))) {
+                    if ([P2CWin32]::GetTreeItemText($reopenNav.Handle, $item, [uint32]$trialProcess.Id) -eq $reopenPageName) { $reopenGeneralItem = $item; break }
+                }
+                if ($reopenGeneralItem -eq $null -or -not [P2CWin32]::SelectTreeItem($reopenNav.Handle, $reopenGeneralItem)) { throw "Experiment $($experiment.Id) could not select General after Settings reopen." }
+                Start-Sleep -Milliseconds 250
+                $reopenLocale = & $readSettingsLocale $reopened.Handle $experiment.Id
+                if ($reopenLocale.Locale -ne $experiment.FinalLocale) { throw "Experiment $($experiment.Id) IDC_LANGUAGE after reopen is '$($reopenLocale.Label)', expected $($experiment.FinalLocale)." }
+                $reopenShot = "windows-r1-$($experiment.Id)-settings-reopened.png"
+                & $captureWindow $reopened.Handle (Join-Path $artifactDir $reopenShot)
+                & $recordTransition $experiment.Id $experiment.Sequence $trialProcess.Id 'settings-reopened' "WM_CLOSE->IDM_SETTINGS;restored_nav=$reopenLabel;restored_page_id=$($reopenPage.ControlId);IDC_LANGUAGE=$($reopenLocale.Label)" $experiment.FinalLocale $reopenShot $true 'theme check, restored nav/page relationship, and IDC_LANGUAGE verified after reopening' $reopenMenu
+
+                [void][P2CWin32]::PostMessage($reopened.Handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+                Start-Sleep -Milliseconds 300
+                [void]$trialProcess.CloseMainWindow()
+                [void]$trialProcess.WaitForExit(5000)
+                if (-not $trialProcess.HasExited) { Stop-Process -Id $trialProcess.Id -Force -ErrorAction SilentlyContinue; throw "Experiment $($experiment.Id) process did not exit after its normal close request." }
+                $configs = @(Get-ChildItem -LiteralPath (Split-Path $trialExe -Parent) -Filter '*.ini' -File -ErrorAction SilentlyContinue)
+                if ($configs.Count -ne 1 -or $configs[0].Length -eq 0) { throw "Experiment $($experiment.Id) did not leave exactly one non-empty portable config beside its own executable; found=$($configs.Count)." }
+                $configFileName = "isolated-copy/$($experiment.Id)/$($configs[0].Name)"
+                $configHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $configs[0].FullName).Hash.ToLowerInvariant()
+                $finalMenu = $reopenMenu
+                [pscustomobject]@{
+                    experiment_id=$experiment.Id; sequence=$experiment.Sequence; process_id=$trialProcess.Id
+                    app_version=$trialVersion.FileVersion; app_sha256=$trialExeHash; windows_version=$os.Caption; windows_build=$os.BuildNumber
+                    screen="$($runnerScreen.Width)x$($runnerScreen.Height)"; dpi=$scale; scale_percent=[math]::Round(100 * [double]$scale / 96)
+                    windows_apps_theme=$runnerTheme; locale_final=$experiment.FinalLocale; dark_final=$finalMenu.DarkChecked
+                    settings_pages=$pageCount; config_file=$configFileName; config_sha256=$configHash
+                    isolated_config_verified=$true; status='PASS'
+                } | Export-Csv -LiteralPath $darkExperimentSummary -NoTypeInformation -Append -Encoding utf8
+                Write-Status "PASS isolated dark-state experiment=$($experiment.Id) fresh_pid=$($trialProcess.Id) sequence='$($experiment.Sequence)' pages=$pageCount config=$configFileName config_sha256=$configHash locale=$($experiment.FinalLocale) dark_checked=$($finalMenu.DarkChecked)"
+            }
+            finally {
+                if ($trialProcess -and -not $trialProcess.HasExited) {
+                    try { [void]$trialProcess.CloseMainWindow(); [void]$trialProcess.WaitForExit(3000) } catch { }
+                    if (-not $trialProcess.HasExited) { Stop-Process -Id $trialProcess.Id -Force -ErrorAction SilentlyContinue }
+                }
+                if (Test-Path -LiteralPath $trialRoot) { Remove-Item -LiteralPath $trialRoot -Recurse -Force }
+            }
+        }
+    }
+    else {
+        Write-Status 'BLOCKED P2C-4R1 fresh-process experiments: no interactive Windows runner desktop or verified native main window.'
+    }
 } catch {
     Write-Status "FAIL Windows release verification/capture: $($_.Exception.Message)"
     throw
@@ -1067,7 +1541,10 @@ public static class P2CWin32 {
         try { $appProcess.CloseMainWindow() | Out-Null; [void]$appProcess.WaitForExit(3000) } catch { }
         if (-not $appProcess.HasExited) { Stop-Process -Id $appProcess.Id -Force -ErrorAction SilentlyContinue }
     }
-    $manifest = Get-ChildItem -LiteralPath $artifactDir -File -Filter '*.png' -ErrorAction SilentlyContinue | Get-FileHash -Algorithm SHA256
-    foreach ($item in $manifest) { Write-Status "Screenshot SHA-256=$($item.Hash.ToLowerInvariant()) file=$([System.IO.Path]::GetFileName($item.Path))" }
+    $manifest = Get-ChildItem -LiteralPath $artifactDir -File -Filter '*.png' -Recurse -ErrorAction SilentlyContinue | Get-FileHash -Algorithm SHA256
+    foreach ($item in $manifest) {
+        $relativePath = $item.Path.Substring($artifactDir.Length) -replace '^[\\/]+', '' -replace '\\', '/'
+        Write-Status "Screenshot SHA-256=$($item.Hash.ToLowerInvariant()) file=$relativePath"
+    }
     if (-not (Test-Path -LiteralPath $statusFile)) { 'FAIL no result was recorded' | Set-Content -LiteralPath $statusFile -Encoding UTF8 }
 }

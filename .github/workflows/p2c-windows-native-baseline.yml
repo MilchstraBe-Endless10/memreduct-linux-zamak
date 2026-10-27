@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Verify official 3.5.2 assets and attempt native screenshots
+      - name: Verify official 3.5.2 assets, capture native UI, and run isolated dark-state trials
         shell: pwsh
         run: ./scripts/ci/windows-native-baseline.ps1
       - name: Upload release provenance, desktop probe, and authentic screenshots
