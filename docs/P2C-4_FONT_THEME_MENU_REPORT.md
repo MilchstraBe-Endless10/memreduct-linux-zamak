@@ -1,14 +1,14 @@
 # P2C-4 — 字体、控件绘制与深色主题校准
 
-## P2C-4R1 exact-head 复验与阶段收口（2026-10-27；`90b2308`）
+## P2C-4R1 最新 exact-head 复验（2026-10-27；证据 HEAD `716a1ca`）
 
-PR [#7](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7) 仍为 **OPEN / Draft**；base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`，当前 head `90b23084f0f5f31f15f7b5983b19999ea37a70bc`。本节的 Actions 均由该 exact HEAD 触发；生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改。相对于生产 checkpoint 的累计变更仍包括采集/比较脚本、CI workflow 和报告/记忆；不能将其笼统描述为纯文档变更。此 head 的最后提交用于报告交接，Windows/Linux 图形测试输入和生产 UI 均由 artifact 中的 source manifest 绑定。
+PR [#7](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7) 仍为 **OPEN / Draft**；base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。本节截图、比较和 source manifest 对应的 exact evidence HEAD 为 `716a1caaadeb780d32e8b9604961c333a752825d`；该提交只包含报告/交互矩阵/记忆同步，生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 及采集/比较源码均未改变。相对于生产 checkpoint 的累计变更仍包括采集/比较脚本、CI workflow 和报告/记忆；不能将其笼统描述为纯文档变更。Windows/Linux 图形测试输入及生产 UI 均由 exact-head artifacts 中的 source manifest 绑定。
 
 ### Actions 结果
 
-- [P2C：Windows 原版采集、生产 Xvfb/XTEST、视觉比较 run `40449858329`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858329)：3/3 jobs PASS，Windows、Linux capture、comparison 必需步骤均执行。
-- [P2B：生产 Xvfb/XTEST 与 Weston Headless/Pixman run `40449858347`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858347)：2/2 jobs PASS。P2B 重复的五页设置 XTEST step 按条件 SKIPPED；同一 HEAD 的 P2C Xvfb job 已真实执行全套设置页操作。
-- [PR build / governance / C safety / Zamak run `40449858304`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858304)：PASS，7/7 checks；[push build `40449852425`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449852425)：PASS。
+- [P2C：Windows 原版采集、生产 Xvfb/XTEST、视觉比较 run `40453430941`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941)：3/3 jobs PASS，Windows、Linux capture、comparison 必需步骤均执行。
+- [P2B：生产 Xvfb/XTEST 与 Weston Headless/Pixman run `40453430924`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430924)：2/2 jobs PASS。P2B 重复的五页设置 XTEST step 按条件 SKIPPED；同一 HEAD 的 P2C Xvfb job 已真实执行全套设置页操作。
+- [Build / governance / C safety / Zamak push run `40453423515`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453423515)：PASS，全部步骤成功；`gh pr checks 7` 汇总为 7 passed / 0 failed。
 - `zam --version` 为 `0.2.0`；`zam check .`、`zam build .`、`zam test .` 均 PASS，Zamak 单测 **30/30**。治理检查 33 项、Shell 4/4、非特权 C 安全测试 3/3 均 PASS。
 
 ### Windows 深色状态复验
@@ -32,11 +32,11 @@ Linux 截图来自 Ubuntu 24.04.5 / Xvfb 1024×768×24 / GTK 3.24.41 / 96 DPI，
 
 | 设置页 | Windows English PNG SHA-256 | Linux English PNG SHA-256 | Windows 简中 PNG SHA-256 | Linux 简中 PNG SHA-256 |
 |---|---|---|---|---|
-| General | `bf7c8ec08cf26f4900b14ea9176bb6b0fecc855383fd4b795ab8c614ce71761a` | `6ebc886a8f2b6244659563d2fd9e7741b500727e26bc92379023d8cc46c55157` | `0ec706f64357abe6a97a407ffc84174e20af341c0f38ba24c770ee6da18ae98f` | `b7261a8eeeb7616956f2a62d8872c4342c80ee7ffc5be1bcd8f71bfc98c0c881` |
-| Memory cleaning | `895c90ecc7690b08eb341d1abba705aea017a65825d5c48967e67222a2c84019` | `6638390aa4261a79a9af0923abdb854854871d1bd819e9fdb4b177907e7b78b0` | `5d944c93d86d5409867386521d7d6a8aab54c4357e3ec921931c70b820a52cd7` | `15fd3f758ef9db0ba67f74211bc0e79c91b51078d15726da0ef4d80d42139de6` |
-| Appearance | `326bbba1e94621e628db0bba3b9645e130aadc1bdfd5d5f42ba59107714cf2d7` | `446cd4717609cd9b5574852c2805937bf9eb7a8830a653f44f674ac0ebade4cc` | `c638c0215db89ac42a8f9fc71d3b3a0898fbc13d0096e7909e491e6a44b85cf1` | `f8f6d1d453f6f58b91340c43f36d2f2079997ae703684d9225916476ad55dda7` |
-| Tray icon | `d134ee38d2c461f95f8bd164e6a510465547c189fe1da4ed3a07138dd0e248ef` | `2ad7e338b3aa33696aafc90924715c743aaf337a0162cfbeff6e553e08473731` | `062b55ad9c21766789f16b711108f34c1f6d3e9c8a3bc1b34056932715937542` | `cf973472618a75c845967dccbce8c7149ffe9ac5ac287d4b64af0666dfd15dd5` |
-| Advanced | `1383895ca1a4d11997d59a6b0175da1110e8b5aca4c2d4ec95a3cbecd1446e34` | `7437bc8c941e08cd22c63e71af59811cbca7b7317a7485240cdb5983b3be8080` | `2dffd42571e754a75361b4379b8786597454a8d86d5b4862af20320af8fe7c83` | `54e015df4d928566a30e4e7d41c620276637dbd8a32745b066786a3c13b22def` |
+| General | `d813668e1472e1773f433fb46e96c4b72b71b5cd05fa455f0ae541a31cf0a79c` | `6ebc886a8f2b6244659563d2fd9e7741b500727e26bc92379023d8cc46c55157` | `1ac6f7cc168db28d638421af390bd99e8fcd4b4a1ae194ebd95d4010ab45a293` | `b7261a8eeeb7616956f2a62d8872c4342c80ee7ffc5be1bcd8f71bfc98c0c881` |
+| Memory cleaning | `dbd2c4e420eee73c90c1acdf262cb71d2a655318713a6117c6739c8052f1fa30` | `6638390aa4261a79a9af0923abdb854854871d1bd819e9fdb4b177907e7b78b0` | `a13d2db4971bd395b163864329de66de941760d409594017e3c8ba849165af4a` | `15fd3f758ef9db0ba67f74211bc0e79c91b51078d15726da0ef4d80d42139de6` |
+| Appearance | `cb3fb3405c94f5c321078b93b85be4d6eca2f52f0958548bd2accdf39dd9bacf` | `446cd4717609cd9b5574852c2805937bf9eb7a8830a653f44f674ac0ebade4cc` | `3aeb2ba89de425c2946bd73e810a4ecb6356734050f379c8fc3076907a69d6e5` | `f8f6d1d453f6f58b91340c43f36d2f2079997ae703684d9225916476ad55dda7` |
+| Tray icon | `582083f7d65c30e0b25a0e04da004dc5c646c0eff6592fc31b6bef05249e9e78` | `2ad7e338b3aa33696aafc90924715c743aaf337a0162cfbeff6e553e08473731` | `6473008b04b6ce5f626cce4f08dfd98aa21b4a9f2e1795cf34bca3f8b34be4cf` | `cf973472618a75c845967dccbce8c7149ffe9ac5ac287d4b64af0666dfd15dd5` |
+| Advanced | `e738a840eab8e6313455adbf3accddfce1c7f425361d45743cd0efb1c563d8c5` | `7437bc8c941e08cd22c63e71af59811cbca7b7317a7485240cdb5983b3be8080` | `e0c2c816815ed5f61e740c6e157f17f05a547112b0bef2ab97b9536ce77ee094` | `54e015df4d928566a30e4e7d41c620276637dbd8a32745b066786a3c13b22def` |
 
 | 设置页 | English changed pixels | 简中 changed pixels |
 |---|---:|---:|
@@ -52,15 +52,15 @@ Linux 截图来自 Ubuntu 24.04.5 / Xvfb 1024×768×24 / GTK 3.24.41 / 96 DPI，
 
 | 运行/内容 | Artifact ID | GitHub SHA-256 digest |
 |---|---:|---|
-| P2C Windows 原版 | [12709528954](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858329/artifacts/12709528954) | `sha256:a4614a46dc09ff319dd2a8bb160c2afd06b8e12b16b26e93ae941abd1028bbe6` |
-| P2C Linux Xvfb/XTEST | [12710625392](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858329/artifacts/12710625392) | `sha256:80cb7dd8191a390d746193da43fd88da974298acd725c0c8b46461dcd23388ce` |
-| P2C visual comparison | [12709712520](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858329/artifacts/12709712520) | `sha256:c32886e4b07f8c19c5691d8a95debfffc5067155fa17ad353882be7329a20514` |
-| P2C Linux APT diagnostics | [12710530669](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858329/artifacts/12710530669) | `sha256:b9a64e70d02ada227a70b97fb15323771002bdd7cecc5c1f3190f6e3cb10b19b` |
-| P2C comparator APT diagnostics | [12709752478](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858329/artifacts/12709752478) | `sha256:35bfdd2886ff8720a981c0f64ea4f9757a5abe43f6d3346b88dd9f893afe8abc` |
-| P2B Xvfb/XTEST | [12709933995](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858347/artifacts/12709933995) | `sha256:2a88b89dd245a3aa54705820c8d54b0e4212c49f1150f4821d241f177b822851` |
-| P2B Weston lifecycle | [12710380599](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858347/artifacts/12710380599) | `sha256:bcb29e53c3e18bfb6197816e20f05d4d6f9a27c8ec180197d8bcf7061ab39ac7` |
-| P2B Xvfb APT diagnostics | [12709834040](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858347/artifacts/12709834040) | `sha256:2468a07ce7c5ff7412b981516e32ee994929e2fcbe56036914e77b7dd49111b8` |
-| P2B Weston APT diagnostics | [12710236052](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40449858347/artifacts/12710236052) | `sha256:589098135c276bb988870dcb643c7221c179c932bb8dacc03c2205162b41c7c3` |
+| P2C Windows 原版 | [12711301420](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941/artifacts/12711301420) | `sha256:04146be8bcd7a2c62c79f9a118c9a2617cf1c9141b48db0f402c49bb6bf03632` |
+| P2C Linux Xvfb/XTEST | [12711351794](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941/artifacts/12711351794) | `sha256:50a0994cd71ffafc69049b4d25dd69acdbbb61d18271a8212a433e84423544f6` |
+| P2C visual comparison | [12711536604](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941/artifacts/12711536604) | `sha256:fbfe08b2d50f5f52c4ac957e997dcbad60566c9073f244a40b5fec57ec520032` |
+| P2C Linux APT diagnostics | [12711247088](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941/artifacts/12711247088) | `sha256:8f5011dadcac31ef853aca33973976984a6ec7db2c696155fa6e38f89e461d41` |
+| P2C comparator APT diagnostics | [12711162290](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941/artifacts/12711162290) | `sha256:a1cf2108854a9cedcfd02e73c5478804bdcbe955e21b13ce3d6f09e918ba2b70` |
+| P2B Xvfb/XTEST | [12711018044](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430924/artifacts/12711018044) | `sha256:d9d43ae6219f82c60307d160462f082030e4ee232b065db3d2127f9cd9259a34` |
+| P2B Weston lifecycle | [12711281579](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430924/artifacts/12711281579) | `sha256:1a55915bc3858d3753701d140651517520c4f83d8124329823b0664197f452c3` |
+| P2B Xvfb APT diagnostics | [12711092715](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430924/artifacts/12711092715) | `sha256:59bb92587d4d31d34586ce7a6055afc9dfc137ad3a2ba98ab551d9c9e5278a67` |
+| P2B Weston APT diagnostics | [12711411271](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430924/artifacts/12711411271) | `sha256:74b5addb4ca1db3a9f1337f43eb6956965e7a3fee60c02c90ab883b3a1f8d0e3` |
 
 从 GitHub artifacts 下载后复算：暗色截图/比较 manifest **155/155**、完整 visual SHA manifest **83/83**、Linux 截图 **44/44**、P2C source manifest **10/10**、P2B X11 截图 **10/10**、P2B source/binary manifest **8/8**，均无缺失或不匹配。生产关键 SHA：`src/main.zm` `6d8408d46360757616f85609c85acf02534b0090a679d74bd4ed5c6175c34d8f`；`src/settings_ui.zm` `f821f36117ab5ba0ec757c7596d991dc980d8d805aa1b804952c3f9d2a17c920`；`scripts/ci/windows-native-baseline.ps1` `8e6966e970d69c9969ffe8a3c350f0537d975b0830843f14c6a9e97c8e85c1ad`；`scripts/ci/compare_p2c_dark.py` `5faaf75133000ddd3e78ee38ff3a1b1082d5a4e9e435416fec4c92ee14785d2d`。P2B production/helper binary SHA-256 分别为 `fa13bc97526e97debd189ef09dacffc31ebf085d168ffe520856d00cdbd30404` / `30cac693f610cd0bec92de495f6c6e4ab352f8a6ec43bc807d08a2d27f2acf08`。
 
@@ -72,7 +72,7 @@ P2B Xvfb APT install 在 Ubuntu 24.04.5 / image `ubuntu24 20261023.334.3` / APT 
 
 ## Earlier P2C-4R1 evidence snapshot — `c847710` (2026-10-27)
 
-以下保留第一次完整 R1 复验及 `c847710` exact-head 结果；最新的 `90b2308` exact-head 复跑见本报告开头。该复验仅针对采集状态语义，不改生产 UI、字体、几何阈值或像素验收标准。
+以下保留第一次完整 R1 复验及 `c847710` exact-head 结果；`90b2308` 和之后的 `716a1ca` exact-head 结果已在本报告开头更新。该复验仅针对采集状态语义，不改生产 UI、字体、几何阈值或像素验收标准。
 
 - 语言 ID 关联修复提交：`ff5794f096317da50f84200bd0ac0bc663cbabb2`；图形/采集源码 HEAD：`7369db05f9d3e02c6e973f455922ee783b6b16cf`；随后对文档同步 HEAD `c84771063e6b349828e012463222b82bc57dd479` 重新运行了 P2C、P2B、PR build 与 push build。`7369db0..c847710` 只改报告、交互矩阵与记忆，采集脚本、workflow、生产二进制输入未变。生产 GUI checkpoint 仍为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。R1 唯一功能代码改动是 `scripts/ci/compare_p2c_dark.py` 的语言 ID 关联修复；该脚本 SHA-256 为 `5faaf75133000ddd3e78ee38ff3a1b1082d5a4e9e435416fec4c92ee14785d2d`。相对生产 UI checkpoint 的累计改动范围另含采集脚本与 workflow，分类见下一条。
 - 从生产 GUI checkpoint `6502342` 到本轮 HEAD 的 aggregate diff 并非纯文档：生产 UI 源码 `src/`、`native/gui_window.c` 无变更；测试/采集脚本变更为 `scripts/ci/windows-native-baseline.ps1` 和 `scripts/ci/compare_p2c_dark.py`；workflow 变更为 `.github/workflows/p2b-production-gui.yml`（并发组隔离）及 `.github/workflows/p2c-windows-native-baseline.yml`（并发组隔离、步骤标识）；文档/记忆变更为本报告、`docs/UI_INTERACTION_MATRIX.md`、`memory/LONG_TERM.md`、`memory/MEDIUM_TERM.md`、`memory/SHORT_TERM.md`、`memory/SESSION_LOG.md`。这是 checkpoint 至 HEAD 的累计范围；R1 的最后一笔 `7369db0` 只更新报告、交互矩阵和记忆，较早的 P2C 提交包含采集脚本和 workflow 修改。
@@ -96,7 +96,7 @@ P2B Xvfb APT install 在 Ubuntu 24.04.5 / image `ubuntu24 20261023.334.3` / APT 
 - 同一 HEAD 的 PR build/governance/safety run [40445420366](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40445420366) 与 push build [40445426755](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40445426755) 均 PASS：governance、shell syntax、非特权 C safety、Zamak 0.2.0 check/test/build。P2C 3 个 jobs、P2B 2 个 jobs 和两个 build runs 均成功；P2B 唯一 SKIPPED 项是上述由同 head P2C 覆盖的重复设置页 step，没有取消或失败的必需 job。
 - 无真实内存清理、Polkit、Swap/ZRAM 或内核缓存写入；没有 root GUI、Hyprland IPC、用户桌面输入注入或本机 GUI 操作。12 项中文资源差异未改变。
 
-历史状态截至 `c847710`：当时 P2C/P2B/PR build/push build 全部 PASS。后续 `90b2308` exact-head 复跑及 artifacts 见本报告开头。生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改；PR #7 仍 OPEN / Draft，完整像素 1:1 仍 NOT PASS，12 项简中来源差异仍待产品决策。下方 `4f84fb9` 及更早内容均为历史 snapshot。
+历史状态截至 `c847710`：当时 P2C/P2B/PR build/push build 全部 PASS。后续 `90b2308` 与 `716a1ca` exact-head 复跑及 artifacts 见本报告开头。生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改；PR #7 仍 OPEN / Draft，完整像素 1:1 仍 NOT PASS，12 项简中来源差异仍待产品决策。下方 `4f84fb9` 及更早内容均为历史 snapshot。
 
 ## 截图与比较 evidence snapshot：4f84fb9（2026-10-27）
 
