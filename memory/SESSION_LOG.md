@@ -113,4 +113,11 @@
 - 对固定 Windows Mem Reduct v.3.5.2 基准执行四种互相独立的语言/深色顺序。20/20 页的语言、应用暗色勾选、导航选中项与页面资源 ID 匹配；相同语言顺序截图 SHA 相同，十组顺序对照变化为 0。每个进程均 WM_CLOSE 设置页后重新打开，4/4 恢复导航/页面/语言和暗色菜单状态。新实验没有复现简中暗色混合亮暗控件。
 - 旧简中图存在导航与页面不对应；状态证据见 R1 报告。旧采集错配的具体发生环节未确认，不归咎于原版应用或 Linux。比较器语言关联已修复；最终 R1 P2C run `40443810060` 3/3 PASS，Artifacts `12707093733` / `12706823610` / `12706903621`。
 - R1 暗色语义配对的五页英文/简中差异率、截图 SHA 与环境写入 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`；交互状态矩阵写入 `docs/UI_INTERACTION_MATRIX.md`。几何、控件栅格、截图阈值、12 项 `DECISION_REQUIRED` 文案均未更改。
-- R1 代码改动仅比较脚本的语言 ID 映射；生产 UI 源码仍是 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。未进行主机桌面操作、清理或特权写入。最终提交 SHA 与 P2B/PR/push exact-head CI 结果在收尾时补录。
+- R1 代码改动仅比较脚本的语言 ID 映射；生产 UI 源码仍是 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。aggregate checkpoint-to-HEAD 还有 Windows 采集脚本与两条 UI workflow 的改动，文件分类见报告。旧代码 head P2B run `40443810053` 最终 2/2 PASS（APT 依赖安装 27m48s）；当前 metadata head `7369db0` 的 build run `40445420366`、push build `40445426755` PASS，Windows job PASS，Linux Xvfb/P2B jobs仍在执行。未进行主机桌面操作、清理或特权写入。
+
+## 2026-10-27 — P2C-4R1 exact-head CI 与 artifact 闭环（7369db0）
+- 核对远端和本地 PR 分支均为 `7369db05f9d3e02c6e973f455922ee783b6b16cf`；PR #7 OPEN / Draft，base `feat/issue-3-p2b-main-window`，未合并。
+- 该 head 的 P2C run `40445426847` 的 Windows native、Linux production Xvfb/XTEST、comparison 3/3 PASS；P2B lifecycle run `40445426915` 2/2 PASS；PR build/governance/safety `40445420366` 与 push build `40445426755` PASS。P2B 的重复设置页步骤条件跳过，由同 head P2C Xvfb 作业实际执行五页设置测试。Artifact IDs/digests 与截图/source manifest 计数见 P2C-4 report。
+- 四种 Windows 语言/暗色顺序试验和设置窗口重开验证保持 PASS；没有复现混合亮暗，旧错配来源未证实。R1 有效深色差异率 5.4004%–12.6625%，Windows/Linux 整页像素等价仍 NOT PASS。184 geometry、10 navigation、102 tree samples、36 raster checks、2 scroll states 均维持既有 PASS。
+- P2B Weston 客户端退出码为 0，但保留 GDK `gdk_seat_get_keyboard` critical、无 `wl_seat` 和 compositor layer teardown `BUG`；没有 Wayland 鼠标/键盘验收。简中 12 项来源差异未更改，仍 `DECISION_REQUIRED`。
+- 本次只完成证据与记忆同步，无生产 UI 源码改动；无活动 Hyprland、桌面输入、真实清理、Polkit、Swap/ZRAM 或内核缓存写入。等待 ChatGPT 复审 PR #7。

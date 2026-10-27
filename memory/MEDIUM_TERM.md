@@ -8,7 +8,7 @@ PR #7 OPEN / Draft；R1 比较器修正 HEAD `ff5794f096317da50f84200bd0ac0bc663
 
 四种独立进程主题/语言顺序均采集五页，20/20 通过语言、暗色菜单、页面资源与导航状态核对；相同语言的顺序对照截图差异 0。四个进程都通过 `WM_CLOSE` 后重开 Settings，4/4 恢复正确导航/页面、语言与深色菜单状态。有效暗色 changed-pixel 范围为 `5.4004%–12.6625%`，仍是 compare-only，整体像素 1:1 NOT PASS。之前出现的简中导航/内容错配未在新实验复现，旧采集错配的具体环节仍未确认。固定基准未回退：558×335、184/184 几何（最大 1.5 px）、10/10 导航、102/102 tree、36/36 raster、2/2 滚动；12 项中文来源差异仍 `DECISION_REQUIRED`。
 
-P2B run `40443810053` 的 Weston Headless/Pixman job 已 PASS；Xvfb job在本次核对时仍运行依赖安装，最终状态待补。完整 R1 证据和差异率见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。未改生产 GUI、未操作本机桌面或执行特权清理。
+R1 旧代码 HEAD `ff5794f` 的 P2B run `40443810053` 最终 2/2 PASS；APT install 用时 27m48s，Xvfb 设置页重复 step 因同 HEAD P2C 已覆盖而条件跳过。PR metadata HEAD `7369db0` 的 P2C Windows job已 PASS，Linux Xvfb job尚在依赖安装；P2B run `40445426915` 的 Weston 生命周期和 Xvfb生产 build 已通过，UI steps仍执行。新 HEAD build/governance/safety `40445420366`、push build `40445426755` PASS。完整 R1 证据和差异率见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。未改生产 GUI、未操作本机桌面或执行特权清理。
 
 ## P2C-4 最终 exact-head CI 复核
 
@@ -101,6 +101,12 @@ PR #7 的 Xvfb/XTEST + Weston run `40284909745` 两项通过，Windows native ba
 | P4 | 有条件的自动策略、配置持久化、冷却与可观察性 | 未开始；依赖 P3 安全评审 |
 | P5 | ZRAM 只读分析和可选管理，避免同现有 Swap 冲突 | 未开始；需 ADR 和用户批准 |
 | P6 | Arch PKGBUILD/Release、真实场景对比基准、公开测试版 | 未开始；依赖各前置条件 |
+
+## P2C-4R1 最终收口（2026-10-27）
+- 四组独立 Windows v3.5.2 主题/语言切换流程完成；20/20 设置页的语言、暗色菜单勾选、导航选择及实际页面资源 ID 相符；4/4 设置窗 WM_CLOSE 后重开成功。未复现简中混合亮暗控件。旧错配图的产生环节仍未知，不能定为原版缺陷。
+- 最终源码/采集 evidence head `7369db05f9d3e02c6e973f455922ee783b6b16cf` 上 P2C run `40445426847` 3/3 PASS，P2B run `40445426915` 2/2 PASS，PR build `40445420366` 与 push build `40445426755` PASS。P2C Windows/Linux/compare artifacts `12708740178` / `12708877016` / `12708224005`；P2B X11/Weston `12707919292` / `12708721667`。P2B 重复设置页 step 条件跳过，由同 HEAD 的 P2C Xvfb 实测覆盖；Wayland 仅生命周期 PASS，无输入 PASS。
+- 回归维持 184/184 几何（最大分量 1.5 px）、导航 10/10、树线 102/102、控件 raster 36/36、中间滚动 2/2；深色语义配对变化率 5.4004%–12.6625%，整体像素 1:1 NOT PASS。12 项中文来源差异仍 `DECISION_REQUIRED`。生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改。
+- PR #7 仍 OPEN / Draft，下一步交 ChatGPT 复审；不合并、不开始特权清理开发。报告、artifact digest 与 PNG SHA 清单见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
 
 ## 决策和后续
 - ADR-0001: 采用 Zamak 原生架构。

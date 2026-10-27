@@ -2,13 +2,12 @@
 
 ## P2C-4R1 当前复验（2026-10-27）
 
-- PR #7 OPEN / Draft；当前代码 HEAD `ff5794f096317da50f84200bd0ac0bc663cbabb2`；生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。R1 仅修正 `scripts/ci/compare_p2c_dark.py` 的语言标识关联，没有改生产 UI、workflow、比较阈值或原图。
-- P2C run [40443810060](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40443810060) 3/3 PASS；Windows artifact `12707093733`，Linux Xvfb `12706823610`，visual/status/overlay artifact `12706903621`。Archive digest 与截图核验见报告；Windows PNG 81/81、Linux PNG 44/44、暗色 manifest 155/155。
-- 四个独立 Windows 进程实验覆盖 English→Dark→Settings、简中→Dark→Settings、Dark→简中→Settings、English→Dark→简中→English。20/20 页面语言/主题/导航/资源 ID 语义校验 PASS；相同语言切换顺序截图逐页 SHA 相同，十组图像变化 0。各进程都执行 WM_CLOSE→再次打开设置，4/4 页面/导航、语言及暗色菜单状态正确恢复。旧简中图导航 Advanced、内容 General；旧图 SHA `39798741089e5de00cfadd7d349448f4dabde7c6a22143be4fd6447726faf77c`。R1 新 B/General SHA `675deab21870b7326ad7a533dc52f115810b43c6d9889b34b3389370a3bfa8ed`。旧图无效配对的确切根因未确认；新实验没有复现混合亮暗控件。
-- 新有效暗色配对 EN/简中差异率：General 10.2327%/9.1002%；Memory cleaning 12.6625%/12.4014%；Appearance 11.6311%/11.0057%；Tray icon 11.2534%/10.2744%；Advanced 5.9434%/5.4004%。这是新语义匹配下的比较，不表示 UI 代码改善；全页 1:1 仍 NOT PASS。
-- Windows v3.5.2 binary SHA `dd55a81d56e8c32918e5190b2ec2a1f2a7edbbca884627439b4b619fdfb5602d`；Windows Server 2022 build 20348、96 DPI/100%，Apps 系统主题 light、应用菜单暗色项 checked。Linux Ubuntu 24.04/Xvfb，GTK `Adwaita:light`，暗色由 Canvas palette 实现。
-- P2B run `40443810053` Weston job PASS，Xvfb job当时仍在安装依赖。最终是否全绿、PR build/push build 与新 commit 下 exact-head artifacts 待最终核验。
-- 没有真实内存清理、Polkit、Swap/ZRAM、内核缓存写入、root GUI、本机 GUI、Hyprland IPC 或主桌面输入注入。12 项简中来源差异仍 `DECISION_REQUIRED`。
+- PR #7 OPEN / Draft；最终图形/代码 evidence head `7369db05f9d3e02c6e973f455922ee783b6b16cf`；生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。本轮无生产 UI 修改；语言关联修复在比较脚本，checkpoint 至 evidence head 的累计源码/采集/workflow/文档分类见 P2C-4 报告。
+- 同 SHA P2C run `40445426847` Windows native、生产 Xvfb/XTEST、视觉比较 3/3 PASS；P2B run `40445426915` 2/2 PASS；PR build `40445420366` 和 push build `40445426755` PASS。P2C artifact IDs：Windows `12708740178`、Linux `12708877016`、comparison `12708224005`；P2B X11/Weston `12707919292` / `12708721667`。Digests 和 PNG/source SHA manifest 见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
+- 四个隔离 Windows 进程实验分别覆盖 English→Dark→Settings、简中→Dark→Settings、Dark→简中→Settings、English→Dark→简中→English。20/20 页面语言/主题/导航/页面资源 ID 语义检查 PASS；同语言顺序截图 SHA 相同、十组顺序图像变化为 0；关闭再开设置窗 4/4 恢复。未复现混合亮暗。旧简中图 SHA `39798741089e5de00cfadd7d349448f4dabde7c6a22143be4fd6447726faf77c` 导航 Advanced、内容 General；错配根因未确认。
+- R1 有效暗色差异率 EN/简中：General 10.2327%/9.1002%；Memory cleaning 12.6625%/12.4014%；Appearance 11.6311%/11.0057%；Tray icon 11.2534%/10.2744%；Advanced 5.9434%/5.4004%。这是语义配对读数，不是视觉改善；全页 1:1 仍 NOT PASS。
+- 回归保持 184/184 几何、10/10 导航、102/102 树线、36/36 控件 raster、2/2 中间滚动 PASS。Windows PNG 81/81、Linux PNG 44/44、comparison 83/83、dark manifest 155/155、source 10/10；P2B X11 PNG/source-binary 10/10、8/8。
+- P2B 重复设置页 step 条件跳过，由同 SHA P2C Xvfb 五页测试覆盖。Wayland 仅客户端生命周期 PASS、输入 NOT RUN；保留 GDK seat critical、无 `wl_seat` 和 Weston teardown `BUG`。没有真实清理、Polkit、Swap/ZRAM、root GUI、本机 GUI、Hyprland IPC 或桌面输入注入。12 项简中来源差异仍 `DECISION_REQUIRED`。
 
 ## P2C-4 最终图形证据 snapshot（2026-10-27）
 
