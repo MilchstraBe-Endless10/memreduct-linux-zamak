@@ -2,17 +2,18 @@
 
 更新时间：2026-10-27；仅已见到的证据，未经推测。
 
-## P2C-4R1 最新状态：Windows 深色主题/语言顺序复验
+## P2C-4R1 最终状态：Windows 深色主题/语言顺序复验
 
-PR #7 OPEN / Draft；base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；最近一次完整图形证据 HEAD `716a1caaadeb780d32e8b9604961c333a752825d`，该提交仅更新报告、交互矩阵和记忆。生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 与图形/采集源码 HEAD `7369db05f9d3e02c6e973f455922ee783b6b16cf` 均未修改；`c847710`、`90b2308` 与 `716a1ca` 的图形输入均由各自 exact-head artifact manifest 绑定。
+PR #7 OPEN / Draft；base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；最新 exact evidence HEAD `37d07453d60c4d1046f5aad6577c9425c271180a`。该 HEAD 相对前一图形证据 `716a1caaadeb780d32e8b9604961c333a752825d` 只更新报告、交互矩阵和三层记忆；生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 及采集/比较源码未变。生产 checkpoint 到本阶段的累计变更仍包含采集脚本与 CI workflow，完整分类见报告。
 
-最终 evidence HEAD 的 P2C run `40453430941`（Windows native、Linux production Xvfb/XTEST、视觉比较）3/3 PASS；P2B run `40453430924` 2/2 PASS；push build `40453423515` PASS。Artifacts：P2C Windows/Linux/compare `12711301420` / `12711351794` / `12711536604`，P2B X11/Weston `12711018044` / `12711281579`；archive digest 和 PNG/source SHA 见报告。P2B 重复五页 step 条件跳过，由同 HEAD P2C Xvfb job 实际运行覆盖；Wayland 只验证客户端生命周期。
+Exact-head P2C run `40454514318` 3/3 PASS；P2B run `40454514305` 2/2 PASS；PR build `40454514283`、push build `40454508196` PASS，PR checks 7/7。Artifacts：P2C Windows/Linux/compare `12711803243` / `12712295452` / `12711458194`；P2B X11/Weston `12711258139` / `12711874600`。报告记录九个 artifact IDs/digests、20 页截图哈希及当前 source manifest。
 
-四种独立进程主题/语言顺序均采集五页，20/20 通过语言、暗色菜单、页面资源与导航状态核对；相同语言的顺序对照截图差异 0。四个进程均通过 `WM_CLOSE` 后重开 Settings，4/4 状态恢复。有效暗色 changed-pixel 范围为 `5.4004%–12.6625%`，仍为 compare-only，整体像素 1:1 NOT PASS。新实验未复现简中混合亮暗；旧采集错配的具体环节仍未确认。最终 exact-head 本地 `zam check/build` 与 `zam test` 均 PASS，单测 30/30。
+四组隔离 Windows 3.5.2 进程均 PASS：20/20 页面语言、dark menu、导航与资源 ID 一致；200/200 控件可见、196/200 启用；4/4 设置窗 WM_CLOSE 后重开。10/10 同语言顺序图像比较差异为 0，104/104 颜色采样一致，未复现简中混合亮暗。旧错配图链路仍未知，不归因于 Windows 或 Linux。
 
-基准维持 558×335、184/184 几何（最大 1.5 px）、10/10 导航、102/102 tree、36/36 raster、2/2 滚动；Windows PNG 81/81、Linux PNG 44/44、comparison 83/83、dark manifest 155/155、source 10/10，P2B X11 PNG/source-binary 10/10、8/8。P2B 重复设置页 step 条件跳过，由同 SHA P2C Xvfb 五页测试覆盖。Wayland 仅生命周期 PASS，输入 NOT RUN；保留 GDK seat 与 Weston teardown 诊断。12 项中文来源差异仍 `DECISION_REQUIRED`。P2C 阶段交 ChatGPT 复审，不启动特权清理功能。
+几何和回归无回退：184/184 几何（最大 1.5 px）、10/10 导航、102/102 tree、36/36 raster、2/2 中间滚动 compare-only。SHA 核验：dark 155/155、visual 83/83、Linux PNG 44/44、P2C source 10/10、P2B X11 PNG 10/10、source/binary 8/8。Zamak 0.2.0 check/build/test PASS（30/30），治理 33、Shell 4、C safety 3 PASS。深色有效语义 changed-pixel 5.4004%–12.6625%；整页 1:1 NOT PASS。Windows/Linux 截图 SHA 和全页亮暗逐项指标见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
 
-## P2C-4 最终 exact-head CI 复核
+Weston 13 Headless/Pixman 两个隔离生产客户端退出码均为 0；输入 NOT RUN。保留 GDK seat critical、未广播 wl_seat 和 Weston SIGTERM teardown layer `BUG`，根因未知。12 项中文来源差异仍 `DECISION_REQUIRED`；没有真实清理、Polkit、Swap/ZRAM、root GUI、活动 Hyprland 或用户桌面输入。P2C-4R1 停止于等待 ChatGPT 复审。
+## P2C-4 前序 exact-head CI 复核（历史 snapshot）
 
 PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；完整截图/比较 evidence head `4f84fb9a9e247a5987a11cd435e5da4b05f78a53`。P2C run `40425954672` Windows 原版 + 生产 Xvfb/XTEST + 比较 3/3 PASS；P2B run `40425954460` 生产 Xvfb/XTEST + Weston Headless/Pixman 2/2 PASS；PR build `40425954317`、push build `40425944842` PASS，PR checks 7/7。Artifacts、digests、PNG/source SHA 与逐项指标见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。生产 UI 源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`；本轮未改生产字体、字号、控件绘制或视觉阈值。
 
@@ -106,7 +107,7 @@ PR #7 的 Xvfb/XTEST + Weston run `40284909745` 两项通过，Windows native ba
 
 ## P2C-4R1 最终收口（2026-10-27）
 - 四组独立 Windows v3.5.2 主题/语言切换流程完成；20/20 设置页的语言、暗色菜单勾选、导航选择及实际页面资源 ID 相符；4/4 设置窗 WM_CLOSE 后重开成功。未复现简中混合亮暗控件。旧错配图的产生环节仍未知，不能定为原版缺陷。
-- 最新完整图形 evidence HEAD `716a1caaadeb780d32e8b9604961c333a752825d` 的 P2C/P2B/push-build runs `40453430941` / `40453430924` / `40453423515` 全部 PASS；Artifacts：P2C Windows/Linux/compare `12711301420` / `12711351794` / `12711536604`，P2B X11/Weston `12711018044` / `12711281579`。P2B 重复设置页步骤条件跳过，由同 HEAD 的 P2C Xvfb 实测覆盖；Wayland 仅生命周期 PASS，无输入 PASS。生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改。
+- 前一完整图形 evidence HEAD `716a1caaadeb780d32e8b9604961c333a752825d` 的 P2C/P2B/push-build runs `40453430941` / `40453430924` / `40453423515` 全部 PASS；Artifacts：P2C Windows/Linux/compare `12711301420` / `12711351794` / `12711536604`，P2B X11/Weston `12711018044` / `12711281579`。P2B 重复设置页步骤条件跳过，由同 HEAD 的 P2C Xvfb 实测覆盖；Wayland 仅生命周期 PASS，无输入 PASS。生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改。
 - 回归维持 184/184 几何（最大分量 1.5 px）、导航 10/10、树线 102/102、控件 raster 36/36、中间滚动 2/2；深色语义配对变化率 5.4004%–12.6625%，整体像素 1:1 NOT PASS。12 项中文来源差异仍 `DECISION_REQUIRED`。生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改。
 - PR #7 仍 OPEN / Draft，交 ChatGPT 复审；不合并、不开始特权清理开发。报告、artifact digest 与 PNG SHA 清单见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
 

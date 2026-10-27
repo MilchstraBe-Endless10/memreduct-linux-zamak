@@ -1,78 +1,72 @@
 # P2C-4 — 字体、控件绘制与深色主题校准
 
-## P2C-4R1 最新 exact-head 复验（2026-10-27；证据 HEAD `716a1ca`）
+## P2C-4R1 最终 exact-head 复验（2026-10-27；HEAD `37d07453d60c4d1046f5aad6577c9425c271180a`）
 
-PR [#7](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7) 仍为 **OPEN / Draft**；base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。本节截图、比较和 source manifest 对应的 exact evidence HEAD 为 `716a1caaadeb780d32e8b9604961c333a752825d`；该提交只包含报告/交互矩阵/记忆同步，生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 及采集/比较源码均未改变。相对于生产 checkpoint 的累计变更仍包括采集/比较脚本、CI workflow 和报告/记忆；不能将其笼统描述为纯文档变更。Windows/Linux 图形测试输入及生产 UI 均由 exact-head artifacts 中的 source manifest 绑定。
+PR [#7](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7) 保持 **OPEN / Draft**，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`。本次 exact-head 图形证据、图像与 source manifest 均来自 `37d0745`。它相对先前完整证据 head `716a1caaadeb780d32e8b9604961c333a752825d` 仅更新报告、交互矩阵和三层记忆；生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 与图形/采集源文件未变。生产 checkpoint 到本阶段的累计变更仍包括测试/采集脚本和 CI workflow，详细文件分类见下方历史来源说明。
 
-### Actions 结果
+### Exact-head CI
 
-- [P2C：Windows 原版采集、生产 Xvfb/XTEST、视觉比较 run `40453430941`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941)：3/3 jobs PASS，Windows、Linux capture、comparison 必需步骤均执行。
-- [P2B：生产 Xvfb/XTEST 与 Weston Headless/Pixman run `40453430924`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430924)：2/2 jobs PASS。P2B 重复的五页设置 XTEST step 按条件 SKIPPED；同一 HEAD 的 P2C Xvfb job 已真实执行全套设置页操作。
-- [Build / governance / C safety / Zamak push run `40453423515`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453423515)：PASS，全部步骤成功；`gh pr checks 7` 汇总为 7 passed / 0 failed。
-- `zam --version` 为 `0.2.0`；`zam check .`、`zam build .`、`zam test .` 均 PASS，Zamak 单测 **30/30**。治理检查 33 项、Shell 4/4、非特权 C 安全测试 3/3 均 PASS。
+- [P2C Windows native 3.5.2 + Linux production Xvfb/XTEST + visual comparison run `40454514318`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514318)：3/3 job 成功。Windows 版本/签名链检查、四组深色主题实验、五页双语 Linux 截图与交互、比较器和 artifact 哈希校验均完成。
+- [P2B production Xvfb/XTEST + Weston Headless/Pixman run `40454514305`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514305)：2/2 job 成功。X11 主窗口测试通过；重复的五页设置步骤按 workflow 条件跳过，由同一 HEAD 的 P2C Xvfb job 实际覆盖。
+- [PR build / governance / C safety / Zamak run `40454514283`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514283) 与 [push build `40454508196`](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454508196)：全部成功；PR checks 汇总 7 passed / 0 failed。`zam --version` 为 0.2.0，check/build/test 均通过；Zamak 测试 30/30，治理 33 项、Shell 4 项、C 安全 3 项通过。
 
-### Windows 深色状态复验
+### Windows 深色主题与语言状态
 
-固定基准为官方 Mem Reduct v.3.5.2 / tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`，运行文件 SHA-256 `dd55a81d56e8c32918e5190b2ec2a1f2a7edbbca884627439b4b619fdfb5602d`。隔离 runner 为 Windows Server 2022 build 20348、1024×768、96 DPI / 100% scale；Windows Apps 主题为 light，应用 `Use dark theme` 菜单状态为 checked。每组使用单独进程和经记录哈希验证的独立配置副本。
+固定原版为 Mem Reduct v.3.5.2，source tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`；portable executable SHA-256 `dd55a81d56e8c32918e5190b2ec2a1f2a7edbbca884627439b4b619fdfb5602d`。官方 release archive SHA-256 `ec41ca15ff623f53850d9ee01986d3f8ff457ec93457a6ceeb993b7164023d15`；官方 setup SHA-256 `025e5c06f7beccf5c85cbe931bc058f53a4642ca83a00855a475026a5e6334c4` 的 detached PGP 签名由 signer `D98523611524AB29BE7330AC288120A75635B5FD` 验证通过。Portable executable 自身未 Authenticode 签名。Windows 隔离 runner 为 Server 2022 build 20348、1024×768、96 DPI / 100% scale；系统 Apps 主题为 light，应用 View 菜单的 Dark 状态勾选。
 
-| 实验 | 启动/切换顺序 | 最终语言 | 五页状态 |
-|---|---|---|---|
-| A | English → Dark → Settings | English | PASS |
-| B | 简体中文 → Dark → Settings | zh-CN | PASS |
-| C | Dark → 简体中文 → Settings | zh-CN | PASS |
-| D | English → Dark → 简体中文 → English | English | PASS |
+四组独立进程均使用单独记录 SHA-256 的配置副本：A English→Dark→Settings；B 简体中文→Dark→Settings；C Dark→简体中文→Settings；D English→Dark→简体中文→English。实验表四组均 PASS；20/20 页面语言、选中导航、实际页面资源 ID 和 dark 菜单状态一致；200/200 控件可见、196/200 启用（禁用项为上游 `IDC_HOTKEY_CLEAN=132`）。设置窗 `WM_CLOSE` 后重新打开 4/4 成功。A/D 的五页和 B/C 的五页状态分别一致，10/10 顺序对照像素变化为 0。104 个深色像素采样中，设置页、导航及 `IDC_REGIONS` 背景均为 `#171717`，Reset/Close 为 `#272727`。这四组实验没有复现简中导航/list 保持亮色的混合主题。旧错配图 SHA `39798741089e5de00cfadd7d349448f4dabde7c6a22143be4fd6447726faf77c` 的导航与内容不一致；它在应用、采集或归档哪一环产生仍无根因证据。
 
-20/20 页面均通过应用暗色勾选、语言、所选导航、可见页面资源 ID 与资源控件状态检查；200/200 页面控件可见，196/200 启用，唯一禁用资源 ID 是 `IDC_HOTKEY_CLEAN=132`。设置窗 `WM_CLOSE` 后重开为 4/4 PASS；同语言顺序对照 10/10 图像像素差为 0。104/104 暗色采样记录中，设置页/导航/`IDC_REGIONS` 背景为 `#171717`，Reset/Close 为 `#272727`。本轮没有复现简中导航区或 `IDC_REGIONS` 留亮色的混合主题；旧截图错配链路仍未查明，不归因于上游缺陷或 Linux 实现。
+截图输入为完整窗口原图；比较器按实测 `(8,31)` 客户区起点裁剪至 558×335，没有拉伸、缩放、人工移位或重采样。下表给出当前 exact-head `40454514318` artifact 中五页 English/简中深色原始窗口裁剪 PNG 的 SHA-256。A/D 与 B/C 是两次独立顺序实验，但每种最终语言的页面图像哈希一致；comparison artifact 另含并排图、50% Overlay、Difference 和 Heatmap。
 
-旧错配图 SHA-256 `39798741089e5de00cfadd7d349448f4dabde7c6a22143be4fd6447726faf77c` 的导航选中 Advanced、页面内容为 General，因此不再作为有效配对。新 Windows 截图均由页面资源 ID、导航文本、菜单语言及 dark 状态逐图核验。原始窗口 PNG、状态 CSV 和配置 SHA 留在对应 artifact；原图未被拉伸、缩放、移位或重采样。
-
-### 五页深色语义配对与视觉指标
-
-Linux 截图来自 Ubuntu 24.04.5 / Xvfb 1024×768×24 / GTK 3.24.41 / 96 DPI，`GTK_THEME=Adwaita:light`；暗色是应用 Canvas palette 状态，不代表 GTK 桌面深色主题。Windows 客户区裁剪使用实测起点 `(8,31)`，两边画面均为 558×335。
-
-| 设置页 | Windows English PNG SHA-256 | Linux English PNG SHA-256 | Windows 简中 PNG SHA-256 | Linux 简中 PNG SHA-256 |
+| 页面 | Windows English PNG SHA-256 | Linux English PNG SHA-256 | Windows 简中 PNG SHA-256 | Linux 简中 PNG SHA-256 |
 |---|---|---|---|---|
-| General | `d813668e1472e1773f433fb46e96c4b72b71b5cd05fa455f0ae541a31cf0a79c` | `6ebc886a8f2b6244659563d2fd9e7741b500727e26bc92379023d8cc46c55157` | `1ac6f7cc168db28d638421af390bd99e8fcd4b4a1ae194ebd95d4010ab45a293` | `b7261a8eeeb7616956f2a62d8872c4342c80ee7ffc5be1bcd8f71bfc98c0c881` |
-| Memory cleaning | `dbd2c4e420eee73c90c1acdf262cb71d2a655318713a6117c6739c8052f1fa30` | `6638390aa4261a79a9af0923abdb854854871d1bd819e9fdb4b177907e7b78b0` | `a13d2db4971bd395b163864329de66de941760d409594017e3c8ba849165af4a` | `15fd3f758ef9db0ba67f74211bc0e79c91b51078d15726da0ef4d80d42139de6` |
-| Appearance | `cb3fb3405c94f5c321078b93b85be4d6eca2f52f0958548bd2accdf39dd9bacf` | `446cd4717609cd9b5574852c2805937bf9eb7a8830a653f44f674ac0ebade4cc` | `3aeb2ba89de425c2946bd73e810a4ecb6356734050f379c8fc3076907a69d6e5` | `f8f6d1d453f6f58b91340c43f36d2f2079997ae703684d9225916476ad55dda7` |
-| Tray icon | `582083f7d65c30e0b25a0e04da004dc5c646c0eff6592fc31b6bef05249e9e78` | `2ad7e338b3aa33696aafc90924715c743aaf337a0162cfbeff6e553e08473731` | `6473008b04b6ce5f626cce4f08dfd98aa21b4a9f2e1795cf34bca3f8b34be4cf` | `cf973472618a75c845967dccbce8c7149ffe9ac5ac287d4b64af0666dfd15dd5` |
-| Advanced | `e738a840eab8e6313455adbf3accddfce1c7f425361d45743cd0efb1c563d8c5` | `7437bc8c941e08cd22c63e71af59811cbca7b7317a7485240cdb5983b3be8080` | `e0c2c816815ed5f61e740c6e157f17f05a547112b0bef2ab97b9536ce77ee094` | `54e015df4d928566a30e4e7d41c620276637dbd8a32745b066786a3c13b22def` |
+| General | `7bb053b0f7eea4ec2425c38abe4b80b0178aa2749f1413d4e7e00d2df52bf86f` | `6ebc886a8f2b6244659563d2fd9e7741b500727e26bc92379023d8cc46c55157` | `cb9d63fab6f3d66e3d8215d4f19aa7f5d4d7bfa17113e4fe1f5bda3ad675584c` | `b7261a8eeeb7616956f2a62d8872c4342c80ee7ffc5be1bcd8f71bfc98c0c881` |
+| Memory cleaning | `073ad8cdc545e8c1c2418b004b064d1089bfff85cb0e63495b918649a4fcf71f` | `6638390aa4261a79a9af0923abdb854854871d1bd819e9fdb4b177907e7b78b0` | `eb5cf3059449113acbe015a6c5783845b5629931b0e80ad66e821f7c2aeef263` | `15fd3f758ef9db0ba67f74211bc0e79c91b51078d15726da0ef4d80d42139de6` |
+| Appearance | `1c14a982069404fbe915b58aafebebc96347f41d4b7ba178d3225197baf9becd` | `446cd4717609cd9b5574852c2805937bf9eb7a8830a653f44f674ac0ebade4cc` | `cf6771beed064dfa819a141ee63f41584dc311c2adaf53a5c8e680d812dce4cb` | `f8f6d1d453f6f58b91340c43f36d2f2079997ae703684d9225916476ad55dda7` |
+| Tray icon | `f4cab979576b7612f6c41ad8b49f346d264e6ceb495d1b712f793cb0bd6e2b69` | `2ad7e338b3aa33696aafc90924715c743aaf337a0162cfbeff6e553e08473731` | `042ef981f7cc638ecf7265f6640589886dd88d7e27c08481b076fe0207afdb53` | `cf973472618a75c845967dccbce8c7149ffe9ac5ac287d4b64af0666dfd15dd5` |
+| Advanced | `8d9eb7354ad20e61985689f65eba478f72c892212e845395f193ea27e7316dba` | `7437bc8c941e08cd22c63e71af59811cbca7b7317a7485240cdb5983b3be8080` | `6e2760eb2fef8c82ea9fc4a9a687b75e71be83abc55e6cd38e874320252fd9c1` | `54e015df4d928566a30e4e7d41c620276637dbd8a32745b066786a3c13b22def` |
 
-| 设置页 | English changed pixels | 简中 changed pixels |
-|---|---:|---:|
-| General | 10.2327% | 9.1002% |
-| Memory cleaning | 12.6625% | 12.4014% |
-| Appearance | 11.6311% | 11.0057% |
-| Tray icon | 11.2534% | 10.2744% |
-| Advanced | 5.9434% | 5.4004% |
+### 五页差异及剩余像素差异
 
-与上一轮 P2C-4 未验证的暗色简中配对相比，English 数值不变；简中五页旧值 `51.6086 / 73.2932 / 54.3027 / 54.6584 / 46.0889%` 改为上述语义有效读数。该差异源于截图状态配对修正，不是 UI 代码改善。全部 changed-pixel 数值仅供比较，整页 1:1 **NOT PASS**。
+下表为当前 run 的全页 changed-pixel 率。浅色值来自同次 P2C artifact；暗色值只包含页面资源 ID、语言、导航、菜单主题状态都有效的配对。所有值为 compare-only，不能写作整页像素验收通过。
 
-### Artifacts、SHA 与回归
+| 设置页 | Light English | Light 简中 | Dark English | Dark 简中 |
+|---|---:|---:|---:|---:|
+| General | 12.0184% | 10.6617% | 10.2327% | 9.1002% |
+| Memory cleaning | 14.8853% | 14.7392% | 12.6625% | 12.4014% |
+| Appearance | 11.5123% | 10.8966% | 11.6311% | 11.0057% |
+| Tray icon | 14.7900% | 13.9287% | 11.2534% | 10.2744% |
+| Advanced | 5.5871% | 5.0741% | 5.9434% | 5.4004% |
 
-| 运行/内容 | Artifact ID | GitHub SHA-256 digest |
-|---|---:|---|
-| P2C Windows 原版 | [12711301420](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941/artifacts/12711301420) | `sha256:04146be8bcd7a2c62c79f9a118c9a2617cf1c9141b48db0f402c49bb6bf03632` |
-| P2C Linux Xvfb/XTEST | [12711351794](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941/artifacts/12711351794) | `sha256:50a0994cd71ffafc69049b4d25dd69acdbbb61d18271a8212a433e84423544f6` |
-| P2C visual comparison | [12711536604](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941/artifacts/12711536604) | `sha256:fbfe08b2d50f5f52c4ac957e997dcbad60566c9073f244a40b5fec57ec520032` |
-| P2C Linux APT diagnostics | [12711247088](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941/artifacts/12711247088) | `sha256:8f5011dadcac31ef853aca33973976984a6ec7db2c696155fa6e38f89e461d41` |
-| P2C comparator APT diagnostics | [12711162290](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430941/artifacts/12711162290) | `sha256:a1cf2108854a9cedcfd02e73c5478804bdcbe955e21b13ce3d6f09e918ba2b70` |
-| P2B Xvfb/XTEST | [12711018044](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430924/artifacts/12711018044) | `sha256:d9d43ae6219f82c60307d160462f082030e4ee232b065db3d2127f9cd9259a34` |
-| P2B Weston lifecycle | [12711281579](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430924/artifacts/12711281579) | `sha256:1a55915bc3858d3753701d140651517520c4f83d8124329823b0664197f452c3` |
-| P2B Xvfb APT diagnostics | [12711092715](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430924/artifacts/12711092715) | `sha256:59bb92587d4d31d34586ce7a6055afc9dfc137ad3a2ba98ab551d9c9e5278a67` |
-| P2B Weston APT diagnostics | [12711411271](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40453430924/artifacts/12711411271) | `sha256:74b5addb4ca1db3a9f1337f43eb6956965e7a3fee60c02c90ab883b3a1f8d0e3` |
+对照 P2C-4 的旧暗色读数，English 五页变化率不变；简中旧值 `51.6086 / 73.2932 / 54.3027 / 54.6584 / 46.0889%` 被有效配对值 `9.1002 / 12.4014 / 11.0057 / 10.2744 / 5.4004%` 替代。差异来自旧配对状态未被证实，而非本轮改动生产 UI 或降低验收阈值。Windows 与 Linux 的整页像素 1:1 仍 **NOT PASS**。
 
-从 GitHub artifacts 下载后复算：暗色截图/比较 manifest **155/155**、完整 visual SHA manifest **83/83**、Linux 截图 **44/44**、P2C source manifest **10/10**、P2B X11 截图 **10/10**、P2B source/binary manifest **8/8**，均无缺失或不匹配。生产关键 SHA：`src/main.zm` `6d8408d46360757616f85609c85acf02534b0090a679d74bd4ed5c6175c34d8f`；`src/settings_ui.zm` `f821f36117ab5ba0ec757c7596d991dc980d8d805aa1b804952c3f9d2a17c920`；`scripts/ci/windows-native-baseline.ps1` `8e6966e970d69c9969ffe8a3c350f0537d975b0830843f14c6a9e97c8e85c1ad`；`scripts/ci/compare_p2c_dark.py` `5faaf75133000ddd3e78ee38ff3a1b1082d5a4e9e435416fec4c92ee14785d2d`。P2B production/helper binary SHA-256 分别为 `fa13bc97526e97debd189ef09dacffc31ebf085d168ffe520856d00cdbd30404` / `30cac693f610cd0bec92de495f6c6e4ab352f8a6ec43bc807d08a2d27f2acf08`。
+字体和渲染剩余差异：Windows 记录逻辑 alias `MS Shell Dlg 2` / 8.25 pt / weight 400 / GDI ascent-descent 11/2 px；Linux Pango Sans 8 pt / DejaVu Sans English / Noto Sans CJK SC / ascent-descent 10/3 px。120 项同源文本中 25 项宽高差在 2 px 内，95 项仍有差异。隔离 Liberation Sans 候选英文 66 项有 64 改善、1 退化、1 不变；简中 54 项有 12 改善、12 退化、30 不变，全页收益不足且不能牺牲 CJK，故未采用生产字体。字体字形/抗锯齿、GTK 控件栅格、安全禁用状态和平台不可等价差异分开记录。12 项上游简中资源差异仍为 `DECISION_REQUIRED`，本轮未改译文。
 
-回归：资源几何 **184/184 PASS**（最大分量偏差 1.5 px）、导航 **10/10**、控件栅格 **36/36**、树状引导点 **102/102**、中间滚动页状态 **2/2**。P2C XTEST 生产客户端退出码 0，语言/主题菜单、主菜单、安全下拉、五页双语亮/暗截图、Reset/Close、Escape、Alt+F4、WM_DELETE_WINDOW 及窗口释放 PASS。Weston 13.0.0 Headless/Pixman 独立 socket 下两个生产客户端退出码均为 0；Wayland 输入 NOT RUN。仍保留 `gdk_seat_get_keyboard` critical、未公告 `wl_seat` 与 Weston SIGTERM teardown `BUG: finalizing a layer with views still on it.`；未发现 `SIGABRT`/`SIGSEGV`，根因未证实，不宣称 compositor 干净关闭。
+### Artifacts、SHA 与平台验收
 
-P2B Xvfb APT install 在 Ubuntu 24.04.5 / image `ubuntu24 20261023.334.3` / APT 2.8.3 runner 上用时约 19m40s，退出码 0、分类 PASS；P2C Xvfb、比较器 Pillow 和 Weston 安装均退出码 0。诊断未确认慢速安装的根因，不能据本次成功认定网络问题已根治。
+| 内容 | Artifact | GitHub artifact SHA-256 digest |
+|---|---|---|
+| Windows 原版及四实验 | [12711803243](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514318/artifacts/12711803243) | `sha256:97d295c4d4c4ec6116c3da4408642c64ccd03879f199738fdd32b6090f032e3d` |
+| Linux production Xvfb/XTEST | [12712295452](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514318/artifacts/12712295452) | `sha256:276c0288df4dfdd5e14f64e995dd766680f62651baaa3fa53f99c5a1cfc46e1c` |
+| Windows/Linux visual, dark, font comparison | [12711458194](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514318/artifacts/12711458194) | `sha256:e241e2ba9475308c4238e887a2fcd4521f380b75cd17ede24dbfeb8340714bff` |
+| P2C APT diagnostics | [12711413142](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514318/artifacts/12711413142) | `sha256:c7d80f2881eafb9b90260b0add04b3890eb254d8f7996d90a8aca7e56b98d0a6` |
+| P2C comparator APT diagnostics | [12711328346](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514318/artifacts/12711328346) | `sha256:34fd92692bbaa330ad86694c4d896992a63d0dc388978b2cfe5b69d8a29f782d` |
+| P2B X11/XTEST | [12711258139](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514305/artifacts/12711258139) | `sha256:1b9e2f4652849945ccae8bda250041cedf17542d0e39434219d4cc6ee4009ff7` |
+| P2B Weston Headless/Pixman | [12711874600](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514305/artifacts/12711874600) | `sha256:25860cce35b8ba04f1bdf6755976dc5517d44f6a8e2ec7912e852fd8b144f3cb` |
+| P2B X11 APT diagnostics | [12711372920](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514305/artifacts/12711372920) | `sha256:52e0d5c20209bf89550facdeb43698b2d30bf093ae277fa0c4420084d35f1ab3` |
+| P2B Weston APT diagnostics | [12712034183](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40454514305/artifacts/12712034183) | `sha256:9e6bcc07f4874681f9678223aca1e74cf8f1a189b92be0b7519e495a16858120` |
 
-12 项简体中文资源来源差异仍为 `DECISION_REQUIRED`。Windows/Linux 深色整页像素 1:1 仍未通过。没有执行真实内存清理、Polkit、Swap/ZRAM 或内核缓存写入，没有 root GUI、本机 GUI、活动 Hyprland IPC 或主机桌面输入注入。PR #7 保持 Draft，P2C-4R1 完成后停止，等待 ChatGPT 复审。
+已下载并复算当前 exact-head artifacts：visual PNG manifest **83/83**，深色截图/对照 manifest **155/155**，Linux X11 截图 **44/44**，P2C source manifest **10/10**，P2B X11 截图 **10/10**，P2B source/binary manifest **8/8**，无缺失或不匹配。关键源码 SHA-256：`src/main.zm` `6d8408d46360757616f85609c85acf02534b0090a679d74bd4ed5c6175c34d8f`；`src/settings_ui.zm` `f821f36117ab5ba0ec757c7596d991dc980d8d805aa1b804952c3f9d2a17c920`；`src/ui_geometry.zm` `a2fd4af1de7b414d97dbe7c871d4048cc7dfab1095499f3998a0916eaba6e087`；`native/gui_window.c` `63c313bed8205e14266148b262064900dacf838e03c1aa0134dc2facff6f6326`；`scripts/ci/windows-native-baseline.ps1` `8e6966e970d69c9969ffe8a3c350f0537d975b0830843f14c6a9e97c8e85c1ad`；`scripts/ci/compare_p2c_dark.py` `5faaf75133000ddd3e78ee38ff3a1b1082d5a4e9e435416fec4c92ee14785d2d`。生产/helper 二进制 SHA-256 分别为 `fa13bc97526e97debd189ef09dacffc31ebf085d168ffe520856d00cdbd30404` / `30cac693f610cd0bec92de495f6c6e4ab352f8a6ec43bc807d08a2d27f2acf08`。
+
+回归基准未变：设置 Canvas/Windows client 558×335；资源几何 184/184 PASS（最大单分量 1.5 px）、导航 10/10、控件 raster 36/36、树线采样 102/102、scroll-state 对照 2/2（compare-only）。P2C XTEST 实测菜单、双语、五页、Reset/Close、Escape、Alt+F4、WM close/reopen 和资源释放；P2B X11 实测主窗/键鼠事件及关闭退出。清理动作保持禁用。
+
+Weston `13.0.0` Headless/Pixman 在独立 `XDG_RUNTIME_DIR`（mode 0700）、唯一 socket、`DISPLAY` unset 下运行，主窗口和设置窗口客户端都退出 0。未运行 Wayland 鼠标/键盘输入。保留当前 `gdk_seat_get_keyboard` critical、未广播 `wl_seat` 与 Weston SIGTERM teardown `BUG: finalizing a layer with views still on it.`；没有 `SIGABRT`/`SIGSEGV` 记录，但不能称 compositor clean shutdown，也没有根因证据可将诊断归咎应用或 Weston。Weston APT install 本次退出 0（约 9m52s）；本次成功不证明历史慢速下载问题已根治。
+
+没有真实内存清理、Polkit、Swap/ZRAM、内核写入、root GUI、主机 Hyprland IPC 或主桌面输入注入。Windows tray、无安全采集路径的清理弹窗/确认结果仍 BLOCKED；Wayland 输入 NOT RUN。P2C-4R1 证据阶段到此结束，PR #7 等 ChatGPT 复审。
 
 ## Earlier P2C-4R1 evidence snapshot — `c847710` (2026-10-27)
 
-以下保留第一次完整 R1 复验及 `c847710` exact-head 结果；`90b2308` 和之后的 `716a1ca` exact-head 结果已在本报告开头更新。该复验仅针对采集状态语义，不改生产 UI、字体、几何阈值或像素验收标准。
+以下保留第一次完整 R1 复验及 `c847710` exact-head 结果；`90b2308` 与 `716a1ca` 是后续历史快照，最新 `37d0745` exact-head 证据见本报告开头。该复验仅针对采集状态语义，不改生产 UI、字体、几何阈值或像素验收标准。
 
 - 语言 ID 关联修复提交：`ff5794f096317da50f84200bd0ac0bc663cbabb2`；图形/采集源码 HEAD：`7369db05f9d3e02c6e973f455922ee783b6b16cf`；随后对文档同步 HEAD `c84771063e6b349828e012463222b82bc57dd479` 重新运行了 P2C、P2B、PR build 与 push build。`7369db0..c847710` 只改报告、交互矩阵与记忆，采集脚本、workflow、生产二进制输入未变。生产 GUI checkpoint 仍为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。R1 唯一功能代码改动是 `scripts/ci/compare_p2c_dark.py` 的语言 ID 关联修复；该脚本 SHA-256 为 `5faaf75133000ddd3e78ee38ff3a1b1082d5a4e9e435416fec4c92ee14785d2d`。相对生产 UI checkpoint 的累计改动范围另含采集脚本与 workflow，分类见下一条。
 - 从生产 GUI checkpoint `6502342` 到本轮 HEAD 的 aggregate diff 并非纯文档：生产 UI 源码 `src/`、`native/gui_window.c` 无变更；测试/采集脚本变更为 `scripts/ci/windows-native-baseline.ps1` 和 `scripts/ci/compare_p2c_dark.py`；workflow 变更为 `.github/workflows/p2b-production-gui.yml`（并发组隔离）及 `.github/workflows/p2c-windows-native-baseline.yml`（并发组隔离、步骤标识）；文档/记忆变更为本报告、`docs/UI_INTERACTION_MATRIX.md`、`memory/LONG_TERM.md`、`memory/MEDIUM_TERM.md`、`memory/SHORT_TERM.md`、`memory/SESSION_LOG.md`。这是 checkpoint 至 HEAD 的累计范围；R1 的最后一笔 `7369db0` 只更新报告、交互矩阵和记忆，较早的 P2C 提交包含采集脚本和 workflow 修改。

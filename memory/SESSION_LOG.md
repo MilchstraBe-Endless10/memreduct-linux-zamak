@@ -136,3 +136,10 @@
 - Artifacts: P2C Windows `12711301420` (`sha256:04146be8bcd7a2c62c79f9a118c9a2617cf1c9141b48db0f402c49bb6bf03632`), Linux X11 `12711351794` (`sha256:50a0994cd71ffafc69049b4d25dd69acdbbb61d18271a8212a433e84423544f6`), comparison `12711536604` (`sha256:fbfe08b2d50f5f52c4ac957e997dcbad60566c9073f244a40b5fec57ec520032`); P2B X11 `12711018044` (`sha256:d9d43ae6219f82c60307d160462f082030e4ee232b065db3d2127f9cd9259a34`) and Weston `12711281579` (`sha256:1a55915bc3858d3753701d140651517520c4f83d8124329823b0664197f452c3`).
 - Rehashed manifests: dark 155/155; visual 83/83; Linux PNG 44/44; P2C source 10/10; P2C source/binary 8/8; P2B X11 PNG 10/10 and source/binary 8/8. Geometry 184/184 PASS, maximum component 1.5 px; navigation 10/10, raster 36/36; scroll comparison 2/2 remains compare-only. Four clean Windows processes / 20 semantic page pairs pass; no mixed dark state reproduced. Full details and refreshed raw PNG hashes are in `docs/P2C-4_FONT_THEME_MENU_REPORT.md`.
 - No production UI changes, real memory cleaning, Polkit, Swap/ZRAM writes, root GUI, active Hyprland IPC, or host desktop input injection.
+
+
+## 2026-10-27 — P2C-4R1 exact-head evidence and project-memory closure (37d0745)
+- 核对分支本地/远端一致为 `37d07453d60c4d1046f5aad6577c9425c271180a`，PR #7 OPEN / Draft，base `911a3d0b99b05f15bd0109dca475b0b5174e7888`。最新 ChatGPT review 仍为 P2C-4 对 `ab0f62c...` 的复审；本轮无生产 GUI 修改。`716a1ca..37d0745` 只改报告、交互矩阵与记忆。
+- Exact-head P2C `40454514318` 3/3、P2B `40454514305` 2/2、PR build `40454514283`、push build `40454508196` 全部 PASS；PR checks 7/7。Artifact IDs/digests、逐页 PNG SHA、来源与二进制 SHA 写入 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。本地复算：visual 83/83、dark 155/155、Linux screenshots 44/44、P2C source 10/10、P2B X11 PNG 10/10、source/binary 8/8。
+- Windows 四组新进程实验 20/20 页面语义有效、10/10 顺序图像对照零像素差、4/4 WM_CLOSE 后重开、104/104 暗色区域采样未发现混合亮暗。旧错配图源头未知，不归因。当前五页双语暗色指标 5.4004%–12.6625%，整页像素 1:1 仍 NOT PASS；12 项语言来源差异维持 `DECISION_REQUIRED`。
+- Weston 13 Headless/Pixman 下主窗和设置窗客户端退出码 0；Wayland 输入 NOT RUN。保留 `gdk_seat_get_keyboard` critical、未广播 `wl_seat` 和 SIGTERM teardown layer `BUG`，根因未知。没有活动桌面操作、真实清理或特权写入。PR 等 ChatGPT 复审，不合并。

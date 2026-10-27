@@ -1,15 +1,15 @@
 # 短期记忆 / Latest Handoff
 
-## P2C-4R1 当前收口（2026-10-27）
-- PR #7 OPEN / Draft；最近完整图形证据 HEAD 716a1caaadeb780d32e8b9604961c333a752825d，base 911a3d0b99b05f15bd0109dca475b0b5174e7888。生产 GUI checkpoint 6502342489e1e0a6dfc1877f826f89cab1ed0a9b 未改；图形/采集输入由 source manifest 绑定。
-- Exact-head P2C run 40453430941 3/3 PASS；P2B run 40453430924 2/2 PASS；push build 40453423515 PASS。Artifacts：P2C Windows/Linux/comparison 12711301420 / 12711351794 / 12711536604；P2B X11/Weston 12711018044 / 12711281579。Archive digests 及 APT diagnostics 见 docs/P2C-4_FONT_THEME_MENU_REPORT.md。
-- 四个隔离 Windows v3.5.2 进程依次测试 English→Dark→Settings、简中→Dark→Settings、Dark→简中→Settings、English→Dark→简中→English。20/20 页语言/主题/导航/资源 ID 核对通过；顺序对照 10/10 零像素差；设置窗 WM_CLOSE 后重开 4/4 PASS。没有复现混合亮暗，旧截图错配环节仍未知。
-- 有效暗色差异率 EN/简中：General 10.2327%/9.1002%；Memory cleaning 12.6625%/12.4014%；Appearance 11.6311%/11.0057%；Tray icon 11.2534%/10.2744%；Advanced 5.9434%/5.4004%。是有效语义配对的比较数据，不是整体像素改善；全页 1:1 NOT PASS。
-- 回归：184/184 几何（最大 1.5 px）、10/10 导航、102/102 树线、36/36 栅格 PASS；2/2 中间滚动为 compare-only，非像素验收 PASS。SHA 复算：dark 155/155、visual 83/83、Linux PNG 44/44、P2C source 10/10、P2B X11 PNG 10/10、source/binary 8/8。zam test 30/30，Zamak check/build、治理 33、Shell 4、C 安全 3 均 PASS。
-- P2B 重复五页测试 step 条件 SKIPPED，由同 HEAD P2C Xvfb 完整覆盖。Wayland 仅客户端生命周期 PASS、输入 NOT RUN；保留 GDK seat critical、无 wl_seat 和 Weston layer teardown BUG 诊断。12 项中文来源差异仍 DECISION_REQUIRED；没有清理/Polkit/Swap/ZRAM/root GUI/Hyprland/用户桌面操作。
-## P2C-4 最终图形证据 snapshot（2026-10-27）
+## P2C-4R1 最终收口（2026-10-27）
+- PR #7 OPEN / Draft；Base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；exact-head `37d07453d60c4d1046f5aad6577c9425c271180a`。生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改；相对前一 evidence head `716a1ca` 本次只有文档/记忆更新。
+- Exact-head Actions：P2C `40454514318` 3/3 PASS；P2B `40454514305` 2/2 PASS；PR build `40454514283` 与 push build `40454508196` PASS。PR checks 7/7。Artifacts：P2C Windows/Linux/visual `12711803243` / `12712295452` / `12711458194`；P2B X11/Weston `12711258139` / `12711874600`。所有 digest、源/PNG SHA 与逐页指标在 P2C-4 报告。
+- Windows 原版四组新进程主题/语言次序均通过：20/20 页面语言、dark 勾选、导航、资源 ID 正确；200/200 控件可见；4/4 WM_CLOSE 后重开；10/10 同语言顺序对照像素差为 0。没有复现混合亮暗；104/104 区域颜色采样一致。旧错配链路仍未知。
+- 当前暗色 changed-pixel：General 10.2327%/9.1002%；Memory cleaning 12.6625%/12.4014%；Appearance 11.6311%/11.0057%；Tray icon 11.2534%/10.2744%；Advanced 5.9434%/5.4004%（EN/简中）。与 P2C-4 的旧简中读数差异为截图语义配对修正；整页 1:1 NOT PASS。
+- 回归：184/184 几何（最大 1.5 px）、导航 10/10、tree 102/102、raster 36/36 PASS；scroll 2/2 compare-only。Artifact SHA 核验 dark 155/155、visual 83/83、Linux PNG 44/44、P2C source 10/10、P2B X11 PNG 10/10、source/binary 8/8；Zamak 30/30、治理 33、Shell 4、C safety 3 PASS。
+- Weston 私有 Headless/Pixman socket 下客户端退出码 0；Wayland 输入 NOT RUN。保留 GDK seat critical、无 wl_seat 和 teardown layer `BUG`，无 SIGABRT/SEGV，根因未知。12 项中文来源差异仍 `DECISION_REQUIRED`；无真实清理、Polkit、Swap/ZRAM、root GUI、Hyprland IPC 或主机桌面输入。等待 ChatGPT 复审。
+## P2C-4 前序图形证据 snapshot（历史；2026-10-27）
 
-- PR #7 OPEN / Draft；base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；当前截图/比较 evidence head `4f84fb9a9e247a5987a11cd435e5da4b05f78a53`。生产 UI 源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改；最新正式 ChatGPT Review 仍为 P2C-3R1，无新 Review 或行内评论。
+- PR #7 OPEN / Draft；base `911a3d0b99b05f15bd0109dca475b0b5174e7888`；当前截图/比较 evidence head `4f84fb9a9e247a5987a11cd435e5da4b05f78a53`。生产 UI 源码 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b` 未改；当时最新正式 ChatGPT Review 为 P2C-3R1；之后的 P2C-4 review 及 P2C-4R1 状态见本文件开头。
 - P2C run [40425954672](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40425954672) 3/3 PASS；Windows artifact `12699069397` (`sha256:b9ce68670d7137d24923e64532d5a301d99e743fc423c6935165d5ad8181e1fa`)、Linux X11 `12700585092` (`sha256:e69b53bcf64021e8f0b2f0d70b10fe22ac24e9c00ed46efd32799b1c7264ab53`)、visual/dark/font `12700001976` (`sha256:209f4664b942017097bd17d5734d98b4983a58de3561ddab01739fc692e08bf7`)；APT diagnostics `12698999880` / `12700196476`。
 - P2B run [40425954460](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40425954460) 2/2 PASS；X11 artifact `12699671782` (`sha256:f1b1dc344fba5de07f30bcde18689694b286dc8d9690c1ffcea8c718229ad305`)、Weston `12700250527` (`sha256:6233aae01f776ac2a03da09c7129fb9b9036bad01e51802ad511a2b593575595`)；APT diagnostics `12700215495` / `12699741667`。PR build `40425954317`、push build `40425944842` PASS；PR checks 7/7。
 - Manifest/hash 核验：Windows PNG 41/41、Linux PNG 44/44、comparison 83/83、dark 70/70、P2C source 10/10、P2B X11 PNG 10/10、P2B source/binary 8/8。资源几何 184/184（最大分量 1.5 px）、nav 10/10、tree 102/102、raster 36/36、scroll 2/2 PASS；light changed-pixel 5.0741%–14.8853%，dark 5.9434%–73.2932%，整页 1:1 NOT PASS。
