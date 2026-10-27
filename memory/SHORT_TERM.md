@@ -1,13 +1,13 @@
 # 短期记忆 / Latest Handoff
 
-## P2C-4R1 当前复验（2026-10-27）
+## P2C-4R1 当前收口（2026-10-27）
 
-- PR #7 OPEN / Draft；最终图形/代码 evidence head `7369db05f9d3e02c6e973f455922ee783b6b16cf`；生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。本轮无生产 UI 修改；语言关联修复在比较脚本，checkpoint 至 evidence head 的累计源码/采集/workflow/文档分类见 P2C-4 报告。
-- 同 SHA P2C run `40445426847` Windows native、生产 Xvfb/XTEST、视觉比较 3/3 PASS；P2B run `40445426915` 2/2 PASS；PR build `40445420366` 和 push build `40445426755` PASS。P2C artifact IDs：Windows `12708740178`、Linux `12708877016`、comparison `12708224005`；P2B X11/Weston `12707919292` / `12708721667`。Digests 和 PNG/source SHA manifest 见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
+- PR #7 OPEN / Draft；已完成图形证据对应 HEAD `c84771063e6b349828e012463222b82bc57dd479`，其测试/采集代码与 evidence source HEAD `7369db05f9d3e02c6e973f455922ee783b6b16cf` 相同，新增提交只同步报告、交互矩阵与记忆。生产 GUI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`，本轮未改。
+- c847 exact-head P2C run `40448208937` 3/3 PASS；P2B run `40448208791` 2/2 PASS；PR build `40448208724` 和 push build `40448202360` PASS。Artifacts：P2C Windows/Linux/comparison `12709690360` / `12708759424` / `12709710212`，P2B X11/Weston `12708669133` / `12709227100`。所有 archive digest、截图/source SHA 和 manifest 计数见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
 - 四个隔离 Windows 进程实验分别覆盖 English→Dark→Settings、简中→Dark→Settings、Dark→简中→Settings、English→Dark→简中→English。20/20 页面语言/主题/导航/页面资源 ID 语义检查 PASS；同语言顺序截图 SHA 相同、十组顺序图像变化为 0；关闭再开设置窗 4/4 恢复。未复现混合亮暗。旧简中图 SHA `39798741089e5de00cfadd7d349448f4dabde7c6a22143be4fd6447726faf77c` 导航 Advanced、内容 General；错配根因未确认。
 - R1 有效暗色差异率 EN/简中：General 10.2327%/9.1002%；Memory cleaning 12.6625%/12.4014%；Appearance 11.6311%/11.0057%；Tray icon 11.2534%/10.2744%；Advanced 5.9434%/5.4004%。这是语义配对读数，不是视觉改善；全页 1:1 仍 NOT PASS。
 - 回归保持 184/184 几何、10/10 导航、102/102 树线、36/36 控件 raster、2/2 中间滚动 PASS。Windows PNG 81/81、Linux PNG 44/44、comparison 83/83、dark manifest 155/155、source 10/10；P2B X11 PNG/source-binary 10/10、8/8。
-- P2B 重复设置页 step 条件跳过，由同 SHA P2C Xvfb 五页测试覆盖。Wayland 仅客户端生命周期 PASS、输入 NOT RUN；保留 GDK seat critical、无 `wl_seat` 和 Weston teardown `BUG`。没有真实清理、Polkit、Swap/ZRAM、root GUI、本机 GUI、Hyprland IPC 或桌面输入注入。12 项简中来源差异仍 `DECISION_REQUIRED`。
+- P2B 重复设置页 step 条件跳过，由同 SHA P2C Xvfb 五页测试覆盖。Wayland 仅客户端生命周期 PASS、输入 NOT RUN；保留 GDK seat critical、无 `wl_seat` 和 Weston teardown `BUG`。没有真实清理、Polkit、Swap/ZRAM、root GUI、本机 GUI、Hyprland IPC 或桌面输入注入。12 项简中来源差异仍 `DECISION_REQUIRED`。P2C 阶段现交 ChatGPT 复审；没有开始特权清理功能。
 
 ## P2C-4 最终图形证据 snapshot（2026-10-27）
 

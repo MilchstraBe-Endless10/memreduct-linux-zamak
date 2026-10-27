@@ -115,9 +115,9 @@
 - R1 暗色语义配对的五页英文/简中差异率、截图 SHA 与环境写入 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`；交互状态矩阵写入 `docs/UI_INTERACTION_MATRIX.md`。几何、控件栅格、截图阈值、12 项 `DECISION_REQUIRED` 文案均未更改。
 - R1 代码改动仅比较脚本的语言 ID 映射；生产 UI 源码仍是 checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。aggregate checkpoint-to-HEAD 还有 Windows 采集脚本与两条 UI workflow 的改动，文件分类见报告。旧代码 head P2B run `40443810053` 最终 2/2 PASS（APT 依赖安装 27m48s）；当前 metadata head `7369db0` 的 build run `40445420366`、push build `40445426755` PASS，Windows job PASS，Linux Xvfb/P2B jobs仍在执行。未进行主机桌面操作、清理或特权写入。
 
-## 2026-10-27 — P2C-4R1 exact-head CI 与 artifact 闭环（7369db0）
-- 核对远端和本地 PR 分支均为 `7369db05f9d3e02c6e973f455922ee783b6b16cf`；PR #7 OPEN / Draft，base `feat/issue-3-p2b-main-window`，未合并。
-- 该 head 的 P2C run `40445426847` 的 Windows native、Linux production Xvfb/XTEST、comparison 3/3 PASS；P2B lifecycle run `40445426915` 2/2 PASS；PR build/governance/safety `40445420366` 与 push build `40445426755` PASS。P2B 的重复设置页步骤条件跳过，由同 head P2C Xvfb 作业实际执行五页设置测试。Artifact IDs/digests 与截图/source manifest 计数见 P2C-4 report。
-- 四种 Windows 语言/暗色顺序试验和设置窗口重开验证保持 PASS；没有复现混合亮暗，旧错配来源未证实。R1 有效深色差异率 5.4004%–12.6625%，Windows/Linux 整页像素等价仍 NOT PASS。184 geometry、10 navigation、102 tree samples、36 raster checks、2 scroll states 均维持既有 PASS。
-- P2B Weston 客户端退出码为 0，但保留 GDK `gdk_seat_get_keyboard` critical、无 `wl_seat` 和 compositor layer teardown `BUG`；没有 Wayland 鼠标/键盘验收。简中 12 项来源差异未更改，仍 `DECISION_REQUIRED`。
-- 本次只完成证据与记忆同步，无生产 UI 源码改动；无活动 Hyprland、桌面输入、真实清理、Polkit、Swap/ZRAM 或内核缓存写入。等待 ChatGPT 复审 PR #7。
+## 2026-10-27 — P2C-4R1 exact-head CI 与 artifact 闭环（c847710）
+- 核对本地和远端 PR 分支均为 `c84771063e6b349828e012463222b82bc57dd479`；PR #7 OPEN / Draft，base `feat/issue-3-p2b-main-window` / `911a3d0b99b05f15bd0109dca475b0b5174e7888`，未合并。`7369db0..c847710` 仅有报告、交互矩阵和记忆变化，生产 UI、比较/采集脚本和 workflow 未变。
+- c847 的 P2C run `40448208937`（Windows 原版、Linux production Xvfb/XTEST、visual compare）3/3 PASS；P2B `40448208791` Xvfb/Weston 2/2 PASS；PR build `40448208724` 与 push build `40448202360` PASS。P2B 的重复五页设置步骤条件 SKIPPED，由同 head P2C Xvfb 作业实际执行五页测试；所有必需 job 均成功。
+- Artifacts：P2C Windows/Linux/comparison `12709690360` (`sha256:e9ed3a52bf6354000586752209a724ff30521190094f1f0f6f93becf59939c33`) / `12708759424` (`sha256:2fcf48320346316938834c9b1701017cc6e97a25e7ce276ce598c32540a58d71`) / `12709710212` (`sha256:8304c023bc881260f7462ee7e9482097ecdf94ec66fcd8d2758ffca206874f68`)；P2B X11/Weston `12708669133` (`sha256:810b6ae3485ac6d658081e85099b314201ebe2fe2ff781ef551b43a62a9d9174`) / `12709227100` (`sha256:46da0401b1cb495d9929b83f0f79b8a8bf73394002bda811749c267e2d7a82cd`)。PNG/source manifest 计数和代表截图 SHA 见报告。
+- 四种 Windows 语言/暗色顺序试验 20/20 状态匹配，设置窗关闭/重开 4/4 PASS；未复现混合亮暗。有效暗色差异率 5.4004%–12.6625%，整体像素 1:1 NOT PASS。184 geometry、10 nav、102 tree、36 raster、2 scroll 均 PASS；12 项简中来源差异仍 `DECISION_REQUIRED`。
+- P2B Weston 主窗与设置窗客户端退出码均为 0，但保留 GDK `gdk_seat_get_keyboard` critical、无 `wl_seat` 和 compositor layer teardown `BUG`；Wayland 输入 NOT RUN。无生产 GUI 变更、活动 Hyprland/桌面输入、真实清理、Polkit、Swap/ZRAM 或内核缓存写入。阶段停止于等待 ChatGPT 复审 PR #7。
