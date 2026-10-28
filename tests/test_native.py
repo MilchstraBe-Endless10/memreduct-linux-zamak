@@ -169,6 +169,49 @@ class TestNativeBackend(unittest.TestCase):
             else:
                 os.environ['MEMREDUCT_TEST_WAITPID_EINTR_ONCE'] = old_waitpid_fault
 
+    def test_bridge_preserves_failure_and_uncertain_exit_status_without_retry(self):
+        fake = self.work / 'pkexec-status'
+        calls = self.work / 'pkexec-status-calls.log'
+        fake.write_text(
+            '#!/bin/sh\n'
+            '[ "$1" = "/usr/libexec/memreduct-zamak-helper" ] || exit 88\n'
+            '[ "$2" = "pagecache" ] || exit 89\n'
+            'printf "%s %s\\n" "$1" "$2" >> "$MEMREDUCT_TEST_PKEXEC_LOG"\n'
+            'exit "$MEMREDUCT_TEST_PKEXEC_EXIT"\n'
+        )
+        fake.chmod(0o755)
+        env_names = (
+            'MEMREDUCT_TEST_PKEXEC',
+            'MEMREDUCT_TEST_PKEXEC_LOG',
+            'MEMREDUCT_TEST_PKEXEC_EXIT',
+        )
+        previous = {name: os.environ.get(name) for name in env_names}
+        try:
+            os.environ['MEMREDUCT_TEST_PKEXEC'] = str(fake)
+            os.environ['MEMREDUCT_TEST_PKEXEC_LOG'] = str(calls)
+            library = ctypes.CDLL(str(self.bridge))
+            library.mr_start_reclaim.argtypes = [ctypes.c_int64]
+            library.mr_start_reclaim.restype = ctypes.c_int64
+            library.mr_poll_reclaim.restype = ctypes.c_int64
+            for expected in (1, 3, 126):
+                os.environ['MEMREDUCT_TEST_PKEXEC_EXIT'] = str(expected)
+                self.assertEqual(library.mr_start_reclaim(0), 0)
+                result = -1
+                for _ in range(100):
+                    result = library.mr_poll_reclaim()
+                    if result != -1:
+                        break
+                    time.sleep(0.01)
+                self.assertEqual(result, expected)
+                self.assertEqual(library.mr_poll_reclaim(), -2)
+            self.assertEqual(len(calls.read_text().splitlines()), 3)
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
 
 if __name__ == '__main__':
     unittest.main()

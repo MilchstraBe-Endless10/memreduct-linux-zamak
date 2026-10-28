@@ -69,6 +69,9 @@ fn next_focus_index(focus: f64) -> f64:
 fn menu_item_has_keyboard_focus(focus: f64, index: i64) -> bool:
     focus == f64(index)
 
+fn settings_canvas_needs_redraw(settings_open: bool, target: f64) -> bool:
+    settings_open and (target == 202.0 or target == 601.0 or target == 602.0)
+
 fn root_menu_target(menu: i64, row: i64) -> f64:
     if menu == 1:
         if row == 0: return 101.0
@@ -534,6 +537,8 @@ fn activate(s: &mut MainWindow, target: f64):
         s.status = label(s.zh, "This Windows cleanup API has no approved Linux equivalent", "该 Windows 清理接口没有已批准的 Linux 等价操作")
         if s.test_mode: println(f"CI_CLEAN_REGION_DISABLED index={index} action=none")
     s.canvas.redraw()
+    if settings_canvas_needs_redraw(s.settings_open, target):
+        s.settings_canvas.redraw()
 
 fn move_menu_focus(s: &mut MainWindow, direction: i64):
     let mut first = 0.0
@@ -710,6 +715,14 @@ fn test_initial_menu_focus_is_hidden_and_tab_starts_at_file():
     assert(not menu_item_has_keyboard_focus(-1.0, 0))
     assert(next_focus_index(-1.0) == 0.0)
     assert(next_focus_index(4.0) == 0.0)
+
+fn test_shared_theme_and_language_changes_redraw_open_settings():
+    assert(settings_canvas_needs_redraw(true, 202.0))
+    assert(settings_canvas_needs_redraw(true, 601.0))
+    assert(settings_canvas_needs_redraw(true, 602.0))
+    assert(not settings_canvas_needs_redraw(false, 202.0))
+    assert(not settings_canvas_needs_redraw(false, 601.0))
+    assert(not settings_canvas_needs_redraw(true, 204.0))
 
 fn close_window(s: &mut MainWindow):
     if s.test_mode: println("CI_WINDOW_CLOSE")
