@@ -1,6 +1,6 @@
 # P2B Production Main Window — P2B-2 Correction Report
 
-Date: 2026-10-25  
+Date: 2026-10-25<br>
 Upstream UI reference: Mem Reduct `v.3.5.2`, tag commit `2f5c55d15f69a2c88859e036b16c6f4c971e1968`
 PR: [#6](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/6), OPEN / Draft
 Base: `docs/issue-3-p2a-ui-spec` at `d89d74fde433da1863b4de0223f974c824fb590e`

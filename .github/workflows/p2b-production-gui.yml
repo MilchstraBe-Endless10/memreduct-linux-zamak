@@ -5,14 +5,22 @@ on:
     branches:
       - feat/issue-3-p2b-main-window
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
     branches:
+      - docs/issue-3-p2a-ui-spec
       - feat/issue-3-p2b-main-window
+      - main
 
 permissions:
   contents: read
 
+# Preserve evidence jobs; a newer duplicate run must not cancel one already capturing artifacts.
 concurrency:
-  group: p2b-ui-validation-${{ github.event.pull_request.number || github.ref }}
+  group: p2b-production-gui-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -21,22 +29,32 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 commit used by R6 CI
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, Node 24
         with:
           node-version: '22'
-      - name: Update APT indexes (10-minute step limit)
+      - name: Update APT indexes (Xvfb runner)
         timeout-minutes: 10
         env:
-          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-x11-apt
-          APT_UPDATE_TIMEOUT: 8m
-        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_UPDATE_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh update
-      - name: Install runner-only GUI and build dependencies (40-minute step limit)
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-x11
+        run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh update
+      - name: Install runner-only GUI and build dependencies
         timeout-minutes: 40
         env:
-          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-x11-apt
-          APT_INSTALL_TIMEOUT: 38m
-        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_INSTALL_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox wmctrl fonts-noto-cjk fonts-dejavu
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-x11
+        run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox wmctrl fonts-noto-cjk fonts-dejavu
       - name: Install pinned Zamak 0.2.0
         run: npm install --global @veyralux/zamak@0.2.0
       - name: Build and verify production executable
@@ -54,21 +72,13 @@ jobs:
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/p2b-x11
         run: bash scripts/ci/p2c-settings-xvfb.sh "$RUNNER_TEMP/p2b-x11/memreduct-zamak-production"
-      - name: Upload X11 dependency diagnostics
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 commit used by R6 CI
-        with:
-          name: p2b-x11-apt-diagnostics-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/p2b-x11-apt
-          if-no-files-found: warn
-          retention-days: 14
       - name: Upload X11 screenshots and logs
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 commit used by R6 CI
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
         with:
           name: p2b-production-x11
           path: ${{ runner.temp }}/p2b-x11
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   production-wayland:
@@ -76,22 +86,32 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4 commit used by R6 CI
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, Node 24
         with:
           node-version: '22'
-      - name: Update APT indexes (10-minute step limit)
+      - name: Update APT indexes (Weston runner)
         timeout-minutes: 10
         env:
-          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-wayland-apt
-          APT_UPDATE_TIMEOUT: 8m
-        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_UPDATE_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh update
-      - name: Install runner-only Wayland and build dependencies (40-minute step limit)
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-wayland
+        run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh update
+      - name: Install runner-only Wayland and build dependencies
         timeout-minutes: 40
         env:
-          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-wayland-apt
-          APT_INSTALL_TIMEOUT: 38m
-        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_INSTALL_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 weston wayland-utils fonts-dejavu
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-wayland
+        run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 weston wayland-utils fonts-noto-cjk fonts-dejavu
       - name: Install pinned Zamak 0.2.0
         run: npm install --global @veyralux/zamak@0.2.0
       - name: Build and verify production executable
@@ -104,19 +124,11 @@ jobs:
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/p2b-wayland
         run: bash scripts/ci/p2b-production-wayland.sh "$RUNNER_TEMP/p2b-wayland/memreduct-zamak-production"
-      - name: Upload Weston dependency diagnostics
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 commit used by R6 CI
-        with:
-          name: p2b-wayland-apt-diagnostics-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/p2b-wayland-apt
-          if-no-files-found: warn
-          retention-days: 14
       - name: Upload Weston and client logs
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 commit used by R6 CI
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
         with:
           name: p2b-production-wayland
           path: ${{ runner.temp }}/p2b-wayland
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14

@@ -2,8 +2,14 @@ name: P2C Windows native 3.5.2 baseline
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
     branches:
       - feat/issue-3-p2b-main-window
+      - main
 
 permissions:
   contents: read
