@@ -6,8 +6,8 @@
 - **实际修复：**主窗口语言或主题菜单更新后，现会通知已打开的设置 Canvas 重绘；Zamak 新增状态选择回归。fake `pkexec` 测试覆盖异步桥退出码 1、3、126，确认不重复启动；没有真实 Polkit 或内核写入。
 - **Winelib 实测：**已有 R6 隔离 General 页 POC 以官方 `resource.rc` 和 Win32 控件树编译。背景/焦点状态对齐后，558×335 changed-pixel 英文 13.2531%、简中 12.2725%，背景样本 0/2500 不同；GroupBox 仍 20.6%–21.7%，按钮约 37.3%–37.6%。英文垂直字体度量与 Windows GDI 同为 11/2 px，但 CJK 使用 Noto Sans CJK SC (13/3 px) 且字形/栅格仍不同。Wine Common Controls v6 manifest 缺 assembly 的 warning 未解决。该 POC 不是完整原版或生产迁移，状态不能与 GTK 截图直接排名。
 - **界面问题：**设置页同源文本仅 25/120 宽高差≤2 px、95/120 超差；全页 1:1 仍 NOT PASS。设置页禁用灰度源自未实现功能，不能假装启用；主窗旧 20.9436% 比较因动态值、边界和安全状态不匹配，不是验收率。详见 `docs/ZAMAK_UI_FEASIBILITY.md`。
-- **验证：**治理 34 项、C/Python 12/12、Shell 全脚本语法、Zamak 0.2.0 44/44、生产 GUI/helper build、Canvas 探针 12/12、`git diff --check` 均 PASS。Xvfb/Openbox/Weston/Wine/winegcc/wrc 未安装，因此这轮没有隔离 GUI/Winelib 重跑；没有新 GitHub CI。真实 Hyprland 输入、内存清理、Polkit、Swap/ZRAM 和 root GUI均未执行。
-- **证据：**R6 并排/Overlay/Difference/Heatmap、比较 CSV、字体输出与 PNG SHA 保存在用户 AI 产出数据目录的 `P2C-UI-Core-Fidelity-R6-20261029` artifact；R7 本轮生产构建与探针日志保存在同目录 `P2C-UI-Core-Fidelity-R7-20261029`。原始证据未覆盖。
+- **验证：**治理 34 项、C/Python 12/12、Shell 全脚本语法、Zamak 0.2.0 44/44、生产 GUI/helper build、Canvas 探针 12/12、`git diff --check` 均 PASS。本轮另以真实 Wayland 会话变量启动本地 GUI 7 秒：主窗和 English/Light General 页捕获成功，退出码 0，无 GTK warning/critical/error。Xvfb/Openbox/Weston/Wine/winegcc/wrc 未安装；没有新 GitHub CI。真实键鼠、五页切换、主题/语言切换、内存清理、Polkit、Swap/ZRAM 和 root GUI均未执行。
+- **证据：**R6 并排/Overlay/Difference/Heatmap、比较 CSV、字体输出与 PNG SHA 保存在用户 AI 产出数据目录的 `P2C-UI-Core-Fidelity-R6-20261029` artifact；R7 构建与探针日志在 `P2C-UI-Core-Fidelity-R7-20261029/verification-640fb5df/`。本轮 Wayland Main SHA `fe90da01aac4cfa96861d8db42bdbbe0127087b694071f893ec9d7b21f0e0f3a`，General SHA `ee33df415eacd6e69d448cc269b44be7fd17092ee436bab616e0d494798e1551`。原始证据未覆盖。
 
 ## 历史快照（2026-10-29，R6 Winelib 小样与重绘修复之前）— UI 路线与内存核心并行收口
 

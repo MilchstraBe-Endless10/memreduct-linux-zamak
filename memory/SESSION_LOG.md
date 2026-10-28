@@ -257,3 +257,9 @@
 - 前端差异清单：设置文本 95/120 宽高差大于 2 px；有效配对浅色 changed-pixel 5.0741%–14.8853%，深色 5.4004%–12.6625%；全页 1:1 NOT PASS。主窗 GTK 客户区 337×369 的 Windows DLU 换算仍 provisional，Hyprland 外框未测；12 项原版简中来源差异仍 `DECISION_REQUIRED`。完整技术路线与来源见 `docs/ZAMAK_UI_FEASIBILITY.md`。
 - R6/当前构建证据保留在用户 AI 产出目录的 R6/R7 子目录；没有覆盖原截图。本地候选未取得 GitHub CI 结果。
 - 文档、可行性路线、ADR、README 和记忆修订单独提交为 `84dcd46af45d0f30f7b64d25256054fefe569388`（父为代码提交 `640fb5df044475df827308388c3da5be25d4ffad`）；未推送。
+
+## 2026-10-29 — 本地候选真实 Wayland 限时启动与截图
+
+- 使用本地代码 HEAD `640fb5df044475df827308388c3da5be25d4ffad` 对应的生产二进制（SHA-256 `fe5c609e2718a2f348c7724ff44ccee43349488dcf9780afd1762075d9b08658`），通过 `GDK_BACKEND=wayland` 和内置 7000 ms 测试计时器打开 Main 与 English/Light General Settings。当前环境有 Wayland/Hyprland 会话标记；未调用 Hyprland IPC、未注入键鼠、未触碰其他窗口。
+- GTK 3.24.52，scale factor 1，Adwaita Sans label style 11 pt，Canvas 请求 8 pt，记录 ascent/descent `11/3 px`。Main allocation/client `337×369`、Settings `558×335`；两个 app-owned capture 成功，GDK frame extent 与 client 相同，仍未量到 Hyprland 可见装饰边界。日志未见 Gtk-WARNING/CRITICAL/ERROR；`CI_QUIT source=bounded_test_timer`、`CI_APP_RETURNED`，退出码 0。
+- PNG：Main `fe90da01aac4cfa96861d8db42bdbbe0127087b694071f893ec9d7b21f0e0f3a`；General `ee33df415eacd6e69d448cc269b44be7fd17092ee436bab616e0d494798e1551`。日志、环境记录和 PNG 在 AI 产出目录 R7 的 `verification-640fb5df/real-wayland/`。本次只验收启动/绘制/采样/计时器退出；鼠标键盘、五页切换、深色/简中、关闭重开仍 NOT RUN，整页 1:1 NOT PASS。
