@@ -5,7 +5,7 @@ use memory
 pub fn may_reclaim(s: &memory.Snapshot, threshold: i64, now: f64, last: f64) -> bool:
     if threshold < 75 or threshold > 98: return false
     if s.percent() < threshold: return false
-    if s.cached < 256 * 1024: return false
+    if s.page_cache < 256 * 1024: return false
     if last > 0.0 and now - last < 1800.0: return false
     true
 

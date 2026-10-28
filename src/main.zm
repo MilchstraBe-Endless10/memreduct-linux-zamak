@@ -41,7 +41,7 @@ struct MainWindow:
     mem_available: i64
     swap_total: i64
     swap_free: i64
-    cached_estimate: i64
+    page_cache_estimate: i64
     sample_ok: bool
     draw_logged: bool
     test_mode: bool
@@ -404,7 +404,7 @@ fn refresh(s: &mut MainWindow):
         s.mem_available = 0
         s.swap_total = 0
         s.swap_free = 0
-        s.cached_estimate = 0
+        s.page_cache_estimate = 0
         s.status = label(s.zh, "Cannot read /proc/meminfo", "无法读取 /proc/meminfo")
         if s.test_mode: println(f"CI_MEMORY_ERROR {e}")
         s.canvas.redraw()
@@ -414,11 +414,11 @@ fn refresh(s: &mut MainWindow):
     s.mem_available = snapshot.available
     s.swap_total = snapshot.swap_total
     s.swap_free = snapshot.swap_free
-    s.cached_estimate = snapshot.cached
+    s.page_cache_estimate = snapshot.page_cache
     s.sample_ok = true
     s.sample_failure_draw_logged = false
     if s.test_mode:
-        println(f"CI_MEMORY source=/proc/meminfo MemTotal={snapshot.total} MemAvailable={snapshot.available} SwapTotal={snapshot.swap_total} SwapFree={snapshot.swap_free} CachedPlusSReclaimable={snapshot.cached}")
+        println(f"CI_MEMORY source=/proc/meminfo MemTotal={snapshot.total} MemAvailable={snapshot.available} CachedPageCache={snapshot.page_cache} SReclaimableSlab={snapshot.reclaimable_slab} SwapTotal={snapshot.swap_total} SwapFree={snapshot.swap_free}")
     s.canvas.redraw()
 
 fn sample_for_ui(s: &MainWindow) -> memory.Snapshot!string:
@@ -757,7 +757,7 @@ fn main():
         canvas: canvas, settings_canvas: settings_canvas, width: f64(width - 12), height: f64(height - 12),
         zh: false, dark: false, menu: 0, popup: 0, hover: 0.0, pressed: 0.0,
         focus: -1.0, menu_focus: 0.0, collapsed_groups: 0, selected_group: initial_selected_group, status: "", mem_total: 0, mem_available: 0, swap_total: 0,
-        swap_free: 0, cached_estimate: 0, sample_ok: false, draw_logged: false,
+        swap_free: 0, page_cache_estimate: 0, sample_ok: false, draw_logged: false,
         test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, sample_failure_draw_logged: false,
         settings_open: false, settings: settings_ui.initial(test_mode)
     )

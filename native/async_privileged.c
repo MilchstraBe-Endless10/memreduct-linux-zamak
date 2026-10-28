@@ -13,8 +13,8 @@ static pid_t child_pid = -1;
 /* Return 0 on success, or a positive errno (or EBUSY). GUI stays unprivileged. */
 int64_t mr_start_reclaim(int64_t mode) {
     if (child_pid > 0) return EBUSY;
-    if (mode < 0 || mode > 2) return EINVAL;
-    const char *action = mode == 0 ? "pagecache" : mode == 1 ? "metadata" : "all";
+    if (mode != 0) return EINVAL;
+    const char *action = "pagecache";
     /* Production uses an absolute path; only the test build may override it. */
     const char *binary = "/usr/bin/pkexec";
 #ifdef MEMREDUCT_TESTING
@@ -36,7 +36,7 @@ int64_t mr_poll_reclaim(void) {
     if (child_pid < 0) return -2;
     int status = 0;
     pid_t result = waitpid(child_pid, &status, WNOHANG);
-    if (result == 0) return -1;
+    if (result == 0 || (result < 0 && errno == EINTR)) return -1;
     child_pid = -1;
     if (result < 0) return 125;
     if (WIFEXITED(status)) return WEXITSTATUS(status);
