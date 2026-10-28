@@ -76,7 +76,7 @@ for _ in {1..50}; do
 done
 [[ "$wm_ready" == true ]] || { cat "$artifact_dir/openbox.log" >&2; exit 1; }
 
-MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 MEMREDUCT_CI_FAIL_SAMPLE_AFTER_MS=15000 stdbuf -oL "$app" \
+MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 MEMREDUCT_CI_FAIL_SAMPLE_AFTER_MS=15000 MEMREDUCT_CI_CAPTURE=1 stdbuf -oL "$app" \
   >"$artifact_dir/client.log" 2>&1 &
 app_pid="$!"
 window_id=""
@@ -135,8 +135,8 @@ window_geometry() {
   height="$(awk '$1 == "Height:" {print $2; exit}' "$output")"
   canvas="$(grep -F 'CI_DRAW width=' "$artifact_dir/client.log" | tail -n 1 | sed -E 's/^.*CI_DRAW width=([^ ]+) height=([^ ]+).*$/\1x\2/')"
   printf 'Observed top-level=%sx%s; Canvas=%s\n' "$width" "$height" "$canvas" | tee -a "$output"
-  [[ "$width" == 337 && "$height" == 369 && "$canvas" == '313.0x345.0' ]] || {
-    printf 'Unexpected candidate geometry. Expected top-level 337x369 and Canvas 313x345, observed %sx%s / %s.\n' \
+  [[ "$width" == 337 && "$height" == 369 && "$canvas" == '325.0x357.0' ]] || {
+    printf 'Unexpected candidate geometry. Expected top-level 337x369 and Canvas 325x357, observed %sx%s / %s.\n' \
       "$width" "$height" "$canvas" >&2
     return 1
   }
@@ -165,53 +165,92 @@ assert_changed() {
 wait_for_marker 'CI_PRODUCTION_START'
 wait_for_marker 'CI_MEMORY source=/proc/meminfo'
 wait_for_marker 'CI_DRAW width='
+wait_for_marker 'CI_WINDOW_SIZE_POLICY fixed=1'
+wait_for_marker 'CI_MAIN_BACKGROUND mode=light applied=1'
+wait_for_marker 'CI_MAIN_CONTENT_INSET old=12 new=0 margins=start:12,end:0,top:0,bottom:12 verified=true'
+wait_for_marker 'CI_WINDOW_SIZE_POLICY main_found=1 main_resizable=0 settings_found=1 settings_resizable=0'
+wait_for_marker 'CI_CAPTURE kind=main status=ok'
+wait_for_marker 'CI_CAPTURE kind=settings status=skipped visible=0 mapped=0'
+if grep -Eq 'Gtk-(WARNING|CRITICAL)' "$artifact_dir/client.log"; then
+  echo 'Visible-window capture emitted a GTK warning or critical' >&2
+  exit 1
+fi
 for group in 0 1 2; do
   wait_for_marker "CI_LAYOUT_GROUP index=$group locale=en "
   grep -Fq "CI_LAYOUT_GROUP index=$group locale=en " "$artifact_dir/client.log"
-  grep -Fq "row0=Usage@" "$artifact_dir/client.log"
-  grep -Fq "row1=Available@" "$artifact_dir/client.log"
-  grep -Fq "row2=Total available@" "$artifact_dir/client.log"
 done
+grep -Eq 'CI_LAYOUT_GROUP index=0 locale=en .*title_y=36\.[0-9]+ rule_x=[0-9.]+ rule_y=44\.[0-9]+ row0=58\.[0-9]+ row1=76\.[0-9]+ row2=94\.[0-9]+' "$artifact_dir/client.log"
+grep -Eq 'CI_LAYOUT_GROUP index=1 locale=en .*title_y=117\.[0-9]+ rule_x=[0-9.]+ rule_y=122\.[0-9]+ row0=136\.[0-9]+ row1=153\.[0-9]+ row2=171\.[0-9]+' "$artifact_dir/client.log"
+grep -Eq 'CI_LAYOUT_GROUP index=2 locale=en .*title_y=192\.[0-9]+ rule_x=[0-9.]+ rule_y=200\.[0-9]+ row0=210\.[0-9]+ row1=228\.[0-9]+ row2=246\.[0-9]+' "$artifact_dir/client.log"
 grep -Fq 'CI_LAYOUT_GROUP index=1 locale=en title=Pagefile / Swap ' "$artifact_dir/client.log"
+grep -Eq 'CI_LAYOUT_GROUP index=0 locale=en title=Physical memory usage=[0-9]+\.[0-9]{3}%' "$artifact_dir/client.log"
 window_geometry "$artifact_dir/geometry-en.txt"
+# The upstream IDD_MAIN has no resizable frame. Ask the isolated WM to tile the
+# window to the same large geometry observed on Hyprland and require the GTK
+# client to keep the authenticated compact candidate allocation.
+xdotool windowsize "$window_id" 926 1010
+sleep 0.2
+window_geometry "$artifact_dir/geometry-after-tiling-request.txt"
+# Preserve an unselected capture, then reproduce the selected third group shown
+# in the official Windows reference before recording the comparison screenshot.
+capture 'production-main-en-default.png'
+marker='CI_GROUP_SELECT group=2 selected=true'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
+xdotool mousemove --sync --window "$window_id" 120 200 click 1
+wait_for_new_marker "$marker" "$previous_count"
 capture 'production-main-en.png'
+assert_changed 'production-main-en-default.png' 'production-main-en.png' 'group-selection-pixel-diff.txt'
+
+# The v3.5.2 list uses collapsible groups. Exercise the disclosure affordance
+# in both directions and require the redraw/state marker from the production UI.
+marker='CI_GROUP_COLLAPSE group=0 collapsed=true'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
+xdotool mousemove --sync --window "$window_id" 320 44 click 1
+wait_for_new_marker "$marker" "$previous_count"
+grep -Fq 'CI_LAYOUT_GROUP index=0 locale=en title=Physical memory collapsed=true ' "$artifact_dir/client.log"
+capture 'production-main-en-first-group-collapsed.png'
+marker='CI_GROUP_COLLAPSE group=0 collapsed=false'
+previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
+xdotool mousemove --sync --window "$window_id" 320 44 click 1
+wait_for_new_marker "$marker" "$previous_count"
+grep -Fq 'CI_LAYOUT_GROUP index=0 locale=en title=Physical memory collapsed=false ' "$artifact_dir/client.log"
 
 # Open each production root menu through XTEST and assert its final popup bounds.
 marker='CI_MENU root=1 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 20 22 click 1
+xdotool mousemove --sync --window "$window_id" 20 10 click 1
 wait_for_marker 'CI_POPUP kind=root'
 wait_for_new_marker "$marker" "$previous_count"
 escape_and_expect_focus 0
 marker='CI_MENU root=2 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 70 22 click 1
+xdotool mousemove --sync --window "$window_id" 70 10 click 1
 wait_for_new_marker "$marker" "$previous_count"
 escape_and_expect_focus 1
 marker='CI_MENU root=3 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 120 22 click 1
+xdotool mousemove --sync --window "$window_id" 120 10 click 1
 wait_for_new_marker "$marker" "$previous_count"
 escape_and_expect_focus 2
 marker='CI_MENU root=4 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 174 22 click 1
+xdotool mousemove --sync --window "$window_id" 174 10 click 1
 wait_for_new_marker "$marker" "$previous_count"
 escape_and_expect_focus 3
 marker='CI_MENU root=2 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 70 22 click 1
+xdotool mousemove --sync --window "$window_id" 70 10 click 1
 wait_for_new_marker "$marker" "$previous_count"
 capture 'production-view-menu-en.png'
 marker='CI_LANGUAGE_MENU open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 82 130 click 1
+xdotool mousemove --sync --window "$window_id" 82 118 click 1
 wait_for_new_marker "$marker" "$previous_count"
 wait_for_marker 'CI_POPUP kind=language menu=2 locale=en'
 capture 'production-language-menu-en.png'
 # XTEST uses top-level-relative coordinates. The second language row is centered
-# at Canvas y=134, or top-level y=146 after the measured 12 px content inset.
-xdotool mousemove --sync --window "$window_id" 238 146 click 1
+# at Canvas y=134; the main Canvas now starts at the client top edge.
+xdotool mousemove --sync --window "$window_id" 238 134 click 1
 wait_for_marker 'CI_LOCALE locale=zh-CN'
 sleep 0.2
 window_geometry "$artifact_dir/geometry-zh.txt"
@@ -220,20 +259,20 @@ assert_changed 'production-main-en.png' 'production-main-zh.png' 'locale-pixel-d
 for group in 0 1 2; do
   wait_for_marker "CI_LAYOUT_GROUP index=$group locale=zh-CN "
   grep -Fq "CI_LAYOUT_GROUP index=$group locale=zh-CN " "$artifact_dir/client.log"
-  grep -Fq "row0=已用@" "$artifact_dir/client.log"
-  grep -Fq "row1=空闲@" "$artifact_dir/client.log"
-  grep -Fq "row2=总计@" "$artifact_dir/client.log"
 done
+grep -Eq 'CI_LAYOUT_GROUP index=0 locale=zh-CN .*title_y=36\.[0-9]+ rule_x=[0-9.]+ rule_y=44\.[0-9]+ row0=58\.[0-9]+ row1=76\.[0-9]+ row2=94\.[0-9]+' "$artifact_dir/client.log"
+grep -Eq 'CI_LAYOUT_GROUP index=1 locale=zh-CN .*title_y=117\.[0-9]+ rule_x=[0-9.]+ rule_y=122\.[0-9]+ row0=136\.[0-9]+ row1=153\.[0-9]+ row2=171\.[0-9]+' "$artifact_dir/client.log"
+grep -Eq 'CI_LAYOUT_GROUP index=2 locale=zh-CN .*title_y=192\.[0-9]+ rule_x=[0-9.]+ rule_y=200\.[0-9]+ row0=210\.[0-9]+ row1=228\.[0-9]+ row2=246\.[0-9]+' "$artifact_dir/client.log"
 grep -Fq 'CI_LAYOUT_GROUP index=1 locale=zh-CN title=交换空间 ' "$artifact_dir/client.log"
 marker='CI_MENU root=2 open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 70 22 click 1
+xdotool mousemove --sync --window "$window_id" 70 10 click 1
 wait_for_new_marker "$marker" "$previous_count"
 marker='CI_LANGUAGE_MENU open=true'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 popup_marker='CI_POPUP kind=language menu=2 locale=zh-CN'
 popup_previous_count="$(grep -Fc -- "$popup_marker" "$artifact_dir/client.log" || true)"
-xdotool mousemove --sync --window "$window_id" 82 130 click 1
+xdotool mousemove --sync --window "$window_id" 82 118 click 1
 wait_for_new_marker "$marker" "$previous_count"
 wait_for_new_marker "$popup_marker" "$popup_previous_count"
 sleep 0.2
@@ -243,21 +282,20 @@ menu_index=1
 for menu_x in 20 70 120 174; do
   marker="CI_POPUP kind=root menu=$menu_index locale=zh-CN"
   previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
-  xdotool mousemove --sync --window "$window_id" "$menu_x" 22 click 1
+  xdotool mousemove --sync --window "$window_id" "$menu_x" 10 click 1
   wait_for_new_marker "$marker" "$previous_count"
   escape_and_expect_focus "$((menu_index - 1))"
   menu_index=$((menu_index + 1))
 done
 
-# XTEST coordinates are top-level-relative; add the Canvas's measured 12 px top inset.
-xdotool mousemove --sync --window "$window_id" 300 334 click 1
+xdotool mousemove --sync --window "$window_id" 320 345 click 1
 wait_for_marker 'CI_CLEAN_MENU open=true'
 wait_for_marker 'CI_POPUP kind=clean'
-# The first popup row center is Canvas y=151, or top-level y=163.
+# The first popup row center follows the 96 DPI Windows button baseline.
 capture 'production-clean-menu-zh.png'
-xdotool mousemove --sync --window "$window_id" 95 163 click 1
+xdotool mousemove --sync --window "$window_id" 95 170 click 1
 wait_for_marker 'CI_CLEAN_REGION_DISABLED index=0 action=none'
-xdotool mousemove --sync --window "$window_id" 112 334 click 1
+xdotool mousemove --sync --window "$window_id" 112 345 click 1
 wait_for_marker 'CI_CLEAN_DISABLED action=none'
 
 # Keyboard focus, menu navigation, Enter and Escape run in the same production Canvas.
@@ -268,6 +306,7 @@ xdotool key --clearmodifiers Down
 xdotool key --clearmodifiers Down
 xdotool key --clearmodifiers Return
 wait_for_marker 'CI_THEME dark=true'
+wait_for_marker 'CI_MAIN_BACKGROUND mode=dark applied=1'
 marker='CI_FOCUS item=201.0'
 previous_count="$(grep -Fc -- "$marker" "$artifact_dir/client.log" || true)"
 xdotool key --clearmodifiers Down

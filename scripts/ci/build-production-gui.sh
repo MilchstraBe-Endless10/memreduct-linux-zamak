@@ -38,7 +38,7 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
   printf 'Kernel=%s\n' "$(uname -srmo)"
   printf 'Layout source=Mem Reduct v3.5.2 IDD_MAIN 224x214 DLU\n'
   printf 'Settings source=Mem Reduct v3.5.2 five child templates 260x168 DLU; shell 374x214 DLU is PROVISIONAL\n'
-  printf 'Provisional conversion=X 1.4 logical px/DLU, Y 1.5 logical px/DLU at nominal 96 DPI; controls scale from this centralized model\n'
+  printf 'Provisional conversion=X 1.4 logical px/DLU, Y 1.5 logical px/DLU at nominal 96 DPI; GTK top-levels are fixed-size to preserve the compact canvas\n'
   printf 'Windows font/DPI calibration=NOT RUN; Linux X11 and Wayland surface geometries are recorded separately\n'
   printf 'The 336x348 CI canvas probe is not used as the production window default\n'
 } | tee "$artifact_dir/environment.txt"

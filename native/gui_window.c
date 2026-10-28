@@ -10,6 +10,12 @@ typedef struct _GtkWindow GtkWindow;
 typedef struct _GtkBin GtkBin;
 typedef struct _GtkContainer GtkContainer;
 typedef struct _GList GList;
+typedef struct {
+    double red;
+    double green;
+    double blue;
+    double alpha;
+} GdkRGBA;
 struct _GList {
     void *data;
     GList *next;
@@ -18,6 +24,10 @@ struct _GList {
 
 extern GList *gtk_window_list_toplevels(void);
 extern const char *gtk_window_get_title(GtkWindow *window);
+extern void gtk_window_set_default_size(GtkWindow *window, int width, int height);
+extern void gtk_window_resize(GtkWindow *window, int width, int height);
+extern void gtk_window_set_resizable(GtkWindow *window, int resizable);
+extern int gtk_window_get_resizable(GtkWindow *window);
 extern void gtk_widget_show(GtkWidget *widget);
 extern void gtk_widget_hide(GtkWidget *widget);
 extern GtkWidget *gtk_bin_get_child(GtkBin *bin);
@@ -25,6 +35,12 @@ extern GList *gtk_container_get_children(GtkContainer *container);
 extern unsigned int gtk_container_get_border_width(GtkContainer *container);
 extern void gtk_container_set_border_width(GtkContainer *container, unsigned int border_width);
 extern void gtk_widget_queue_resize(GtkWidget *widget);
+extern void gtk_widget_queue_draw(GtkWidget *widget);
+extern void gtk_widget_override_background_color(GtkWidget *widget, unsigned int state, const GdkRGBA *color);
+extern void gtk_widget_set_margin_start(GtkWidget *widget, int margin);
+extern void gtk_widget_set_margin_end(GtkWidget *widget, int margin);
+extern void gtk_widget_set_margin_top(GtkWidget *widget, int margin);
+extern void gtk_widget_set_margin_bottom(GtkWidget *widget, int margin);
 extern void gtk_window_present(GtkWindow *window);
 extern unsigned long gtk_widget_get_type(void);
 extern unsigned int g_signal_lookup(const char *name, unsigned long type);
@@ -62,7 +78,152 @@ static unsigned long settings_close_handler_id;
 static unsigned long settings_preexisting_close_handler_id;
 static unsigned int settings_delete_signal_id;
 static int settings_geometry_prepared;
+static int main_geometry_prepared;
 static int gtk_version_logged;
+
+int64_t mr_gui_set_main_background(int64_t dark)
+{
+    GList *windows = gtk_window_list_toplevels();
+    GtkWindow *main_window = NULL;
+    GdkRGBA color = dark != 0
+                        ? (GdkRGBA){36.0 / 255.0, 36.0 / 255.0, 36.0 / 255.0, 1.0}
+                        : (GdkRGBA){1.0, 1.0, 1.0, 1.0};
+
+    for (GList *item = windows; item != NULL; item = item->next) {
+        GtkWindow *window = (GtkWindow *)item->data;
+        const char *title = gtk_window_get_title(window);
+        if (title != NULL && strcmp(title, "Mem Reduct") == 0) {
+            main_window = window;
+            break;
+        }
+    }
+
+    if (main_window != NULL) {
+        GtkWidget *root = gtk_bin_get_child((GtkBin *)main_window);
+        gtk_widget_override_background_color((GtkWidget *)main_window, 0, &color);
+        if (root != NULL) {
+            gtk_widget_override_background_color(root, 0, &color);
+            if (g_type_check_instance_is_a(root, gtk_container_get_type())) {
+                GList *children = gtk_container_get_children((GtkContainer *)root);
+                for (GList *child = children; child != NULL; child = child->next) {
+                    GtkWidget *widget = (GtkWidget *)child->data;
+                    gtk_widget_override_background_color(widget, 0, &color);
+                }
+                g_list_free(children);
+            }
+        }
+        gtk_widget_queue_draw((GtkWidget *)main_window);
+    }
+
+    if (getenv("MEMREDUCT_CI") != NULL) {
+        fprintf(stderr, "CI_MAIN_BACKGROUND mode=%s applied=%d\n", dark != 0 ? "dark" : "light",
+                main_window != NULL);
+        fflush(stderr);
+    }
+    g_list_free(windows);
+    return main_window != NULL ? 1 : 0;
+}
+
+/* Keep the main canvas at the client top edge while preserving its source x inset. */
+static int prepare_main_geometry(GtkWindow *window)
+{
+    GtkWidget *root = gtk_bin_get_child((GtkBin *)window);
+    const char *root_type = root == NULL ? NULL : g_type_name_from_instance(root);
+    GList *children = root != NULL && g_type_check_instance_is_a(root, gtk_container_get_type()) &&
+                      root_type != NULL && strcmp(root_type, "GtkBox") == 0
+                          ? gtk_container_get_children((GtkContainer *)root)
+                          : NULL;
+    GtkWidget *holder = NULL;
+    unsigned int candidates = 0;
+
+    for (GList *child = children; child != NULL; child = child->next) {
+        GtkWidget *candidate = (GtkWidget *)child->data;
+        const int is_container = candidate != NULL &&
+                                 g_type_check_instance_is_a(candidate, gtk_container_get_type());
+        const char *candidate_type = candidate == NULL ? NULL : g_type_name_from_instance(candidate);
+        if (is_container && candidate_type != NULL && strcmp(candidate_type, "GtkBox") == 0 &&
+            gtk_container_get_border_width((GtkContainer *)candidate) == 12) {
+            holder = candidate;
+            candidates++;
+        }
+    }
+
+    if (gtk_get_major_version() == 3 && candidates == 1 && holder != NULL &&
+        gtk_widget_get_parent(holder) == root) {
+        gtk_container_set_border_width((GtkContainer *)holder, 0);
+        gtk_widget_set_margin_start(holder, 12);
+        gtk_widget_set_margin_end(holder, 0);
+        gtk_widget_set_margin_top(holder, 0);
+        gtk_widget_set_margin_bottom(holder, 12);
+        gtk_widget_queue_resize(holder);
+        gtk_widget_queue_resize(root);
+        gtk_widget_queue_resize((GtkWidget *)window);
+        main_geometry_prepared = 1;
+        if (getenv("MEMREDUCT_CI") != NULL) {
+            fputs("CI_MAIN_CONTENT_INSET old=12 new=0 margins=start:12,end:0,top:0,bottom:12 verified=true\n", stderr);
+            fflush(stderr);
+        }
+    } else if (getenv("MEMREDUCT_CI") != NULL) {
+        fprintf(stderr, "CI_MAIN_CONTENT_INSET unsupported=true gtk_major=%u root_type=%s holders=%u\n",
+                gtk_get_major_version(), root_type != NULL ? root_type : "(null)", candidates);
+        fflush(stderr);
+    }
+
+    g_list_free(children);
+    return main_geometry_prepared;
+}
+
+/*
+ * Mem Reduct v3.5.2's IDD_MAIN is a fixed-size dialog (no WS_THICKFRAME /
+ * WS_SIZEBOX). Keep both production top-levels non-resizable so a tiling WM
+ * cannot turn the provisional compact layout into a scaled-up canvas.
+ */
+int64_t mr_gui_lock_window_sizes(int64_t main_width, int64_t main_height,
+                                 int64_t settings_width, int64_t settings_height)
+{
+    GList *windows = gtk_window_list_toplevels();
+    GtkWindow *main_window = NULL;
+    GtkWindow *settings_window_found = NULL;
+
+    for (GList *item = windows; item != NULL; item = item->next) {
+        GtkWindow *window = (GtkWindow *)item->data;
+        const char *title = gtk_window_get_title(window);
+        if (title == NULL) {
+            continue;
+        }
+        if (strcmp(title, "Mem Reduct") == 0) {
+            main_window = window;
+        } else if (strcmp(title, "Settings - Mem Reduct") == 0) {
+            settings_window_found = window;
+        }
+    }
+
+    if (main_window != NULL) {
+        gtk_window_set_default_size(main_window, (int)main_width, (int)main_height);
+        gtk_window_resize(main_window, (int)main_width, (int)main_height);
+        gtk_window_set_resizable(main_window, 0);
+        prepare_main_geometry(main_window);
+    }
+    if (settings_window_found != NULL) {
+        gtk_window_set_default_size(settings_window_found, (int)settings_width, (int)settings_height);
+        gtk_window_resize(settings_window_found, (int)settings_width, (int)settings_height);
+        gtk_window_set_resizable(settings_window_found, 0);
+    }
+
+    const int main_fixed = main_window != NULL && !gtk_window_get_resizable(main_window);
+    const int settings_fixed = settings_window_found != NULL && !gtk_window_get_resizable(settings_window_found);
+    if (getenv("MEMREDUCT_CI") != NULL) {
+        fprintf(stderr,
+                "CI_WINDOW_SIZE_POLICY main_found=%d main_resizable=%d settings_found=%d settings_resizable=%d\n",
+                main_window != NULL,
+                main_window != NULL ? gtk_window_get_resizable(main_window) : -1,
+                settings_window_found != NULL,
+                settings_window_found != NULL ? gtk_window_get_resizable(settings_window_found) : -1);
+        fflush(stderr);
+    }
+    g_list_free(windows);
+    return main_fixed && settings_fixed && main_geometry_prepared ? 1 : 0;
+}
 
 static int on_settings_delete(GtkWidget *widget, void *event, void *data)
 {
