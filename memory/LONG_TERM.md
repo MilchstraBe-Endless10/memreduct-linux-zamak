@@ -4,6 +4,8 @@
 
 ## 目标和体验
 - Mem Reduct 风格的 Linux 原生“点击即执行内存管理”工具，不是任务管理器/磁盘清理工具；中文优先、美观、不依赖 Docker 或 WebUI。
+- **UI/UX 硬约束：**唯一高保真基准为 Henry++ Mem Reduct `v.3.5.2`，tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。禁止自主重新设计、现代化、放大或简化原版布局；主窗和全部设置/对话框遵循各自官方资源尺寸，不做大窗口版；English 与简体中文必须独立切换。资源 Dialog Units 不是像素，需以真实字体/DPI转换。CI 的 336×348 窗口只供探针测试，不能成为产品尺寸。
+- UI 高保真与 Windows 内存 API 等价是两条独立验收线。Linux 指标和清理动作必须逐项做语义/安全映射；不支持的操作不得伪装或统一接到 `drop_caches`。
 - 目标环境 Arch / Omarchy + Hyprland (Wayland)；兼容其他发行版属后续增强，不得未经测试宣称支持。
 - 免费开源；独立实现受 Henry++ Mem Reduct 启发，GPL-3.0-or-later，保持正确署名与第三方声明。
 - 技术选型已确定：Zamak 0.2.x + Linux GTK3 `std/ui` + 尽可能少的 C 适配层。先使单端应用能够编译，再考虑更复杂 UI。

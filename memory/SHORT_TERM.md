@@ -1,6 +1,17 @@
 # 短期记忆 / Latest Handoff
 
-## 最近记录：PR #4 改以 main 为 Base 并重新验收（2026-10-27）
+## 当前集成状态（2026-10-28；PR #5 Base 迁移前快照）
+
+- main 为 `459415001a7e3538e9496eeb90b8ee75a7378f14`；PR #2、#4 已合并。PR #5 仍 OPEN / Draft，当前旧 Base 为 `fix/issue-1-zamak-build`（`11b0b9444cd94f0026b855abe3849a06106426f2`）。其 P2A 集成 Merge Commit `4996c83103c72484f20a435118711cddc0aea244` 已推送到 `docs/issue-3-p2a-ui-spec`，Tree 为 `3afdf06d4dd3e1375ba7864d78f9572229950cca`；按序双亲是原 PR #5 Head `d89d74fde433da1863b4de0223f974c824fb590e`、main `459415001a7e3538e9496eeb90b8ee75a7378f14`。
+- 此快照记录的是 PR #5 改 Base 前状态，不能当作改 Base 后的当前目标。PR #6 仍 OPEN / Draft，Head `911a3d0b99b05f15bd0109dca475b0b5174e7888`，以 PR #5 分支为 Base；GitHub 当前报告 `mergeable=false`，需单独解决与复审。PR #7 仍 OPEN / Draft，Base 为 PR #6，Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`。#5/#6/#7 均未合并。
+- P2B/P2C 生产 UI、Windows 原生采集与视觉比较仍来自未合并的 #6/#7 分支，不代表当前 main；P2C-4R1 几何为 184/184 PASS，最大偏差 1.5 px；整页 1:1 NOT PASS，Wayland/Hyprland 真实输入 NOT RUN，托盘及清理确认/结果受限。
+- 12 项简中来源差异仍为 `DECISION_REQUIRED`；未批准文案改动。
+- 本地模拟集成的原始历史和来源 SHA 保留在下方及 `memory/SESSION_LOG.md`；该历史条目描述的是当时的本地模拟，不再代表 PR #5 当前远端状态。
+- 已推送集成树的本地验证记录：治理 29 项、C/Python 安全测试 3 项、Shell 语法、根项目 Zamak 0.2.0 check/test（5/5）/build、独立探针 check/test（12/12）/build、`git diff --check` 与敏感内容审计均 PASS。探针源码 SHA-256 为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。这些结果来自改 Base 前的 `4996c831…`。
+
+
+## 历史验收记录：PR #4 main Base 迁移（2026-10-27）
+> 本记录描述 #4 合并前的 Base/CI 验收；当前合并状态以文件顶部快照为准。
 
 - 所有者授权后，仅将 PR #4 base 从 `fix/issue-1-zamak-build` 调整为 `main`；没有改 main、rebase、merge、标记 Ready 或处理 PR #5/#6/#7。PR 保持 OPEN / Draft。
 - 为保证 Base 编辑触发检查，提交 `ada1d82ef57ab76277dd6b088999e577e4f3a834`，在 `.github/workflows/p2a-r4-isolated-gui.yml` 显式加入 `pull_request.edited`；发现 `test.yml` 仍使用默认活动类型后，提交 `0067b97c6a9a3763af62e1a6990db413bc198820` 为 build-and-test 也加入 `edited`，并借真实 `synchronize` 事件取得最终 head 的完整 PR 检查。
@@ -10,7 +21,44 @@
 - 当前 PR #4 改动仍是隔离探针、报告/记忆及两个 CI 工作流；没有生产 UI 或特权功能改动。一个 inline review thread 仍未解决，内容是确保 Base 编辑触发检查；本轮已通过显式 `edited` 和 main-base PR CI 提供证据，留待 ChatGPT 正式复审。
 - 本记录对应已完整验收的 `0067b97…`。短期记忆随后单独提交时，必须对新 HEAD 重新运行 CI；不得将上述成功结果冒称为该后续 HEAD 的检查。
 
-## 最近记录：P2A-R6 隔离 GUI CI 与规格提交（2026-10-25）
+
+## 历史快照：P2A-R7 规格修正及 P2B-1 开发（2026-10-25）
+> 以下内容是 2026-10-25 的规格/开发阶段记录；其中 PR 状态与截图缺口不代表当前状态。
+
+### 开工核验与纠正
+- PR #2、PR #4、PR #5 均为 OPEN / Draft；PR #5 head `6b3862b0e6d105f42dbf8d2d6c679cdfb182ad16`，base `11b0b9444cd94f0026b855abe3849a06106426f2`；PR #4 最终 head `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1`。没有合并任何 PR，未修改 main、P1 或 PR #4。
+- PR #4 最终 GUI PR Actions `40192531809`、build PR Actions `40192531948` 已在规格文档中刷新；同 SHA push runs 为 `40192528601`、`40192528611`。
+- 尺寸约束更正：`IDD_MAIN=224×214 DLU` 是主窗模板；每个 `IDD_SETTINGS_* =260×168 DLU` 是设置子页面模板，不能当作含导航、底部按钮和边框的完整设置窗口尺寸。P2B 可开发参数集中、明确未校准的紧凑候选，真实 Windows 像素验收独立保持 BLOCKED。
+
+### 本轮开发状态
+- 在规格 PR 分支更新了最终 CI 证据、DLU 页面/外框说明及 P2B 候选与最终像素验收的门槛区分。
+- P2B-1 将从修正规格分支新建独立功能分支，实现生产 `src/main.zm` UI；PR #4 的 12 项探针测试保持原样。最终构建、隔离生产 GUI CI、截图哈希和各控件状态待实施后记录。
+- 不在主机启动 GUI，不连接活动 Hyprland IPC，不执行清理、Polkit、Swap 或 ZRAM 操作。Windows 原版真实截图、DLU 实测换算及 2 px 对照仍 BLOCKED / NOT RUN。
+
+## 历史记录：P2A-R6 规格入库与隔离 GUI CI（2026-10-25）
+
+## 本轮基线与结果
+- 文档分支 `docs/issue-3-p2a-ui-spec` 独立基于 P1 `11b0b9444cd94f0026b855abe3849a06106426f2`，不包含 PR #4 测试代码；已创建 [Draft PR #5](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/5)，base `fix/issue-1-zamak-build`，引用 Issue #3。PR 创建时 head `b94731b9a9bc52a4834358f9f71fcf86a2033925`；本次最后的记忆同步提交会推进 head，最终 SHA 以 PR 远端核验为准。
+- PR #2 仍 OPEN / Draft，head `11b0b9444cd94f0026b855abe3849a06106426f2`；PR #4 仍 OPEN / Draft，base `fix/issue-1-zamak-build`，最终本轮 head `e2d3c5e4481e9494472913f41636580369038cd8`，远端 SHA 已核对一致。
+- R6 GUI Actions push [40191454446](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191454446) 与 PR [40191456330](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191456330) 均 PASS；build-and-test push [40191454361](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191454361) 与 PR [40191456339](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40191456339) 均 PASS。Artifacts 已下载核验；含 X11/Wayland 日志、PNG、协议/几何状态和 SHA 清单。
+- 9 项既有 Zamak 事件路由测试函数原样保留，新增 3 项紧凑几何/双语用例；Zamak 0.2.0 共 12/12 PASS。探针源码 SHA-256：`d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。
+- Xvfb + Openbox 下实际 XTEST 验证 hover/pressed/release、按钮及箭头命中、菜单、Tab/Enter/Escape、双语和 resize；同按钮 ROI hover→pressed、pressed→release 差异均为 8004 像素。WM close 通过 Alt+F4 传递 WM_DELETE，记录 `CI_WINDOW_CLOSE`、`CI_APP_RETURNED`、退出码 0 且窗口消失。`xdotool windowclose` 实际用 `XDestroyWindow` 销毁 X 窗口，不作为 WM close 证据。
+- Weston Headless/Pixman Wayland socket、312×324 Canvas 绘制、受控退出及进程退出码 0 均 PASS。每个运行记录一次 `gdk_seat_get_keyboard` critical，未公告 `wl_seat`；两者相符但因果未证实，未隐藏 GTK 诊断。
+
+## 文档与尺寸约束
+- 已整理 P2A 源码规格、互动矩阵、Linux 能力映射、版本差异、可行性及真实 Windows 截图采集清单；官方基准固定 `v.3.5.2` / `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。
+- 新增明确尺寸规则：主对话框 224×214 DLU、五个设置页模板各 260×168 DLU；生产 GUI 必须保持官方紧凑比例，不得放大。R5/R6 336×348 顶层、312×324 Canvas 仅为 96-DPI 估算的 CI 探针尺寸，不是 Windows 测量或产品目标。
+- 官方 Windows 原生截图及真实 DLU→物理像素换算仍 BLOCKED；overlay/diff/2px 结果 NOT RUN。336×348 top-level / 312×324 Canvas 仅为 CI 探针尺寸。没有新增或公开私人截图/路径。
+
+## 本机只读/非 GUI 验证
+- `python3 scripts/verify_project.py` PASS（29 项）；`python3 -m unittest discover -s tests -v` PASS（3 项 C 安全测试）。
+- 所有 `scripts/*.sh` 语法检查 PASS；Zamak `0.2.0`、`zam check .`、`zam test .`（5 passed）、`zam build .`、`bash scripts/build-arch.sh`、`git diff --check` PASS。
+- 未启动 GUI/Compositor，未使用 Hyprland IPC、鼠标键盘注入或特权清理接口；未触碰 Swap/ZRAM/Polkit。
+- 规格分支更新官方 3.5.2 源码规格、资源/交互矩阵、Linux 语义、安全边界、真实 Windows 截图缺口、Zamak 技术结论及紧凑尺寸约束；长期规则写入 AGENTS/PRD/ARCHITECTURE/LONG_TERM。PR #5 创建时的源码规格 head `90d62100e840aa408e4ea99cbbd866ef2025e99e` 上，build-and-test push `40191896559` 与 PR `40191901022` 均 PASS。记忆同步提交会使 head 前进，但不改程序源码；最终 branch SHA 以远端校验为准。Windows release 截图和真实像素比较仍 BLOCKED。
+- 未启动本机 GUI 或 compositor，未访问 Hyprland IPC，未执行 Polkit、内存清理、Swap/ZRAM 操作。PR #2/#4/#5 不合并；P2B 不开始。下一步等待 PR #5 Actions 完成并交付两个 Draft PR 供复审。
+
+
+## 历史记录：P2A-R6 隔离 GUI CI 与规格提交（2026-10-25）
 
 - 规格分支 `docs/issue-3-p2a-ui-spec` 基于 P1 `11b0b9444cd94f0026b855abe3849a06106426f2`；已提交源码级规格首版 `367efce8dcdecb487595507ff7e9f275bedd96bc`，仍待更新最终 CI 记录和创建独立 Draft PR。
 - 测试分支 `test/issue-3-isolated-gui` 的 R6 验证源码 SHA `1cb7b77246275962f092fa0c0ccc27fbf982ce8b`。PR #4 为 OPEN / Draft，base P1 分支；PR #2 为 OPEN / Draft。没有改 main、P1 功能或生产 UI。
@@ -23,7 +71,7 @@
 - 下一步：更新规格分支记忆/文档，推送并创建独立 Issue #3 Draft PR；保留 PR #4 Draft，等待 ChatGPT 复审；不合并 PR #2/#4，不进入 P2B。
 - 纠正文档/诊断后的 PR #4 head `6ad0f401d2b831ee71a1387a858e7456bbe444e5` 再次通过全部 CI：GUI push/PR `40192348460` / `40192351634`，build push/PR `40192348489` / `40192351591`。Artifacts 重新上传；probe SHA 未变。本轮没有生产 UI 或特权代码改动。
 
-## 最近记录：P2A-R5 尺寸修正与隔离 GUI CI（2026-10-25）
+## 历史记录：P2A-R5 尺寸修正与隔离 GUI CI（2026-10-25）
 
 - 工作分支 `test/issue-3-isolated-gui`，P1 基线 `11b0b9444cd94f0026b855abe3849a06106426f2`；PR #2 仍 OPEN / Draft、未合并。PR #4 仍 OPEN / Draft，base 为 `fix/issue-1-zamak-build`。
 - 用户要求 GUI 按官方紧凑尺寸，不要放大。核对 Mem Reduct v.3.5.2 tag 源码 `2f5c55d15f69a2c88859e036b16c6f4c971e1968`：`IDD_MAIN` 为 224×214 Dialog Units，字体 `8 pt Ms Shell Dlg`。以 96 DPI 常见 6×13 px base-unit 估算，测试窗口请求 336×348；GTK Canvas 实测 312×324。该换算尚未在真实 Windows 上测量，也不是像素级基准。
@@ -34,7 +82,8 @@
 
 ---
 
-日期：2026-10-25；任务：P1 Zamak 0.2.0 编译与原生构建验收。
+## 历史记录：P1 Zamak 0.2.0 编译与原生构建验收（2026-10-25）
+
 
 ## 执行范围
 按 Issue #1 修复 Zamak 0.2.0 编译/构建问题，保留现有 GUI 与特权边界；运行本机 Arch/Omarchy 验收，准备关联 Issue 的 Draft PR。工作分支 `fix/issue-1-zamak-build`，基于 `origin/main` / `080417e153d91bf2adac756e5154311fef49333f`。未修改 main，未扩展功能。
