@@ -1,7 +1,24 @@
 # 中期记忆 / Roadmap State
 更新时间：2026-10-28；当前真实状态以本节为准，后续各节均为有日期的历史快照。
 
-## 当前阶段（2026-10-28；PR #9 已合并，PR #7 本地集成候选已验证）
+## 当前阶段（2026-10-28；PR #7 main-base CI 已验收）
+
+**集成状态。** `main@83dbf58fb039645f08e08bc89170adcdaa7997be`。PR #7 OPEN / Draft、未合并，Base=`main`，Head=`019a7f1e0755570c2c3a0b1202a6c764540f14e2`，Tree=`5cd9e6fe978570bc63fc626e5bccaccf5a43cc5f`；该双亲提交的父节点顺序为旧 PR #7 Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`、main `83dbf58fb039645f08e08bc89170adcdaa7997be`。Base 更新没有改代码、main 或提交历史；PR 仍 Draft，未合并，GitHub 报 `mergeable=true`。
+
+**main-base 验收。** 同一 PR Head 的四条新检查全部成功：[Build 40653975796](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40653975796)、[P2A GUI 40653976301](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40653976301)、[P2B production GUI 40653975764](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40653975764)、[P2C Windows/Linux 40653975755](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40653975755)。P2A Xvfb/Weston 和独立 Canvas 探针 12/12 PASS；P2B 生产 Xvfb/Weston 生命周期 PASS，设置页步骤按分支条件由 P2C 专用工作流覆盖；P2C 的 Windows 来源、Linux 生产截图、10 页视觉比较和字体候选实验 PASS。检查覆盖的 APT 安装退出码均为 0，必需 jobs 与 artifacts 已完成。
+
+**视觉状态和边界。** P2C 当前证据为几何 184/184、控件栅格 36/36、导航 10/10、树线 102/102、滚动 2/2、深色语义配对 20/20；10 组页面较 P2C-2 均改善，但整页 1:1 仍 NOT PASS。12 项简中来源差异为 `DECISION_REQUIRED`，8 条历史 Review thread 仍 unresolved。详细差异数据见 [P2C 比较 artifact 12801450123](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40653975755/artifacts/12801450123)。2026-10-28 本机以 `GDK_BACKEND=wayland` 启动并确认 GUI 进程连接 Hyprland Wayland socket；未取得窗口专属截图或执行键鼠交互，故真实 Wayland/Hyprland 交互验收仍 NOT PASS。源码的生产主窗比例缩放可能导致 tiled 尺寸放大，但尚未由截图证实。托盘与部分清理窗口受限；实际内存清理、Polkit、Swap/ZRAM 和 root GUI 未验收。ADR-0004 仍 PROPOSED；本阶段不扩展至 P3A 实现。
+
+### 当前阶段表
+
+| 阶段 | 状态 |
+|---|---|
+| P0/P1/P2A/P2B | PR #2/#4/#5/#6 已进入 main。 |
+| P2C 设置页 | PR #7 OPEN / Draft，Base main；main-base 四条 CI PASS，等待独立复审；未 Ready、未合并。 |
+| P3A 偏好持久化 | ADR-0004 为 PROPOSED；生产实现尚未开始。 |
+| P3+ 清理、自动策略、Swap/ZRAM、发布 | 未验收，不在当前范围。 |
+
+## 历史快照（2026-10-28；PR #7 集成提交推送与 Base 更新前）
 
 **主线状态。** main@83dbf58fb039645f08e08bc89170adcdaa7997be 为 PR #9 的 Merge Commit，Tree a10f22817479a9e91052420f40921e8446fd3a24，双亲依序为 c0f616e5b0f3c7511cedcfe7d0b4536e8d54f0f2 与 de19d6aa7bb9eb7cf82fd253b6b6d4e4cff200aa；PR #9 仅合并两份项目记忆，合并后 Push Build 40642082611 SUCCESS。PR #2、#4、#5、#6、#9 已合并。PR #4 独立 Canvas 探针和 PR #6 生产 GUI 能力在 main 均须继续保留。
 
