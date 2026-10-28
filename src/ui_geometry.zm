@@ -1,0 +1,198 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Provisional conversion for the official Windows 3.5.2 DLU template.
+# Calibration parameters are centralized here until authentic Windows font/DPI
+# measurements are available; none of these values are pixel-acceptance claims.
+use std/ui
+
+pub fn x_dlu_to_logical_px(value: i64) -> i64:
+    (value * 56) // 40
+
+pub fn y_dlu_to_logical_px(value: i64) -> i64:
+    (value * 12) // 8
+
+pub fn main_client_width_px() -> i64:
+    x_dlu_to_logical_px(224)
+
+pub fn main_client_height_px() -> i64:
+    y_dlu_to_logical_px(214)
+
+pub fn menu_height_px() -> i64:
+    24
+
+pub fn gtk_content_inset_px() -> i64:
+    24
+
+pub fn main_window_width_px() -> i64:
+    main_client_width_px() + gtk_content_inset_px()
+
+pub fn main_window_height_px() -> i64:
+    main_client_height_px() + menu_height_px() + gtk_content_inset_px()
+
+fn dlu_x(value: f64) -> f64:
+    value * 1.4
+
+fn dlu_y(value: f64) -> f64:
+    value * 1.5
+
+fn x_scale(canvas_width: f64) -> f64:
+    canvas_width / f64(main_client_width_px())
+
+fn y_scale(canvas_height: f64) -> f64:
+    (canvas_height - f64(menu_height_px())) / f64(main_client_height_px())
+
+pub fn x_at_dlu(value: f64, canvas_width: f64) -> f64:
+    dlu_x(value) * x_scale(canvas_width)
+
+pub fn y_at_dlu(value: f64, canvas_height: f64) -> f64:
+    f64(menu_height_px()) + dlu_y(value) * y_scale(canvas_height)
+
+pub fn dlu_rect(canvas_width: f64, canvas_height: f64, x: f64, y: f64, w: f64, h: f64) -> ui.Rect:
+    ui.rect(
+        x_at_dlu(x, canvas_width),
+        y_at_dlu(y, canvas_height),
+        dlu_x(w) * x_scale(canvas_width),
+        dlu_y(h) * y_scale(canvas_height)
+    )
+
+pub fn main_list_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
+    dlu_rect(canvas_width, canvas_height, 8.0, 8.0, 208.0, 174.0)
+
+pub fn group_title_y(group: i64, canvas_height: f64) -> f64:
+    y_at_dlu(8.0 + f64(group) * 58.0, canvas_height)
+
+pub fn metric_row_y(group: i64, row: i64, canvas_height: f64) -> f64:
+    y_at_dlu(22.0 + f64(group) * 58.0 + f64(row) * 11.0, canvas_height)
+
+pub fn metric_label_x(canvas_width: f64) -> f64:
+    x_at_dlu(8.0, canvas_width)
+
+pub fn metric_value_x(canvas_width: f64) -> f64:
+    x_at_dlu(144.0, canvas_width)
+
+pub fn group_separator_y(group: i64, canvas_height: f64) -> f64:
+    y_at_dlu(60.0 + f64(group) * 58.0, canvas_height)
+
+pub fn list_right_x(canvas_width: f64) -> f64:
+    x_at_dlu(216.0, canvas_width)
+
+pub fn menu_bar_item_rect(index: i64) -> ui.Rect:
+    if index == 1: return ui.rect(4.0, 1.0, 40.0, 21.0)
+    if index == 2: return ui.rect(44.0, 1.0, 44.0, 21.0)
+    if index == 3: return ui.rect(88.0, 1.0, 66.0, 21.0)
+    ui.rect(154.0, 1.0, 48.0, 21.0)
+
+pub fn clean_arrow_width_px() -> f64:
+    dlu_x(24.0)
+
+pub fn menu_row_height_px() -> f64:
+    22.0
+
+pub fn clean_row_height_px() -> f64:
+    21.0
+
+pub fn popup_inset_px() -> f64:
+    2.0
+
+pub fn root_menu_item_rect(root: &ui.Rect, row: i64) -> ui.Rect:
+    let inset = popup_inset_px()
+    let row_h = menu_row_height_px()
+    ui.rect(root.x + inset, root.y + inset + f64(row) * row_h, root.w - inset * 2.0, row_h)
+
+pub fn language_menu_item_rect(popup: &ui.Rect, row: i64) -> ui.Rect:
+    root_menu_item_rect(popup, row)
+
+pub fn clean_menu_item_rect(popup: &ui.Rect, row: i64) -> ui.Rect:
+    let inset = popup_inset_px()
+    let row_h = clean_row_height_px()
+    ui.rect(popup.x + inset, popup.y + inset + f64(row) * row_h, popup.w - inset * 2.0, row_h)
+
+pub fn clean_button_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
+    dlu_rect(canvas_width, canvas_height, 8.0, 192.0, 208.0, 14.0)
+
+pub fn menu_root_rect(canvas_width: f64, canvas_height: f64, menu: i64) -> ui.Rect:
+    let mut x = 154.0
+    let mut w = 156.0
+    let mut rows = 3.0
+    if menu == 1:
+        x = 8.0
+        w = 128.0
+        rows = 2.0
+    elif menu == 2:
+        x = 44.0
+        w = 164.0
+        rows = 4.0
+    elif menu == 3:
+        x = 88.0
+        w = 190.0
+    fit_popup_rect(canvas_width, canvas_height, x, 24.0, w, rows * menu_row_height_px() + 4.0)
+
+pub fn language_popup_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
+    let parent = menu_root_rect(canvas_width, canvas_height, 2)
+    let width = 110.0
+    let height = 2.0 * menu_row_height_px() + 4.0
+    let right_x = parent.right() - popup_inset_px()
+    let mut x = right_x
+    if x + width > canvas_width - 2.0:
+        let left_x = parent.x - width + popup_inset_px()
+        if left_x >= 2.0:
+            x = left_x
+        else:
+            x = canvas_width - width - 2.0
+    let parent_y = parent.y + popup_inset_px() + 2.0 * menu_row_height_px()
+    fit_popup_rect(canvas_width, canvas_height, x, parent_y, width, height)
+
+pub fn clean_popup_rect(canvas_width: f64, canvas_height: f64, button: &ui.Rect) -> ui.Rect:
+    let width = 248.0
+    let height = 8.0 * clean_row_height_px() + 4.0
+    fit_popup_rect(canvas_width, canvas_height, canvas_width - width - 6.0, button.y - height - 6.0, width, height)
+
+pub fn fit_popup_rect(view_width: f64, view_height: f64, x: f64, y: f64, w: f64, h: f64) -> ui.Rect:
+    let width = min(w, max(0.0, view_width - 4.0))
+    let height = min(h, max(0.0, view_height - 4.0))
+    let left = min(max(2.0, x), max(2.0, view_width - width - 2.0))
+    let top = min(max(2.0, y), max(2.0, view_height - height - 2.0))
+    ui.rect(left, top, width, height)
+
+fn test_official_main_template_uses_central_dlu_conversion():
+    assert(x_dlu_to_logical_px(224) == 313)
+    assert(y_dlu_to_logical_px(214) == 321)
+    assert(main_client_width_px() == 313)
+    assert(main_client_height_px() == 321)
+
+fn test_production_window_is_not_ci_probe_default():
+    assert(main_window_width_px() == 337)
+    assert(main_window_height_px() == 369)
+    assert(main_window_width_px() != 336)
+    assert(main_window_height_px() != 348)
+
+fn test_three_group_rows_are_vertical_and_separated():
+    for group in 0..3:
+        assert(group_title_y(group, 345.0) < metric_row_y(group, 0, 345.0))
+        assert(metric_row_y(group, 0, 345.0) < metric_row_y(group, 1, 345.0))
+        assert(metric_row_y(group, 1, 345.0) < metric_row_y(group, 2, 345.0))
+        if group < 2:
+            assert(metric_row_y(group, 2, 345.0) < group_separator_y(group, 345.0))
+            assert(group_separator_y(group, 345.0) < group_title_y(group + 1, 345.0))
+
+fn test_all_popup_rectangles_fit_viewport():
+    let language = language_popup_rect(313.0, 345.0)
+    assert(language.x >= 2.0 and language.y >= 2.0)
+    assert(language.right() <= 311.0 and language.bottom() <= 343.0)
+    let narrow = language_popup_rect(180.0, 100.0)
+    assert(narrow.x >= 2.0 and narrow.y >= 2.0)
+    assert(narrow.right() <= 178.0 and narrow.bottom() <= 98.0)
+    let button = clean_button_rect(313.0, 345.0)
+    let clean = clean_popup_rect(313.0, 345.0, &button)
+    assert(clean.x >= 2.0 and clean.y >= 2.0)
+    assert(clean.right() <= 311.0 and clean.bottom() <= 343.0)
+    for menu in 1..5:
+        let root = menu_root_rect(313.0, 345.0, menu)
+        assert(root.x >= 2.0 and root.y >= 2.0)
+        assert(root.right() <= 311.0 and root.bottom() <= 343.0)
+
+fn test_resize_keeps_content_inside_compact_canvas():
+    let list = main_list_rect(260.0, 270.0)
+    let button = clean_button_rect(260.0, 270.0)
+    assert(list.x >= 0.0 and list.right() <= 260.0)
+    assert(button.x >= 0.0 and button.right() <= 260.0)
+    assert(button.bottom() <= 270.0)

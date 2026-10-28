@@ -1,6 +1,37 @@
 # 短期记忆 / Latest Handoff
 
-## 当前集成状态（2026-10-28；PR #5 Base 迁移前快照）
+## 当前真实状态（2026-10-28；PR #6 main-base 验收）
+
+- `main` 为 `b78785af233dbae7a80085fd7a9f45f30ae42711`。PR #6 仍 OPEN / Draft、未合并，Base 为 `main`，Head 为 `36d548d3dedcefffc37dceab13be887a1473187f`；当前 GitHub 报告 `mergeable=true`。Head `36d548d…` 的父提交是此前双亲集成提交 `3b73868287c9ed13d3e8fc25f3b9d6fbe06cdc5a`。
+- 记忆修正前 Head `36d548d…` 的 main-base PR 检查通过：[Build 40632783618](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40632783618)、[P2A GUI 40632783623](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40632783623)、[P2B GUI 40632783657](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40632783657)。Build 的 Linux job、两条 GUI workflow 的 Xvfb/XTEST 与 Weston Headless/Pixman jobs 均成功；PR 事件针对 `main` 与该 Head。**这些 PASS 只属于 `36d548d…`；记忆修正产生的新 Head 必须独立复验，不能沿用旧结果。** P2A artifacts：X11 `12792291897` SHA-256 `7393d70168a11587a382bfece61a1bb1233c4a14c67e7c0b8c3850988c9ea242`，Weston `12792560638` SHA-256 `57d030b5ad64ebb89c9722e5b431e45caa8b34d32e45ad9c17b521ff30c53119`。P2B artifacts：X11 `12792660966` SHA-256 `8b2a9d099b8992c8901788eeb62ed294619472ef3e536b90dfae43e1684f20d2`，Weston `12791754327` SHA-256 `92063912e303491206bee5ccbb2a672d32578ec401a9868f4371a5cd31059815`。
+- 本次复核发现两条尚未解决的记忆状态 Review：[`SHORT_TERM.md` #4396911245](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/6#discussion_r4396911245) 与 [`MEDIUM_TERM.md` #4396911255](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/6#discussion_r4396911255)。本次只修正状态记录并保留旧阶段历史；线程状态留待独立复审，不在这里代替审查者解决。
+- PR #7 仍 OPEN / Draft，Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`，Base 分支仍指向 PR #6。该 PR 有独立集成冲突且未获本轮修改授权；本轮未改 PR #7。GitHub API 此次仍报告 `mergeable=false`，并返回旧 Base SHA `911a3d0b99b05f15bd0109dca475b0b5174e7888`，需后续单独核实其基线刷新与冲突解决。
+- Windows Mem Reduct 3.5.2 整页 1:1 像素验收未通过；真实 Wayland/Hyprland 键鼠输入未验收。实际内存清理、Polkit、Swap/ZRAM 操作不属于本轮验收；相关功能继续保持未验收状态。
+
+## 历史快照（2026-10-28；PR #6 Base 改为 main 前）
+
+> 以下保留本轮授权改 Base 之前的完整状态与测试记录。“尚未改 Base”及 main-base CI 未运行仅描述该时点，不代表当前 GitHub 状态。
+
+- `main` 为 `b78785af233dbae7a80085fd7a9f45f30ae42711`，PR #2、#4、#5 已合并；PR #6 的生产窗口仍未合入 `main`。
+- PR #6 仍 OPEN / Draft，Base 仍为 `docs/issue-3-p2a-ui-spec`（该分支 HEAD `a19474ca3f79de65a18e76f6852ab503ce11b173`）。PR #6 已普通快进推送双亲集成 Merge Commit `3b73868287c9ed13d3e8fc25f3b9d6fbe06cdc5a`，Tree `22022b50f6233c2e729b02cf678b426e12af0d21`；父提交按序为原 PR #6 HEAD `911a3d0b99b05f15bd0109dca475b0b5174e7888`、当时 `main` `b78785af233dbae7a80085fd7a9f45f30ae42711`。GitHub 报告 `mergeable=true` **仅针对当前旧 Base**，不能据此视为新 main-base 验收。
+- 该集成 Head 的 [GUI Push 40627628308](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40627628308)、[GUI PR 40627633632](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40627633632)、[Build Push 40627628264](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40627628264)、[Build PR 40627633638](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40627633638) 全部 SUCCESS；Xvfb/XTEST、Weston Headless 各两条 GUI lane 通过，APT update/install 诊断 PASS，主项目 Zamak 13/13。PR GUI 事件 Base 仍为旧 P2A 分支；**PR #6 新 main-base CI NOT RUN**。本次文档状态修正的后续 HEAD 与 CI 应另以 GitHub 远端结果核验。
+- PR #6 生产 UI 的三条原始缺陷 Review 已有对应证据并解决；2026-10-28 新增的两条记忆状态审查需要在本状态修正提交推送后复核。本次状态修正不改生产 GUI、清理权限或测试逻辑。
+- PR #7 OPEN / Draft，HEAD `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`，Base 分支指向 PR #6，但旧 HEAD 尚未继承本轮集成历史，GitHub 当前 `mergeable=false/dirty`。新 #6 与旧 #7 两点 Tree 比较有 46 个路径差异（含 10 个表观删除），三点 PR 比较为 30 个 P2C 变更路径；这些不是未来真实三方合并的删除结论。#7 未修改，后续必须独立冲突解决，保护 PR #4 探针与 PR #6 生产 GUI CI。
+- P2C-4R1 几何 184/184 PASS、最大分量偏差 1.5 px，**整页 Windows/GTK 1:1 未通过、真实 Wayland/Hyprland 输入 NOT RUN**；托盘、清理确认/结果及特权清理未验收。12 项简中原版来源差异仍为 `DECISION_REQUIRED`；未经另行授权不得改 Base、标记 Ready、合并或修改 PR #7。
+
+## 历史快照（2026-10-28；PR #6 本地集成审计、推送前）
+
+> 以下记录属于当时仅完成本地冲突模拟、尚未推送的阶段；旧 HEAD、旧合并状态与旧 Review 线程信息不代表当前 GitHub 状态，当前状态以上方记录为准。
+
+- `main` 当前为 `b78785af233dbae7a80085fd7a9f45f30ae42711`；PR #2、#4、#5 已合并。PR #5 的原分支 Head 为 `a19474ca3f79de65a18e76f6852ab503ce11b173`，其集成 Merge Commit 已进入 main。
+- PR #6 OPEN / Draft，Head `911a3d0b99b05f15bd0109dca475b0b5174e7888`，base 分支 `docs/issue-3-p2a-ui-spec`；远端该分支 Head 为 `a19474ca3f79de65a18e76f6852ab503ce11b173`。GitHub PR 状态报告 `mergeable=false / DIRTY`。本地 merge-tree 与合并模拟在 `docs/UI_FIDELITY_TEST_PLAN.md`、`memory/MEDIUM_TERM.md`、`memory/SHORT_TERM.md`、`memory/SESSION_LOG.md` 发现冲突；只在独立 worktree 形成解决草稿。
+- PR #7 OPEN / Draft，Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`，base 为 PR #6 Head，GitHub 当前报 CLEAN。任何 #6 Head 更新后必须重新审计 #7 的二点/三点差异。
+- PR #6 的最终旧-base GUI/build Actions 为 [40208944364](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208944364) / [40208944120](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208944120)，均 PASS；这不构成 main-base CI。采样失败后清空旧值、重绘及禁用清理的证据见 P2B-2 Review、`src/main.zm` 与 Xvfb/XTEST 脚本；两条结构/菜单旧 Review 仍未解决。
+- PR #6 生产 GUI CI 草稿已在独立 worktree 准备：保留 push/旧 base，加入 main 与 `opened/synchronize/reopened/edited`；APT update/install 复用 `apt-diagnostics.sh` 并分步限时，Runner job 60 分钟，Action 固定到 Node 24 版本，artifact 缺失时失败且并发不取消证据作业。尚未提交或推送。
+- 本地合并候选验证：治理 29 项、C 安全单测 3 项、Shell 语法、Zamak 0.2.0 check/test/build（13/13）、Arch 原生构建、生产 GUI 构建、Canvas 探针（12/12）、PyYAML 工作流语法和 `git diff --check` 均 PASS。当前环境没有 Xvfb、Openbox、Weston/wayland-info、actionlint；生产 XTEST/Weston 图形运行和 actionlint 校验 NOT RUN，未安装依赖，也未操作活动桌面。以上是本地候选，不是新 GitHub main-base CI。
+- P2B/P2C 功能仍不属于 main。P2C-4R1 几何 184/184 PASS（最大偏差 1.5 px），整页 1:1 NOT PASS，真实 Wayland/Hyprland 输入 NOT RUN，托盘/清理确认与结果仍受限；12 项简中来源差异为 `DECISION_REQUIRED`。
+
+## 历史快照（2026-10-28；PR #5 集成前状态）
 
 - main 为 `459415001a7e3538e9496eeb90b8ee75a7378f14`；PR #2、#4 已合并。PR #5 仍 OPEN / Draft，当前旧 Base 为 `fix/issue-1-zamak-build`（`11b0b9444cd94f0026b855abe3849a06106426f2`）。其 P2A 集成 Merge Commit `4996c83103c72484f20a435118711cddc0aea244` 已推送到 `docs/issue-3-p2a-ui-spec`，Tree 为 `3afdf06d4dd3e1375ba7864d78f9572229950cca`；按序双亲是原 PR #5 Head `d89d74fde433da1863b4de0223f974c824fb590e`、main `459415001a7e3538e9496eeb90b8ee75a7378f14`。
 - 此快照记录的是 PR #5 改 Base 前状态，不能当作改 Base 后的当前目标。PR #6 仍 OPEN / Draft，Head `911a3d0b99b05f15bd0109dca475b0b5174e7888`，以 PR #5 分支为 Base；GitHub 当前报告 `mergeable=false`，需单独解决与复审。PR #7 仍 OPEN / Draft，Base 为 PR #6，Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`。#5/#6/#7 均未合并。
@@ -34,6 +65,27 @@
 - 在规格 PR 分支更新了最终 CI 证据、DLU 页面/外框说明及 P2B 候选与最终像素验收的门槛区分。
 - P2B-1 将从修正规格分支新建独立功能分支，实现生产 `src/main.zm` UI；PR #4 的 12 项探针测试保持原样。最终构建、隔离生产 GUI CI、截图哈希和各控件状态待实施后记录。
 - 不在主机启动 GUI，不连接活动 Hyprland IPC，不执行清理、Polkit、Swap 或 ZRAM 操作。Windows 原版真实截图、DLU 实测换算及 2 px 对照仍 BLOCKED / NOT RUN。
+
+## 历史记录：P2B-2 原版主窗口结构与数据可靠性修复（2026-10-25）
+
+- 按用户任务核对 PR #6 最新 ChatGPT Review 与 3 条行内评论。PR #6 保持 OPEN / Draft；base `docs/issue-3-p2a-ui-spec` SHA `d89d74fde433da1863b4de0223f974c824fb590e`。修复后代码 HEAD `e4fccb6293c698015c8f4105947669bfdc4693d6` 与远端一致；未修改或合并 main、PR #2/#4/#5。
+- 生产主窗口改回三个纵向分组，每组各自显示 Usage、Available、Total available 标签和值；简体中文 Pagefile/Swap 标题为“交换空间”。System working set 保持 `—`，说明放在状态区。DLU/控件/弹窗几何集中于 `src/ui_geometry.zm`，仍为 `PROVISIONAL`，不是 Windows 实测像素目标。
+- 菜单弹窗矩形按 Canvas 视口翻转/约束，根菜单、英语/简中语言子菜单和清理菜单均有 `fits=true` 日志。必需 meminfo 字段缺失、非法、负数或关系不一致时采样失败；真实 SwapTotal=0 有效；失败会清空旧值并请求重绘。保留/新增 Zamak parser 与几何测试，13/13。
+- 精确 HEAD `e4fccb6...` 的 GitHub Actions：生产 GUI run [40208121223](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208121223) 两项作业 Xvfb/XTEST、Weston Headless/Pixman 均 PASS；build/test run [40208121224](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208121224) PASS。X11 artifact `12604402691`，Wayland artifact `12604102361`。源码、二进制、截图 SHA-256 和精确映射记录在 `docs/P2B-1_PRODUCTION_UI_REPORT.md`。
+- Xvfb 中实际生产窗口为 337×369，Canvas 313×345，scale 1；英语、简中三组布局及各菜单通过，边界都在 Canvas 内；鼠标、键盘、Esc 焦点恢复、WM close 通过，进程退出码 0。采样失败注入使旧值失效并显示 em dash；清理按钮和选项记录 `action=none`，未触发特权调用。
+- Weston 私有 Headless/Pixman socket 下生产客户端连接、绘制、读取真实 `/proc/meminfo`、从 `app.run` 返回并以 0 退出。仍保留 1 条 `gdk_seat_get_keyboard` critical、无 `wl_seat` 广播、受控清理时 compositor layer BUG；因果未确定。未操作活动 Hyprland/桌面，未在本机启动 GUI。
+- 本轮既有本机验证结果：项目检查 29 项、Python/C 单测 3 项、shell 语法、Zamak 0.2.0 check、test 13/13、build、Arch build、`git diff --check` PASS。没有执行清理/Polkit/内核写入、Swap/ZRAM 修改或 root GUI。
+- Windows 3.5.2 原生截图、真实字体/DPI DLU 换算和 2 px overlay 继续 `BLOCKED / NOT RUN`。设置页、托盘等不在本轮实现。最新 Linux 英文/中文实际生产截图与来源 SHA 记录在测试报告；尚无原生 Windows 截图，不能宣称像素级或 1:1 验收。
+
+## 历史记录：P2B-1 生产主窗口候选与 CI 复测（2026-10-25）
+
+- PR #5 的 R7 规格修正 head `d89d74fde433da1863b4de0223f974c824fb590e` 已核对，仍 OPEN / Draft，CI 2/2 PASS；正式 `IDD_MAIN=224×214 DLU` 为主窗口模板，每个 `IDD_SETTINGS_* =260×168 DLU` 是子页模板。R6 Actions `40192531809` / `40192531948` 与对应 push runs `40192528601` / `40192528611` 已记录。没有合并 PR #2/#4/#5。
+- P2B 独立分支 `feat/issue-3-p2b-main-window` 从 PR #5 修正规格分支派生；PR #6 OPEN / Draft，base 为 `docs/issue-3-p2a-ui-spec`。生产代码 head `a6df90389a69fc9cad12272c2daa2f273c834385` 通过 PR GUI run `40199653180`、build-and-test run `40199653440`；push GUI/build runs `40199649320` / `40199649284` 也通过。远端分支 SHA 已核对。
+- 生产 `src/main.zm` 以真实 `/proc/meminfo` 显示 RAM/Swap，System working set 显示不可用；英文/简中独立切换；清理按钮和八项 Windows 清理选择全部禁用，不触发 Polkit 或内核写操作。DLU 转换参数集中在 `src/ui_geometry.zm`，仍为未校准估算。
+- Xvfb/XTEST 实测正式窗口：top-level 337×369、Canvas 313×345，scale 1；点击语言菜单、split button、禁用区域、Tab/方向键/Enter/Escape 与 Alt+F4 close 均通过，退出码 0。实际截图及 SHA-256 在 `docs/P2B-1_PRODUCTION_UI_REPORT.md` 和 artifact `12601156413`。
+- Weston 13.0.0 Headless/Pixman 私有 Wayland socket 下正式客户端连接、绘制、读 meminfo、退出码 0；不测试 Wayland 输入。诊断保留：一次 `gdk_seat_get_keyboard` critical、`wl_seat` 未公告；Weston SIGTERM 清理日志含 `BUG: finalizing a layer with views still on it.`，尚未确认为应用故障，不隐藏日志。
+- 本机 `verify_project.py` 29 项、C 安全单测 3 项、shell syntax、Zamak 0.2.0 check/test/build（7/7）、`scripts/build-arch.sh`、`git diff --check` 均 PASS。没有在主机启动 GUI、访问活动 Hyprland IPC、操作用户桌面或执行特权清理。
+- Windows 原生 v3.5.2 截图、真实字体/DPI DLU 校准、配对 overlay/2 px 验收仍 BLOCKED / NOT RUN；Hyprland 鼠标/键盘、HiDPI、设置页与托盘未实现。PR #4 保留独立 12/12 探针测试，未并入 PR #6。
 
 ## 历史记录：P2A-R6 规格入库与隔离 GUI CI（2026-10-25）
 

@@ -1,0 +1,128 @@
+name: P2B production main window
+
+on:
+  push:
+    branches:
+      - feat/issue-3-p2b-main-window
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+    branches:
+      - docs/issue-3-p2a-ui-spec
+      - main
+
+permissions:
+  contents: read
+
+# Preserve evidence jobs; a newer duplicate run must not cancel one already capturing artifacts.
+concurrency:
+  group: p2b-production-gui-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  production-x11:
+    name: Production UI (Xvfb / XTEST)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, Node 24
+        with:
+          node-version: '22'
+      - name: Update APT indexes (Xvfb runner)
+        timeout-minutes: 10
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-x11
+        run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh update
+      - name: Install runner-only GUI and build dependencies
+        timeout-minutes: 40
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-x11
+        run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox fonts-noto-cjk fonts-dejavu
+      - name: Install pinned Zamak 0.2.0
+        run: npm install --global @veyralux/zamak@0.2.0
+      - name: Build and verify production executable
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2b-x11
+        run: bash scripts/ci/build-production-gui.sh
+      - name: Re-run the project native build entrypoint
+        run: bash scripts/build-arch.sh
+      - name: Exercise production UI with isolated real X11 input
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2b-x11
+        run: bash scripts/ci/p2b-production-xvfb.sh "$RUNNER_TEMP/p2b-x11/memreduct-zamak-production"
+      - name: Upload X11 screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
+        with:
+          name: p2b-production-x11
+          path: ${{ runner.temp }}/p2b-x11
+          if-no-files-found: error
+          retention-days: 14
+
+  production-wayland:
+    name: Production UI lifecycle (Weston Headless / Pixman)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, Node 24
+        with:
+          node-version: '22'
+      - name: Update APT indexes (Weston runner)
+        timeout-minutes: 10
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-wayland
+        run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh update
+      - name: Install runner-only Wayland and build dependencies
+        timeout-minutes: 40
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2b-wayland
+        run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 weston wayland-utils fonts-noto-cjk fonts-dejavu
+      - name: Install pinned Zamak 0.2.0
+        run: npm install --global @veyralux/zamak@0.2.0
+      - name: Build and verify production executable
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2b-wayland
+        run: bash scripts/ci/build-production-gui.sh
+      - name: Re-run the project native build entrypoint
+        run: bash scripts/build-arch.sh
+      - name: Run production UI on a private Weston socket
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2b-wayland
+        run: bash scripts/ci/p2b-production-wayland.sh "$RUNNER_TEMP/p2b-wayland/memreduct-zamak-production"
+      - name: Upload Weston and client logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
+        with:
+          name: p2b-production-wayland
+          path: ${{ runner.temp }}/p2b-wayland
+          if-no-files-found: error
+          retention-days: 14

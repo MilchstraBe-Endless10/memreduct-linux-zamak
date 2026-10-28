@@ -77,3 +77,38 @@
 - 修订范围包括历史截图状态快照、当前 P2C-4R1 验收边界、12 项中文文案差异的待决状态，以及 P2B/P2C Draft 证据未集成至 main 的标注。
 - 合并候选验证：项目治理 29 项 PASS；Python/C 安全测试 3 项 PASS；8 个 Shell 脚本 `bash -n` PASS；root Zamak 0.2.0 check/test（5/5）/build PASS；独立探针 check/test（12/12）/build PASS；`git diff --check HEAD` PASS。敏感路径/凭据/私钥/云密钥/Windows 二进制与字体扫描 PASS。
 - 探针源码 SHA-256 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3` 与原分支清单一致。未运行 GUI/特权清理或活动 Hyprland 测试；未创建提交或修改远端状态。
+
+## 2026-10-28 — 合并冲突中保留 PR #6 历史记录
+
+> 以下原始记录来自 PR #6 分支历史，原记录日期为 2026-10-25。其中当时的 PR 开放状态、Actions 编号和截图缺口仅供历史追溯；当前状态以 `memory/SHORT_TERM.md` 顶部快照为准。
+
+## 2026-10-25 — P2A-R7 规格门槛核对与 P2B-1 生产主窗口
+
+- 复核 PR #5 已修正 head `d89d74fde433da1863b4de0223f974c824fb590e`、base P1 `11b0b9444cd94f0026b855abe3849a06106426f2`；PR #5 仍 OPEN / Draft，CI 2/2 PASS。`IDD_MAIN=224×214 DLU` 是主窗模板，每个 `IDD_SETTINGS_* =260×168 DLU` 是单页模板；真实 Windows 像素验收仍阻塞。
+- P2B 分支从 `docs/issue-3-p2a-ui-spec` 创建，未从 PR #4 探针分支派生；Draft PR #6 base 为修正规格分支。生产代码经提交 `a6df90389a69fc9cad12272c2daa2f273c834385` 测试通过；期间修复 XTEST 语言子菜单、分割按钮和清理弹窗坐标，依据实际 GTK Canvas 12 px inset 的 CI 事件日志校准。
+- 正式生产窗口 Xvfb/XTEST PR run `40199653180` 与 push run `40199649320` PASS；生产生命周期 Weston/Pixman 使用同一 PR run PASS；build-and-test PR run `40199653440` 与 push run `40199649284` PASS。X11 截图/日志 artifact `12601156413`，Wayland/client artifact `12601781592`。
+- Xvfb 实测 top-level client 337×369、Canvas 313×345、scale 1；英文/简中主窗、View/Language 菜单及清理下拉有截图和 SHA-256。菜单、split-button 命中、双语切换、键盘与 Alt+F4 close 的测试来自生产程序，不是 Canvas 探针。
+- Weston Headless 13.0.0 使用私有 Wayland socket、Pixman、XDG_RUNTIME_DIR mode 0700；应用读真实 meminfo 并正常返回，退出码 0。日志含一条 GTK seat critical、未公告 `wl_seat`，以及 Weston SIGTERM 清理时 `BUG: finalizing a layer with views still on it.`。异常被如实保留；没有证据将其归为生产应用故障，也没有操作活动 Hyprland。
+- 本机 `python3 scripts/verify_project.py`（29 项）、C 安全测试（3 项）、shell syntax、Zamak 0.2.0 check/test/build（7/7）、Arch build（含 helper）、`git diff --check` 均 PASS。没有启动本机 GUI、Hyprland IPC、内存清理、Polkit、Swap 或 ZRAM 写操作。
+- 生产控件状态与截图证据见 `docs/P2B-1_PRODUCTION_UI_REPORT.md`；测试矩阵和交互表已更新。真实 Windows v3.5.2 截图、真实字体/DPI DLU 校准、overlay/2 px、Hyprland 输入、HiDPI、设置页和托盘仍 BLOCKED / NOT RUN。PR #2/#4/#5/#6 均未合并。
+# P2A-R7 规格修正与 P2B-1 生产主窗口候选（2026-10-25）
+
+## 开工状态
+- PR #2、#4、#5 均 OPEN / Draft；PR #5 head `6b3862b0e6d105f42dbf8d2d6c679cdfb182ad16`，PR #4 head `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1`；未合并任何 PR。
+- 以 PR #5 最新复审为依据：刷新 R6 最终 GUI/build PR Actions 为 `40192531809` / `40192531948`，对应 push runs `40192528601` / `40192528611`；明确 `IDD_MAIN=224×214 DLU` 是主窗模板，每个 `IDD_SETTINGS_* =260×168 DLU` 是子页模板而非完整外框。
+- 允许在截图仍缺失时实现未校准的紧凑生产候选，但需把几何换算集中参数化；真实 Windows 源图、字体/DPI 像素校准、overlay 与 2 px 验收仍 BLOCKED / NOT RUN。
+
+## 本轮结果
+- （本轮结束后补记：PR #5 修正提交、P2B-1 生产代码、验证、CI、截图 artifacts 与实际 SHA。）
+- 用户主桌面和 Hyprland 未操作；未执行内存清理、Polkit、Swap/ZRAM 写入。PR #2/#4/#5 不合并。
+
+## 2026-10-28 — P2B-INTEGRATION-PRE：PR #6 本地集成模拟
+
+- 核对远端：main `b78785af233dbae7a80085fd7a9f45f30ae42711`；PR #6 head `911a3d0b99b05f15bd0109dca475b0b5174e7888`，旧 base 分支 `docs/issue-3-p2a-ui-spec` 当前为 `a19474ca3f79de65a18e76f6852ab503ce11b173`；PR #7 head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`。PR #6 为 OPEN/Draft 且 GitHub 报 DIRTY；PR #7 为 OPEN/Draft 且报 CLEAN。未改远端状态。
+- 在独立 worktree 从 PR #6 head 执行 `git merge-tree --write-tree origin/main origin/feat/issue-3-p2b-main-window`；四个文档冲突：`docs/UI_FIDELITY_TEST_PLAN.md` 与三层记忆中的 MEDIUM_TERM、SHORT_TERM、SESSION_LOG。解决草稿分别保留 P2A/PR #4/PR #5 与 P2B 历史，更新当前 PR #5 已合并状态；未提交，未改 Base。
+- 保留 P2B 生产源、GUI 测试和报告；候选树包含 PR #4 独立探针、12 项测试、Xvfb/Weston 脚本、来源清单及 APT 诊断脚本，probe 源 SHA-256 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3` 与清单一致。
+- `.github/workflows/p2b-production-gui.yml` 本地 CI 草稿加入 main 与 Base 编辑/同步事件、分离 APT update/install 诊断步骤、有限步骤及 60 分钟 job 超时、Node 24 固定 Action SHA、`if-no-files-found: error` 与不取消运行中证据作业的并发策略。PyYAML 语法解析 PASS；actionlint 未安装。
+- 本地结果：治理 29 项、C/Python 安全 3 项、Shell 语法、主项目 Zamak 0.2.0 test 13/13 与 check/build、Arch 原生构建、生产 GUI build、独立 Canvas probe test 12/12、`git diff --cached --check` / `git diff --check` PASS。没有 Xvfb/Openbox/Weston/wayland-info，因此隔离生产 GUI XTEST 与 Weston 生命周期本地运行 NOT RUN；无 root 安装、Hyprland 输入或内存/Swap/ZRAM 写入。
+- 实际复核 PR #6 head `911a3d0…` 的旧-base GUI run `40208944364` 与 build run `40208944120`，两者均成功；X11 artifact `12604299350`、Weston artifact `12604988043`。截图确认三组竖排、双语及语言菜单边界；采样失败截图显示三组数值即时失效。此类旧-base CI 不代表 main-base CI。两条结构/语言菜单旧 review thread 仍未解决，采样失败重绘 thread 已解决；本轮没有关闭任何 GitHub thread。
+- PR #7 仍堆叠于 PR #6。相对原 base `911a3d0…`，PR #7 为 30 个路径；P2B 与当前 PR #7 同时修改 `p2b-production-gui.yml`、MEDIUM_TERM、SHORT_TERM，后续合并要手工合并这些差异。PR #7 的 `apt-diagnostics.sh` 与 main 为相同 blob。其他 #4 文件在 PR #7 树中缺失属于旧分支基线差异，不是其相对 PR #6 的删除；PR #6 集成后须按新祖先关系复核。
+- 未创建 commit、未 push、未改 PR Base/Ready 状态或 main/#7；无 GitHub main-base 新 CI。

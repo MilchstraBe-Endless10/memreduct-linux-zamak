@@ -94,7 +94,24 @@ CI 探针不读取 `/proc`、不调用 helper/Polkit、不执行清理、不修�
 - R6 最终 PR 证据：GUI [PR run 40192531809](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192531809)、push run [40192528601](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192528601)；build-and-test [PR run 40192531948](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192531948)、push run [40192528611](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192528611) 均成功。GUI 源 head 为 `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1`；探针源码 SHA-256 为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。PR artifacts 保留期限 14 天；PNG 是模拟探针截图，不是原版或产品截图。
 - CI 窗口 336×348（Canvas 312×324）仅是测试夹具；生产 GUI 须保持官方紧凑尺寸并用可校准的集中几何参数，从真实字体/DPI 换算。真实 Windows release 图、Linux 产品目标图、overlay/diff 和 2 px 几何验收仍 BLOCKED / NOT RUN。源码规格审查可允许 P2B 待校准生产窗口开发，但不能宣称像素通过。
 
-## 8. 当前项目状态补充（2026-10-27）
+## 8. P2B-1 production window candidate evidence (historical, 2026-10-25)
+
+> This is the early P2B-1 evidence snapshot. Do not mix its run/artifact IDs with the final P2B-2 review evidence.
+
+
+| Test ID | 内容 | 结果 | 证据 / 限制 |
+|---|---|---|---|
+| P2B-PROD-X11 | 在 Ubuntu 24.04.5 / Xvfb 中构建并运行正式 `src/main.zm`；生产窗口双语、菜单、split button、真实 `/proc/meminfo`、键盘和 WM close | PASS | PR GUI run `40199653180`，head `a6df90389a69fc9cad12272c2daa2f273c834385`；artifact `12601156413`。Xvfb 1024×768×24、scale 1、337×369 top-level client、313×345 Canvas。XTEST 传递真实 X11 鼠标/键盘事件；应用退出码 0，关闭后窗口消失。 |
+| P2B-PROD-WAYLAND | 在独立 Weston Headless/Pixman 上运行正式窗口并结束应用事件循环 | PASS (diagnostics recorded) | 同一 PR GUI run，artifact `12601781592`。Weston 13.0.0，私有 socket，临时 XDG_RUNTIME_DIR mode 0700，DISPLAY unset；客户端连接、绘制、采样 `/proc/meminfo`、`app.run` 返回、退出码 0。未测试输入。GTK 记录一条 `gdk_seat_get_keyboard` critical，`wl_seat` 未公告；Weston 收到 SIGTERM 清理时记录 `BUG: finalizing a layer with views still on it.`，均保留原始日志。 |
+| P2B-PROD-MEMORY | 主窗口展示真实 RAM 和 Swap 字段 | PASS | 客户端日志记录 `CI_MEMORY source=/proc/meminfo` 与 MemTotal/MemAvailable/SwapTotal/SwapFree 原始 KiB；周期刷新由 GUI 定时器触发。System working set 始终显示不可用，不以 Cached 代替。 |
+| P2B-PROD-CLEAN-SAFETY | 主按钮与 Windows 八个清理选项 | PASS | 主区和下拉菜单真实 XTEST 命中；显示禁用状态，事件记录 `action=none`；无 Polkit、drop_caches、Swap 或 ZRAM 操作。 |
+| P2B-WIN-PIXEL | 与 Windows v3.5.2 原生图进行 paired overlay / 2 px 对照 | BLOCKED / NOT RUN | 缺少有元数据的 Windows 正版截图和实测字体/DPI 转换。CI 图仅是 Linux 生产候选截图。 |
+| P2B-HYPRLAND / DPI-2X | Hyprland 输入与高 DPI | NOT RUN | 没有访问活动用户桌面；CI 只使用 scale 1。 |
+
+完整主窗口控件状态表、截图 SHA-256、二进制/源码 SHA-256 和 artifact 链接见 [P2B-1 生产窗口报告](P2B-1_PRODUCTION_UI_REPORT.md)。R5/R6 的独立 Canvas 探针和 12 项测试仍由 PR #4 单独维护；不以探针通过替代生产程序验收。
+
+## 9. Project status snapshot (2026-10-27; before PR #5 merge)
+
 
 本节是后续证据索引，不改写前述 2026-10-25 P2A 快照。下列 P2B/P2C 结果来自仍未合并的 Draft PR 分支，不代表已集成到 `main`。
 
@@ -102,3 +119,11 @@ CI 探针不读取 `/proc`、不调用 helper/Polkit、不执行清理、不修�
 - P2C-4R1 已复审基线为 HEAD `556a727c100aad4af1a25c48c10513c4dd42c5c7`，生产 GUI checkpoint 为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。控件几何为 184/184 PASS，最大分量偏差 1.5 px；这只代表对应的几何测量，不代表整页像素一致。
 - 整页 1:1 像素一致性：`NOT PASS`。真实 Wayland/Hyprland 输入：`NOT RUN`。原版托盘及清理确认/结果界面仍受安全采集路径限制，相关项目不能声称已完成。
 - 本节中的 P2B/P2C 证据与该历史 P2A 截图表分开记录；不得用任一旧状态或有限几何结果替代完整像素验收。
+
+
+## 10. Current integration audit snapshot (2026-10-28)
+
+- `main` is `b78785af233dbae7a80085fd7a9f45f30ae42711`; PR #2, #4, and #5 are merged. PR #6 remains OPEN / Draft at head `911a3d0b99b05f15bd0109dca475b0b5174e7888`; PR #7 remains OPEN / Draft at head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`.
+- A local `git merge-tree --write-tree origin/main origin/feat/issue-3-p2b-main-window` reported content conflicts in this plan and the three memory files. The merge is being drafted only in an isolated worktree; no remote branch, base, or PR state has changed.
+- The final P2B-2 code checkpoint is `e4fccb6293c698015c8f4105947669bfdc4693d6`; final-head PR GUI run [40208944364](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208944364) and build run [40208944120](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208944120) passed on the old PR base. Xvfb/XTEST exercised the production executable; Weston tested lifecycle only. These are not main-base checks.
+- P2B sampling-failure invalidation/redraw and menu viewport evidence are documented in `docs/P2B-1_PRODUCTION_UI_REPORT.md`; source structure, screenshots, and test logs remain the evidence. Windows 3.5.2 pixel 1:1 and physical Wayland input are not accepted by those checks.
