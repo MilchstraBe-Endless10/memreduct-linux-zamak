@@ -2,7 +2,7 @@
 
 ## 2026-10-29 — 用户反馈后修复共享状态重绘并复核第三方路线
 
-- **Git：**隔离分支 `codex/p2c-main-integration-r1`。本地代码提交 `640fb5df044475df827308388c3da5be25d4ffad`、Tree `f30cac1ce113016dfef58eca46417549253d2be2`、父 `f8bd6cc876b3cbb4623d6dbe6f5d4b94a348c05d`。远端 main `83dbf58fb039645f08e08bc89170adcdaa7997be`、PR #7 `019a7f1e0755570c2c3a0b1202a6c764540f14e2` 未变；PR #7 仍 OPEN / Draft / Base main，未推送。
+- **Git：**隔离分支 `codex/p2c-main-integration-r1`。本地代码提交 `640fb5df044475df827308388c3da5be25d4ffad`、Tree `f30cac1ce113016dfef58eca46417549253d2be2`、父 `f8bd6cc876b3cbb4623d6dbe6f5d4b94a348c05d`；文档提交 `84dcd46af45d0f30f7b64d25256054fefe569388`、Tree `f732194385b63a7faf2a142ab72bb45b8450d6c0`。远端 main `83dbf58fb039645f08e08bc89170adcdaa7997be`、PR #7 `019a7f1e0755570c2c3a0b1202a6c764540f14e2` 未变；PR #7 仍 OPEN / Draft / Base main，未推送。
 - **实际修复：**主窗口语言或主题菜单更新后，现会通知已打开的设置 Canvas 重绘；Zamak 新增状态选择回归。fake `pkexec` 测试覆盖异步桥退出码 1、3、126，确认不重复启动；没有真实 Polkit 或内核写入。
 - **Winelib 实测：**已有 R6 隔离 General 页 POC 以官方 `resource.rc` 和 Win32 控件树编译。背景/焦点状态对齐后，558×335 changed-pixel 英文 13.2531%、简中 12.2725%，背景样本 0/2500 不同；GroupBox 仍 20.6%–21.7%，按钮约 37.3%–37.6%。英文垂直字体度量与 Windows GDI 同为 11/2 px，但 CJK 使用 Noto Sans CJK SC (13/3 px) 且字形/栅格仍不同。Wine Common Controls v6 manifest 缺 assembly 的 warning 未解决。该 POC 不是完整原版或生产迁移，状态不能与 GTK 截图直接排名。
 - **界面问题：**设置页同源文本仅 25/120 宽高差≤2 px、95/120 超差；全页 1:1 仍 NOT PASS。设置页禁用灰度源自未实现功能，不能假装启用；主窗旧 20.9436% 比较因动态值、边界和安全状态不匹配，不是验收率。详见 `docs/ZAMAK_UI_FEASIBILITY.md`。

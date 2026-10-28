@@ -256,3 +256,4 @@
 - 本轮最终本机结果：治理 34、C/Python 12/12、Zamak 44/44、生产 GUI/helper 构建、Canvas 探针 12/12、Shell 语法、`git diff --check` PASS。Wine/winegcc/wrc、Xvfb、Weston 未安装，本机 Winelib/隔离图形测试未运行；活动 Hyprland 未操作；未执行真实清理、Polkit 或内核写入。
 - 前端差异清单：设置文本 95/120 宽高差大于 2 px；有效配对浅色 changed-pixel 5.0741%–14.8853%，深色 5.4004%–12.6625%；全页 1:1 NOT PASS。主窗 GTK 客户区 337×369 的 Windows DLU 换算仍 provisional，Hyprland 外框未测；12 项原版简中来源差异仍 `DECISION_REQUIRED`。完整技术路线与来源见 `docs/ZAMAK_UI_FEASIBILITY.md`。
 - R6/当前构建证据保留在用户 AI 产出目录的 R6/R7 子目录；没有覆盖原截图。本地候选未取得 GitHub CI 结果。
+- 文档、可行性路线、ADR、README 和记忆修订单独提交为 `84dcd46af45d0f30f7b64d25256054fefe569388`（父为代码提交 `640fb5df044475df827308388c3da5be25d4ffad`）；未推送。
