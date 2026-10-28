@@ -1,6 +1,6 @@
 # UI 高保真与交互回归计划（P2A-R1）
 
-状态：源码规格与截图清单固定到官方 Mem Reduct v.3.5.2 tag；真实 Windows 源图采集 BLOCKED，Windows/Linux 对照与像素差异 NOT RUN。该缺口阻止像素验收，但不阻止源码规格审查或实现明确标注为未校准的紧凑生产窗口候选；任何候选界面都不能因此声称 1:1 或完成 2 px 验收。
+历史快照（2026-10-25，P2A-R1）：当时真实 Windows 源图采集为 BLOCKED，Windows/Linux 对照与像素差异为 NOT RUN。以下原始 P2A 规格、采集表和测试结果保留其当时状态；后续进展见文末 2026-10-27 补充。原缺口当时阻止像素验收，但不阻止源码规格审查或实现明确标注为未校准的紧凑生产窗口候选；任何候选界面都不能因此声称 1:1 或完成 2 px 验收。
 
 ## 1. 冻结基准与不变量
 
@@ -8,7 +8,7 @@
 - commit 04402de8b6a8ff9d1c5517c675d87c346655323c 是 tag 后 46 个提交的开发快照，不是发布版依据；其行为差异单列于 UPSTREAM_VERSION_DRIFT_3.5.2_vs_04402de8.md。
 - 主窗口和设置页资源尺寸为 DLU；先记录字体、DPI 与窗口客户区，再做同尺寸比较。`IDD_MAIN=224×214 DLU` 是主窗口资源模板。五个 `IDD_SETTINGS_*` 各 `260×168 DLU` 是**单个设置子页面模板**，不是包含导航、底部按钮及边框的完整设置窗口尺寸。Linux 主窗和设置窗口须保持原版紧凑比例；336×348 CI 探针尺寸不用于产品 GUI。
 - P2B 可以先实现待校准的正式生产窗口候选，DLU 转换参数集中管理，待取得 Windows 原生字体/DPI 实测后校准。该工程候选不等同于已量取 Windows 像素尺寸，也不解除最终截图对照和 2 px 验收门槛。
-- P2 目标界面需完整支持 English 和简体中文。逐项核实翻译键；3.5.2 未翻译的 hard-coded strings 要在 Linux 项目双语资源里补齐，且标注为项目补译。
+- English 与简体中文分别切换、完整简体中文是产品目标。对 3.5.2 未翻译的 hard-coded strings，应逐项标注上游原文和 Linux 建议补译；具体保留上游英文还是采用项目补译须经所有者确认，P2C 已记录的 12 项差异保持 `DECISION_REQUIRED`。
 - 每个原版动作必须映射成真实、可解释且安全的 Linux 动作，或明确禁用。不允许用 drop_caches 假扮工作集、修改页列表、待机列表或 Registry cache。
 - 只有源图和目标图均为对应版本的真实截图、环境匹配且做过叠加/差异计算，才能报告像素验收。2 px 是目标阈值，不是当前结果。
 
@@ -94,7 +94,10 @@ CI 探针不读取 `/proc`、不调用 helper/Polkit、不执行清理、不修�
 - R6 最终 PR 证据：GUI [PR run 40192531809](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192531809)、push run [40192528601](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192528601)；build-and-test [PR run 40192531948](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192531948)、push run [40192528611](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40192528611) 均成功。GUI 源 head 为 `1bca068d4efc27b04aa74a9111cd65cb5cd9bfd1`；探针源码 SHA-256 为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。PR artifacts 保留期限 14 天；PNG 是模拟探针截图，不是原版或产品截图。
 - CI 窗口 336×348（Canvas 312×324）仅是测试夹具；生产 GUI 须保持官方紧凑尺寸并用可校准的集中几何参数，从真实字体/DPI 换算。真实 Windows release 图、Linux 产品目标图、overlay/diff 和 2 px 几何验收仍 BLOCKED / NOT RUN。源码规格审查可允许 P2B 待校准生产窗口开发，但不能宣称像素通过。
 
-## 8. P2B-1 production window candidate evidence
+## 8. P2B-1 production window candidate evidence (historical, 2026-10-25)
+
+> This is the early P2B-1 evidence snapshot. Do not mix its run/artifact IDs with the final P2B-2 review evidence.
+
 
 | Test ID | 内容 | 结果 | 证据 / 限制 |
 |---|---|---|---|
@@ -106,3 +109,21 @@ CI 探针不读取 `/proc`、不调用 helper/Polkit、不执行清理、不修�
 | P2B-HYPRLAND / DPI-2X | Hyprland 输入与高 DPI | NOT RUN | 没有访问活动用户桌面；CI 只使用 scale 1。 |
 
 完整主窗口控件状态表、截图 SHA-256、二进制/源码 SHA-256 和 artifact 链接见 [P2B-1 生产窗口报告](P2B-1_PRODUCTION_UI_REPORT.md)。R5/R6 的独立 Canvas 探针和 12 项测试仍由 PR #4 单独维护；不以探针通过替代生产程序验收。
+
+## 9. Project status snapshot (2026-10-27; before PR #5 merge)
+
+
+本节是后续证据索引，不改写前述 2026-10-25 P2A 快照。下列 P2B/P2C 结果来自仍未合并的 Draft PR 分支，不代表已集成到 `main`。
+
+- PR #2、#4 已合并到 `main`；PR #5、#6、#7 仍未合并。PR #6/#7 已在隔离 GitHub Runner 上运行生产 GUI、采集 Windows v.3.5.2 原生截图并生成视觉比较证据。
+- P2C-4R1 已复审基线为 HEAD `556a727c100aad4af1a25c48c10513c4dd42c5c7`，生产 GUI checkpoint 为 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。控件几何为 184/184 PASS，最大分量偏差 1.5 px；这只代表对应的几何测量，不代表整页像素一致。
+- 整页 1:1 像素一致性：`NOT PASS`。真实 Wayland/Hyprland 输入：`NOT RUN`。原版托盘及清理确认/结果界面仍受安全采集路径限制，相关项目不能声称已完成。
+- 本节中的 P2B/P2C 证据与该历史 P2A 截图表分开记录；不得用任一旧状态或有限几何结果替代完整像素验收。
+
+
+## 10. Current integration audit snapshot (2026-10-28)
+
+- `main` is `b78785af233dbae7a80085fd7a9f45f30ae42711`; PR #2, #4, and #5 are merged. PR #6 remains OPEN / Draft at head `911a3d0b99b05f15bd0109dca475b0b5174e7888`; PR #7 remains OPEN / Draft at head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`.
+- A local `git merge-tree --write-tree origin/main origin/feat/issue-3-p2b-main-window` reported content conflicts in this plan and the three memory files. The merge is being drafted only in an isolated worktree; no remote branch, base, or PR state has changed.
+- The final P2B-2 code checkpoint is `e4fccb6293c698015c8f4105947669bfdc4693d6`; final-head PR GUI run [40208944364](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208944364) and build run [40208944120](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40208944120) passed on the old PR base. Xvfb/XTEST exercised the production executable; Weston tested lifecycle only. These are not main-base checks.
+- P2B sampling-failure invalidation/redraw and menu viewport evidence are documented in `docs/P2B-1_PRODUCTION_UI_REPORT.md`; source structure, screenshots, and test logs remain the evidence. Windows 3.5.2 pixel 1:1 and physical Wayland input are not accepted by those checks.

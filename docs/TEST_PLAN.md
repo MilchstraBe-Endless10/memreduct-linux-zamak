@@ -36,6 +36,12 @@ GitHub Actions `build-and-test` passed on code SHA `1d4654867f59154981010007288c
 
 The installer candidate pattern matched the Zamak output name and excluded the `-test-` binary. `ldd` reported no missing libraries. The install/uninstall scripts were not executed because they modify `/usr`. Polkit authorization end-to-end was not exercised. No cleanup action or automatic mode was activated, and `/proc/sys/vm/drop_caches`, Swap, and ZRAM were not modified. GitHub Actions status is recorded in `memory/SHORT_TERM.md` after the PR run.
 
+## 简体中文来源差异决策边界（2026-10-27）
+
+- English 与简体中文分别切换、完整简体中文仍是产品目标；原版忠实复刻与项目补译之间的具体文案策略等待所有者确认。
+- 后续 P2C 记录的 12 项差异继续标记为 `DECISION_REQUIRED`：8 个 Memory cleaning 区域名、2 个 Advanced 文案、`Single click:` 和一个语言显示名称。测试和截图报告应区分上游文字与 Linux 当前翻译，不得把任一方案默认为已批准。
+- 决策前保留现有简体中文翻译；规格审查不得删除译文或将这些差异纳入已通过的文案验收。
+
 ## Test reporting contract
 `command / platform / SHA / status(PASS|FAIL|NOT_RUN) / evidence / risk`. **NOT_RUN != PASS**.
 Track p95 UI response, cold-cache re-read latency, memory available before/after, and exact branch build. Avoid marketing “up to X% performance gain” unless independently benchmarked.

@@ -1,0 +1,419 @@
+# UI interaction probe only: placeholder values, no memory or privileged APIs.
+use std/ui
+
+struct Probe:
+    canvas: ui.Canvas
+    w: f64
+    h: f64
+    zh: bool
+    menu: bool
+    split_menu: bool
+    main_on: bool
+    option_b: bool
+    hover: f64
+    pressed: f64
+    focus: f64
+    status: string
+    draw_logged: bool
+    elapsed_ms: i64
+
+fn button_geometry(w: f64, h: f64) -> ui.Rect:
+    ui.rect(12.0, h - 43.0, w - 24.0, 28.0)
+
+fn button(s: &Probe) -> ui.Rect:
+    button_geometry(s.w, s.h)
+
+fn popup_geometry(w: f64, h: f64, split_menu: bool) -> ui.Rect:
+    if split_menu:
+        let b = button_geometry(w, h)
+        return ui.rect(b.right() - 176.0, b.y - 77.0, 176.0, 72.0)
+    return ui.rect(8.0, 28.0, 176.0, 72.0)
+
+fn popup(s: &Probe) -> ui.Rect:
+    popup_geometry(s.w, s.h, s.split_menu)
+
+fn locale_text(zh: bool, en: string, zh_text: string) -> string:
+    if zh:
+        return zh_text
+    return en
+
+fn release_action(pressed: f64, released: f64) -> f64:
+    if pressed != 0.0 and pressed == released:
+        return released
+    return 0.0
+
+fn focus_next(focus: f64) -> f64:
+    if focus >= 2.0:
+        return 0.0
+    return focus + 1.0
+
+fn focus_previous(focus: f64) -> f64:
+    if focus <= 0.0:
+        return 2.0
+    return focus - 1.0
+
+fn enter_action(menu_open: bool, focus: f64) -> f64:
+    if menu_open:
+        if focus <= 0.0:
+            return 5.0
+        elif focus == 1.0:
+            return 6.0
+        return 7.0
+    if focus == 0.0:
+        return 3.0
+    elif focus == 1.0:
+        return 4.0
+    return 1.0
+
+fn next_locale(zh: bool) -> bool:
+    return not zh
+
+fn outline(p: &ui.Painter, r: &ui.Rect, c: &ui.Color):
+    p.begin()
+    p.add_rect(r)
+    p.stroke(c, 1.0)
+
+fn hit_geometry(w: f64, h: f64, menu_open: bool, split_menu: bool, x: f64, y: f64) -> f64:
+    if y >= 0.0 and y < 27.0:
+        if x >= w - 82.0:
+            return 1.0
+        return 2.0
+    if menu_open:
+        let r = popup_geometry(w, h, split_menu)
+        if r.contains(x, y):
+            if y < r.y + 24.0:
+                return 5.0
+            elif y < r.y + 48.0:
+                return 6.0
+            return 7.0
+    let b = button_geometry(w, h)
+    if b.contains(x, y):
+        if x >= b.right() - 38.0:
+            return 4.0
+        return 3.0
+    return 0.0
+
+fn hit(s: &Probe, x: f64, y: f64) -> f64:
+    hit_geometry(s.w, s.h, s.menu, s.split_menu, x, y)
+
+fn draw(s: &mut Probe, p: &ui.Painter):
+    let old_w = s.w
+    let old_h = s.h
+    s.w = p.width()
+    s.h = p.height()
+    if not s.draw_logged or old_w != s.w or old_h != s.h:
+        s.draw_logged = true
+        println(f"CI_DRAW width={s.w} height={s.h}")
+    let white = ui.rgb(0xffffff)
+    let ink = ui.rgb(0x161616)
+    let line = ui.rgb(0x999999)
+    let gray = ui.rgb(0x555555)
+    let button_bg = ui.rgb(0xf2f2f2)
+    let hover_bg = ui.rgb(0xe4edf8)
+    let down_bg = ui.rgb(0xcbd9eb)
+    let focus_color = ui.rgb(0x2b67ad)
+    p.fill_rect(&ui.rect(0.0, 0.0, s.w, s.h), &white)
+    if s.zh:
+        p.text(8.0, 6.0, "文件   视图   设置   帮助", &ink, size=10.0)
+        p.text(s.w - 68.0, 6.0, "简中", &ink, size=10.0)
+        p.text(12.0, 40.0, "Canvas 探针（模拟）", &ink, size=12.0, bold=true)
+        p.text(12.0, 58.0, "占位数据；不读取内存，不执行清理", &gray, size=9.0)
+        p.text(20.0, 100.0, "物理内存", &ink, size=10.0)
+        p.text(196.0, 100.0, "— / — / —", &ink, size=10.0)
+        p.line(12.0, 128.0, s.w - 12.0, 128.0, &line)
+        p.text(20.0, 146.0, "分页文件 / Swap（仅标签）", &ink, size=10.0)
+        p.text(20.0, 166.0, "系统工作集（仅标签）", &ink, size=10.0)
+        if s.main_on:
+            p.text(12.0, 220.0, "主按钮状态：开启（无系统操作）", &gray, size=9.0)
+        else:
+            p.text(12.0, 220.0, "主按钮状态：关闭（无系统操作）", &gray, size=9.0)
+        if s.option_b:
+            p.text(12.0, 238.0, "菜单选择：预览项 B", &gray, size=9.0)
+        else:
+            p.text(12.0, 238.0, "菜单选择：预览项 A", &gray, size=9.0)
+    else:
+        p.text(8.0, 6.0, "File   View   Settings   Help", &ink, size=10.0)
+        p.text(s.w - 68.0, 6.0, "EN", &ink, size=10.0)
+        p.text(12.0, 40.0, "Canvas input probe (simulated)", &ink, size=12.0, bold=true)
+        p.text(12.0, 58.0, "Placeholder data; no memory read or cleanup", &gray, size=9.0)
+        p.text(20.0, 100.0, "Physical memory", &ink, size=10.0)
+        p.text(196.0, 100.0, "— / — / —", &ink, size=10.0)
+        p.line(12.0, 128.0, s.w - 12.0, 128.0, &line)
+        p.text(20.0, 146.0, "Pagefile / Swap (label only)", &ink, size=10.0)
+        p.text(20.0, 166.0, "System working set (label only)", &ink, size=10.0)
+        if s.main_on:
+            p.text(12.0, 220.0, "Primary state: ON (no system action)", &gray, size=9.0)
+        else:
+            p.text(12.0, 220.0, "Primary state: OFF (no system action)", &gray, size=9.0)
+        if s.option_b:
+            p.text(12.0, 238.0, "Menu selection: preview B", &gray, size=9.0)
+        else:
+            p.text(12.0, 238.0, "Menu selection: preview A", &gray, size=9.0)
+    p.line(12.0, 188.0, s.w - 12.0, 188.0, &line)
+    p.text(12.0, button_geometry(s.w, s.h).y - 20.0, s.status, &gray, size=9.0)
+
+    let b = button(s)
+    p.fill_rect(&b, &button_bg)
+    if s.hover == 3.0 or s.hover == 4.0:
+        p.fill_rect(&b, &hover_bg)
+    if s.pressed == 3.0 or s.pressed == 4.0:
+        p.fill_rect(&b, &down_bg)
+    outline(p, &b, &line)
+    if s.zh:
+        p.text(b.x + 14.0, b.y + 7.0, "主按钮（无操作）", &ink, size=10.0)
+    else:
+        p.text(b.x + 14.0, b.y + 7.0, "Primary button (no-op)", &ink, size=10.0)
+    p.line(b.right() - 38.0, b.y, b.right() - 38.0, b.bottom(), &line)
+    p.line(b.right() - 25.0, b.y + 10.0, b.right() - 20.0, b.y + 15.0, &ink)
+    p.line(b.right() - 20.0, b.y + 15.0, b.right() - 15.0, b.y + 10.0, &ink)
+    if s.focus == 0.0:
+        outline(p, &ui.rect(b.x + 3.0, b.y + 3.0, b.w - 44.0, b.h - 6.0), &focus_color)
+    elif s.focus == 1.0:
+        outline(p, &ui.rect(b.right() - 35.0, b.y + 3.0, 32.0, b.h - 6.0), &focus_color)
+    elif s.focus == 2.0:
+        outline(p, &ui.rect(s.w - 82.0, 2.0, 78.0, 22.0), &focus_color)
+    if s.menu:
+        let r = popup(s)
+        p.fill_rect(&r, &white)
+        outline(p, &r, &line)
+        if s.hover == 5.0:
+            p.fill_rect(&ui.rect(r.x + 1.0, r.y + 1.0, r.w - 2.0, 22.0), &hover_bg)
+        if s.hover == 6.0:
+            p.fill_rect(&ui.rect(r.x + 1.0, r.y + 24.0, r.w - 2.0, 22.0), &hover_bg)
+        if s.hover == 7.0:
+            p.fill_rect(&ui.rect(r.x + 1.0, r.y + 48.0, r.w - 2.0, 22.0), &hover_bg)
+        if s.zh:
+            p.text(r.x + 8.0, r.y + 5.0, "预览选项 A", &ink, size=10.0)
+            p.text(r.x + 8.0, r.y + 29.0, "预览选项 B", &ink, size=10.0)
+            p.text(r.x + 8.0, r.y + 53.0, "关闭菜单", &ink, size=10.0)
+        else:
+            p.text(r.x + 8.0, r.y + 5.0, "Preview option A", &ink, size=10.0)
+            p.text(r.x + 8.0, r.y + 29.0, "Preview option B", &ink, size=10.0)
+            p.text(r.x + 8.0, r.y + 53.0, "Close menu", &ink, size=10.0)
+
+fn activate(s: &mut Probe, t: f64):
+    if t == 1.0:
+        s.zh = next_locale(s.zh)
+        if s.zh:
+            s.status = "语言已切换：简体中文"
+            println("CI_STATE locale=zh")
+        else:
+            s.status = "Language switched: English"
+            println("CI_STATE locale=en")
+    elif t == 2.0 or t == 4.0:
+        s.menu = not s.menu
+        s.split_menu = t == 4.0
+        s.status = locale_text(s.zh, "Preview menu toggled", "预览菜单已切换")
+        println(f"CI_MENU open={s.menu} split={s.split_menu}")
+    elif t == 3.0:
+        s.main_on = not s.main_on
+        s.status = locale_text(s.zh, "Primary toggled; no system action", "主按钮已切换；无系统操作")
+        if s.main_on:
+            println("CI_STATE primary=on")
+        else:
+            println("CI_STATE primary=off")
+    elif t == 5.0:
+        s.option_b = false
+        s.menu = false
+        s.status = locale_text(s.zh, "Preview option A selected", "已选择预览选项 A")
+        println("CI_STATE option=A")
+        println("CI_MENU open=false")
+    elif t == 6.0:
+        s.option_b = true
+        s.menu = false
+        s.status = locale_text(s.zh, "Preview option B selected", "已选择预览选项 B")
+        println("CI_STATE option=B")
+        println("CI_MENU open=false")
+    elif t == 7.0:
+        s.menu = false
+        s.status = locale_text(s.zh, "Menu closed", "菜单已关闭")
+        println("CI_MENU open=false")
+
+fn mouse(s: &mut Probe, m: &ui.Mouse):
+    let t = hit(s, m.x(), m.y())
+    let old = s.hover
+    s.hover = t
+    if m.down() == 1:
+        println(f"CI_MOUSE_DOWN target={t}")
+        s.pressed = t
+        s.status = locale_text(s.zh, "Mouse pressed state shown", "鼠标按下状态已显示")
+        s.canvas.redraw()
+    elif m.up() == 1:
+        println(f"CI_MOUSE_UP target={t}")
+        let was_pressed = s.pressed
+        s.pressed = 0.0
+        let action = release_action(was_pressed, t)
+        if action != 0.0:
+            println(f"CI_MOUSE_ACTION action={action}")
+            activate(s, action)
+        else:
+            s.status = locale_text(s.zh, "Mouse released", "鼠标已释放")
+        s.canvas.redraw()
+    elif old != t:
+        if t != 0.0:
+            println(f"CI_MOUSE_HOVER target={t}")
+            s.status = locale_text(s.zh, "Mouse hover state shown", "鼠标悬停状态已显示")
+        s.canvas.redraw()
+
+fn key(s: &mut Probe, k: &ui.Key):
+    if k.released():
+        return
+    if k.name() == "\t":
+        println("CI_KEY name=Tab")
+    elif k.name() == "\n" or k.name() == "\r":
+        println("CI_KEY name=Enter")
+    else:
+        println(f"CI_KEY name={k.name()}")
+    if k.name() == "F12":
+        println("CI_QUIT source=f12")
+        ui.quit()
+        return
+    if k.name() == "F2":
+        activate(s, 1.0)
+    elif k.name() == "Escape" or k.name() == "Esc" or k.name() == "\x1b":
+        s.menu = false
+        s.pressed = 0.0
+        s.status = locale_text(s.zh, "Escape: menu closed", "Escape：菜单已关闭")
+        println("CI_MENU closed reason=Escape")
+    elif k.name() == "Tab" or k.name() == "\t":
+        s.focus = focus_next(s.focus)
+        s.status = locale_text(s.zh, "Tab: focus moved", "Tab：焦点已移动")
+        println(f"CI_FOCUS value={s.focus}")
+    elif k.name() == "Down" or k.name() == "Right":
+        if s.menu:
+            s.focus = focus_next(s.focus)
+            s.status = locale_text(s.zh, "Arrow: menu focus moved", "方向键：菜单焦点已移动")
+            println(f"CI_FOCUS value={s.focus}")
+    elif k.name() == "Up" or k.name() == "Left":
+        if s.menu:
+            s.focus = focus_previous(s.focus)
+            s.status = locale_text(s.zh, "Arrow: menu focus moved", "方向键：菜单焦点已移动")
+            println(f"CI_FOCUS value={s.focus}")
+    elif k.name() == "Enter" or k.name() == "Return" or k.name() == "\r" or k.name() == "\n":
+        let action = enter_action(s.menu, s.focus)
+        if action != 0.0:
+            println(f"CI_KEY_ACTION action={action}")
+            activate(s, action)
+    s.canvas.redraw()
+
+fn close_logged(s: &mut Probe):
+    println("CI_WINDOW_CLOSE")
+    ui.quit()
+
+fn auto_quit(s: &mut Probe):
+    s.elapsed_ms += 250
+    if s.elapsed_ms >= 10000:
+        println("CI_QUIT source=timer")
+        ui.quit()
+
+fn test_split_button_hit_regions():
+    assert(hit_geometry(338.0, 395.0, false, false, 30.0, 360.0) == 3.0)
+    assert(hit_geometry(338.0, 395.0, false, false, 300.0, 360.0) == 4.0)
+
+fn test_root_menu_rows():
+    assert(hit_geometry(338.0, 395.0, true, false, 20.0, 40.0) == 5.0)
+    assert(hit_geometry(338.0, 395.0, true, false, 20.0, 64.0) == 6.0)
+    assert(hit_geometry(338.0, 395.0, true, false, 20.0, 88.0) == 7.0)
+
+fn test_split_menu_rows():
+    assert(hit_geometry(338.0, 395.0, true, true, 160.0, 280.0) == 5.0)
+    assert(hit_geometry(338.0, 395.0, true, true, 160.0, 304.0) == 6.0)
+    assert(hit_geometry(338.0, 395.0, true, true, 160.0, 328.0) == 7.0)
+
+fn test_language_text_is_single_locale():
+    assert(locale_text(false, "English", "中文") == "English")
+    assert(locale_text(true, "English", "中文") == "中文")
+
+fn test_mouse_release_requires_same_target():
+    assert(release_action(3.0, 3.0) == 3.0)
+    assert(release_action(3.0, 4.0) == 0.0)
+    assert(release_action(0.0, 3.0) == 0.0)
+
+fn test_keyboard_focus_wraps():
+    assert(focus_next(0.0) == 1.0)
+    assert(focus_next(2.0) == 0.0)
+    assert(focus_previous(0.0) == 2.0)
+    assert(focus_previous(2.0) == 1.0)
+
+fn test_enter_routes_to_focused_action():
+    assert(enter_action(false, 0.0) == 3.0)
+    assert(enter_action(false, 1.0) == 4.0)
+    assert(enter_action(false, 2.0) == 1.0)
+    assert(enter_action(true, 0.0) == 5.0)
+    assert(enter_action(true, 1.0) == 6.0)
+    assert(enter_action(true, 2.0) == 7.0)
+
+fn test_logical_geometry_tracks_viewport():
+    let b = button_geometry(600.0, 700.0)
+    assert(b.x == 12.0)
+    assert(b.y == 657.0)
+    assert(b.w == 576.0)
+    assert(b.h == 28.0)
+    let r = popup_geometry(600.0, 700.0, true)
+    assert(r.x == 412.0)
+    assert(r.y == 580.0)
+
+fn test_language_toggle_reaches_both_locales():
+    assert(next_locale(false) == true)
+    assert(next_locale(true) == false)
+
+fn test_compact_probe_geometry():
+    assert(336.0 - 24.0 == 312.0)
+    assert(348.0 - 24.0 == 324.0)
+    let b = button_geometry(312.0, 324.0)
+    assert(b.x == 12.0)
+    assert(b.y == 281.0)
+    assert(b.w == 288.0)
+    assert(b.h == 28.0)
+    assert(hit_geometry(312.0, 324.0, false, false, 13.0, 282.0) == 3.0)
+    assert(hit_geometry(312.0, 324.0, false, false, 262.0, 282.0) == 4.0)
+    let r = popup_geometry(312.0, 324.0, true)
+    assert(r.x == 124.0)
+    assert(r.y == 204.0)
+    assert(r.w == 176.0)
+    assert(r.h == 72.0)
+    assert(hit_geometry(312.0, 324.0, true, true, 125.0, 205.0) == 5.0)
+    assert(hit_geometry(312.0, 324.0, true, true, 125.0, 229.0) == 6.0)
+    assert(hit_geometry(312.0, 324.0, true, true, 125.0, 253.0) == 7.0)
+    assert(hit_geometry(312.0, 324.0, true, true, 300.0, 205.0) == 0.0)
+    assert(hit_geometry(312.0, 324.0, true, true, 125.0, 276.0) == 0.0)
+
+fn test_compact_resize_geometry():
+    let b = button_geometry(396.0, 356.0)
+    assert(b.x == 12.0)
+    assert(b.y == 313.0)
+    assert(b.w == 372.0)
+    assert(b.h == 28.0)
+    assert(hit_geometry(396.0, 356.0, false, false, 13.0, 314.0) == 3.0)
+    assert(hit_geometry(396.0, 356.0, false, false, 346.0, 314.0) == 4.0)
+    let r = popup_geometry(396.0, 356.0, true)
+    assert(r.x == 208.0)
+    assert(r.y == 236.0)
+    assert(r.right() == 384.0)
+    assert(r.bottom() == 308.0)
+
+fn test_compact_locale_text_is_independent():
+    assert(locale_text(false, "Physical memory", "物理内存") == "Physical memory")
+    assert(locale_text(true, "Physical memory", "物理内存") == "物理内存")
+    assert(locale_text(false, "Primary button (no-op)", "主按钮（无操作）") == "Primary button (no-op)")
+    assert(locale_text(true, "Primary button (no-op)", "主按钮（无操作）") == "主按钮（无操作）")
+
+fn main():
+    println("CI_PROBE_START")
+    let window = ui.window("P2A-R4 CI Canvas Probe", 336, 348)
+    let canvas = ui.canvas()
+    window.set_child(canvas)
+    let app: ui.App[Probe] = ui.app()
+    app.on_draw(canvas, draw)
+    app.on_mouse(canvas, mouse)
+    app.on_key(canvas, key)
+    app.on_close(close_logged)
+    app.every(250, auto_quit)
+    let state = Probe(
+        canvas: canvas, w: 336.0, h: 348.0, zh: false,
+        menu: false, split_menu: false, main_on: false, option_b: false,
+        hover: 0.0, pressed: 0.0, focus: 0.0, status: "Idle; simulated UI only",
+        draw_logged: false, elapsed_ms: 0
+    )
+    app.run(window, state)
+    println("CI_APP_RETURNED")

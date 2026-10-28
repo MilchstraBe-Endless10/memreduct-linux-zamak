@@ -1,6 +1,49 @@
 # 中期记忆 / Roadmap State
 
-更新时间：2026-10-25；仅已见到的证据，未经推测。
+更新时间：2026-10-28；以下是当前 GitHub 状态与已见证据，不将 Draft 分支结果计入 main。
+
+## 当前阶段
+
+**P1 / P2A 基础已集成。** PR #2、#4、#5 均已合入 `main`; 当前 main 为 `b78785af233dbae7a80085fd7a9f45f30ae42711`。PR #4 的 12 项独立 Canvas 探针和隔离 Xvfb/Weston CI 已在 main。
+
+**P2B 生产窗口仍在 Draft PR #6。** Head `911a3d0b99b05f15bd0109dca475b0b5174e7888`，原 base 分支为 PR #5 规格分支。与当前 main 的本地集成模拟发现四个文档冲突；只在独立 worktree 准备解决稿，尚无 main-base GitHub CI。最终旧-base PR GUI/build 检查分别为 `40208944364` / `40208944120`，均成功。
+
+**P2C 仍在 Draft PR #7。** Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`，base 为 PR #6；P2C-4R1 几何 184/184 PASS、最大分量偏差 1.5 px，但整页 1:1 为 NOT PASS，真实 Wayland/Hyprland 输入为 NOT RUN，托盘及清理确认/结果仍受限。
+
+## 已具备的代码
+
+- Zamak 0.2.0 原型与生产 GUI 候选位于未合并的 #6/#7 分支；勿与 main 当前能力混写。
+- `/proc/meminfo` 采样、内存策略原型及 C helper 仍受既有安全验收边界约束。
+- main 上的独立探针只验证 GTK Canvas 交互和隔离生命周期，不代表生产 GUI 的功能或真实 Wayland 输入。
+
+## 当前阻塞与边界
+
+- PR #6 相对当前 main 的模拟合并存在四个内容冲突，需审查冲突解决稿；不得把本地结果描述为新的 GitHub CI。
+- PR #7 仍以 PR #6 为 base；PR #6 集成后须重新核对 PR #7 的二点/三点差异、合并模拟、冲突、Review 与 CI。
+- 12 项简体中文来源差异仍为 `DECISION_REQUIRED`；不得通过规格合并批准具体译文。
+- 未完成的内存清理、自动清理、Polkit、Swap/ZRAM、root GUI 与活动 Hyprland 操作继续禁止。
+
+## 阶段表
+
+| 阶段 | 交付 | 状态/依赖 |
+|---|---|---|
+| P0 | 正式文档、记忆、仓库、安全最小基线 | 已完成 |
+| P1 | Zamak 0.2.0 编译与原生构建修复 | PR #2 已合入 main |
+| P2A 测试 | 独立 GUI 探针及隔离 CI | PR #4 已合入 main；12/12 探针测试通过，限于探针边界 |
+| P2A 规格 | Windows 3.5.2 源码规格与交互矩阵 | PR #5 已合入 main |
+| P2B | 生产主窗口候选 | PR #6 OPEN / Draft；未计入 main |
+| P2C | 五页设置 UI 与视觉校准 | PR #7 OPEN / Draft；1:1、真实 Wayland 输入及部分托盘/清理场景未验收 |
+| P3A | 无特权语言/主题偏好持久化 | 设计稿待复审与批准；未开始实现 |
+| P3+ | 清理/自动策略/ZRAM/发布 | 未开始；须按安全审查、测试和用户批准推进 |
+
+## 决策与下一步
+
+- 已有 ADR-0001 至 ADR-0003 继续有效；ADR-0004 持久化设计仍为 PROPOSED。
+- 下一步先由 ChatGPT 复审 PR #6 的本地集成冲突稿、CI 草稿与下游影响；PR #6 的提交/推送、改 Base、标记 Ready 和合并均需后续分阶段授权。不得自动推进至 PR #7 或 P3A 生产实现。
+
+## 历史快照：PR #6 P2B 阶段记忆（原记录日期 2026-10-25）
+
+> 下列内容保留 PR #6 分支的当时状态与证据；其中 Draft/阻塞状态不代表当前 GitHub 状态。
 
 ## 当前阶段
 **P1：Zamak 编译验收** — 本机 Zamak 0.2.0 check/test/build、Arch 原生构建、Hyprland GUI 基础验收及 Draft PR Actions 均通过。PR #2 仍 OPEN / Draft，等待 ChatGPT 复审和用户合并决定。
@@ -22,22 +65,3 @@
 - 等待 ChatGPT 复审 PR #6 的生产 UI、实际截图和诊断；所有 PR 均保持 Draft，不自动合并。
 - Windows v3.5.2 原生截图、实测 DLU→像素换算、2 px 对照和 Hyprland 实际输入仍未完成；Weston 日志中的 GTK seat critical / SIGTERM cleanup BUG 保留为待解释诊断。
 - 设置页、托盘、Polkit 授权端到端、安装/卸载、真实缓存清理、Swap/ZRAM 写入均未执行或实现。
-
-## 阶段表
-| 阶段 | 交付 | 状态/依赖 |
-|---|---|---|
-| P0 | 正式文档、记忆、仓库、安全最小基线 | 完成；PUBLIC 仓库已创建，`main` SHA 已核验 |
-| P1 | Zamak `check/test/build` 通过，Linux GUI 在目标桌面打开 | 本机、GUI 与 CI 验收通过；Draft PR 等待复审 |
-| P2A | 固定 Windows 3.5.2 UI/UX 规格、交互矩阵、Linux 能力映射及隔离测试 | 源码规格 PR #5 OPEN / Draft，PR #4 隔离 X11/Wayland CI PASS。Windows 源图缺失，像素验收 BLOCKED |
-| P2B | 主窗口 UI 高保真实现 | 首个待校准生产候选已在 Draft PR #6；待代码/截图复审；最终像素验收仍等真实 Windows 截图 |
-| P2 | 可信指标显示/日志/只读探测，安全反馈 | 未开始；依赖 P1 与阶段审查 |
-| P3 | 手动一键缓存清理验收、特权隔离与回滚测试 | 未开始；依赖 P2 |
-| P4 | 有条件的自动策略、配置持久化、冷却与可观察性 | 未开始；依赖 P3 安全评审 |
-| P5 | ZRAM 只读分析和可选管理，避免同现有 Swap 冲突 | 未开始；需 ADR 和用户批准 |
-| P6 | Arch PKGBUILD/Release、真实场景对比基准、公开测试版 | 未开始；依赖各前置条件 |
-
-## 决策和后续
-- ADR-0001: 采用 Zamak 原生架构。
-- ADR-0002: 独立最小权限 helper + 手动缓存回收优先。
-- ADR-0003: GitHub + 三层记忆 + 双 AI 审核制。
-- 下一行动：由 ChatGPT 复审 PR #6 的生产主窗口控件、X11 截图及 Wayland 诊断；按意见修正，PR #2/#4/#5/#6 均保持 Draft，不合并。真实 Windows 像素验收仍未完成，候选不得标为已校准或 1:1 通过。
