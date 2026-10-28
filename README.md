@@ -1,6 +1,6 @@
 # Mem Reduct Linux — Zamak Native (unofficial)
 
-> **Status (2026-10-28):** the Zamak 0.2.0 production GTK3 GUI and five settings pages are implemented in the open Draft [PR #7](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7), based on `main`. Its exact production-code baseline passed the Build, isolated P2A/P2B GUI, and Windows/Linux P2C CI workflows (8/8 jobs). A local launch connected to Hyprland through Wayland, but no window-specific screenshot or real keyboard/mouse interaction has been verified. CI uses Xvfb and private Weston; it does not establish real desktop interaction or full-page 1:1 Windows pixel identity. This is **not** an official Henry++ release.
+> **Status (2026-10-28):** the Zamak 0.2.0 production GTK3 GUI and five settings pages are in open Draft [PR #7](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/7), based on `main`. Published PR HEAD `019a7f1e0755570c2c3a0b1202a6c764540f14e2` passed Build, isolated P2A/P2B GUI, and Windows/Linux P2C CI (8/8 jobs). The local, unpushed R6 candidate keeps the main GTK client at 337×369 with a 325×357 Canvas, removes the 12 px top/right GTK inset, aligns group dividers, adds group disclosure/collapse behavior, displays `Usage` as a percentage, aligns shortcut text measurement with its rendered 8 pt size, and removes a false `File` keyboard-focus outline on startup while retaining keyboard navigation. On the real Wayland session, the bounded main-window capture exited 0 without GTK warnings; GTK reported scale factor 1 and a 337×369 client allocation. The same-sized Windows/Linux main capture pair differs by 20.9436% of pixels because live `/proc/meminfo` values, the unsupported System working set, the safely disabled cleaning button, and GTK/Pango rendering differ; this is an illustrative, non-equivalent pair, not a 1:1 pass. `GDK_SCALE=1` and `2` produced the same GTK factor and dimensions, so that environment variable did not explain the reported window size. Physical keyboard/mouse input remains untested. The local candidate passes Zamak 41/41, Canvas probe 12/12, governance 33/33, C/Python safety 3/3, Shell syntax, and production build; it has no new GitHub CI result. Main-window DLU conversion and GTK versus Win32 rendering remain provisional; full-page 1:1 has **not** passed. The separate 184/184 geometry result applies to P2C settings controls, not the main window. This is **not** an official Henry++ release.
 
 A free open-source, native desktop Linux memory utility inspired by [Mem Reduct](https://github.com/henrypp/memreduct). The project aims to offer a genuine one-click reclaim action and later controlled RAM compression features on **Arch Linux / Omarchy + Hyprland (Wayland)**, without Docker, a web panel, or a Python UI runtime.
 
@@ -31,7 +31,7 @@ Unsupported cleaning and Windows-only settings remain disabled. The production G
 ```bash
 python3 scripts/verify_project.py
 python3 -m unittest discover -s tests -v
-for f in scripts/*.sh; do bash -n "$f"; done
+for f in scripts/*.sh scripts/ci/*.sh; do bash -n "$f"; done
 ```
 
 ## Build and try the GUI without installation
@@ -54,7 +54,7 @@ The launcher above uses the current Wayland session and runs as the current user
 
 `bash scripts/install-arch.sh` installs a privileged helper under a system path and is **not** part of this unprivileged trial. Do not use it as a prerequisite for testing the GUI; privileged actions, Polkit, Swap/ZRAM changes, and real cache cleaning require a separate security review and authorization.
 
-The Windows comparison baseline is Mem Reduct v3.5.2. The current CI records 184/184 control geometry checks and separate text/raster comparisons, but full-page pixel identity is still NOT PASS. A real Hyprland run must be reported separately from Xvfb/Weston results.
+The Windows comparison baseline is Mem Reduct v3.5.2. Current CI records 184/184 settings-control geometry checks and separate text/raster comparisons, but full-page pixel identity is still NOT PASS. A local main-window visual pair was captured; its Linux capture is the GTK client surface, while the Windows reference includes native frame/titlebar, so it is not a pixel-aligned pair or a 1:1 result. A real Hyprland run must be reported separately from Xvfb/Weston results.
 
 ## Public GitHub repository
 
