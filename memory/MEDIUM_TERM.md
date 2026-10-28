@@ -6,9 +6,9 @@
 
 **P1 / P2A 基础已集成。** PR #2、#4、#5 均已合入 `main`; 当前 main 为 `b78785af233dbae7a80085fd7a9f45f30ae42711`。PR #4 的 12 项独立 Canvas 探针和隔离 Xvfb/Weston CI 已在 main。
 
-**P2B 生产窗口仍在 Draft PR #6。** Head `911a3d0b99b05f15bd0109dca475b0b5174e7888`，原 base 分支为 PR #5 规格分支。与当前 main 的本地集成模拟发现四个文档冲突；只在独立 worktree 准备解决稿，尚无 main-base GitHub CI。最终旧-base PR GUI/build 检查分别为 `40208944364` / `40208944120`，均成功。
+**P2B 生产窗口仍在 Draft PR #6，尚未合入 main。** 已快进推送两父集成 Commit `3b73868287c9ed13d3e8fc25f3b9d6fbe06cdc5a`（Tree `22022b50f6233c2e729b02cf678b426e12af0d21`；父提交按序为原 #6 `911a3d0…`、当前 main `b78785a…`）。PR #6 保留旧 P2A Base `docs/issue-3-p2a-ui-spec`，GitHub 对旧 Base 报告 mergeable=true。集成 Head 的 GUI Push/PR `40627628308` / `40627633632` 与 Build Push/PR `40627628264` / `40627633638` 均 SUCCESS；新的 **main-base PR CI NOT RUN**。此文档后续修正 HEAD 的 CI 需单独核验。
 
-**P2C 仍在 Draft PR #7。** Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`，base 为 PR #6；P2C-4R1 几何 184/184 PASS、最大分量偏差 1.5 px，但整页 1:1 为 NOT PASS，真实 Wayland/Hyprland 输入为 NOT RUN，托盘及清理确认/结果仍受限。
+**P2C 仍在 Draft PR #7。** Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`，Base 分支为 PR #6，因 #6 HEAD 前移 GitHub 当前报 mergeable=false/dirty；其 HEAD 未修改。P2C-4R1 几何 184/184 PASS、最大分量偏差 1.5 px，但整页 1:1 NOT PASS，真实 Wayland/Hyprland 输入 NOT RUN，托盘及清理确认/结果仍受限。
 
 ## 已具备的代码
 
@@ -18,8 +18,8 @@
 
 ## 当前阻塞与边界
 
-- PR #6 相对当前 main 的模拟合并存在四个内容冲突，需审查冲突解决稿；不得把本地结果描述为新的 GitHub CI。
-- PR #7 仍以 PR #6 为 base；PR #6 集成后须重新核对 PR #7 的二点/三点差异、合并模拟、冲突、Review 与 CI。
+- PR #6 的四个文档冲突已在推送的双亲集成提交中解决，净差异为 16 文件、零删除；PR #4 独立探针保留。已核实旧 Base 上新 HEAD 的 GUI/Build CI SUCCESS，但 **改 Base 到 main 及其 PR CI 尚未执行**。两条新增记忆现状审查待本次修正后复核。
+- PR #7 的 Base 分支指向已前移的 PR #6，当前 mergeable=false/dirty。新 #6 与旧 #7 HEAD 的两点树差异为 46 路径（其中 10 个表观删除，含 PR #4 探针/工作流），三点 PR 比较仍为 30 个 P2C 路径。不能采用 #7 旧 Tree 覆盖当前基线；未来必须独立完成三方合并和 CI，并须另行授权。
 - 12 项简体中文来源差异仍为 `DECISION_REQUIRED`；不得通过规格合并批准具体译文。
 - 未完成的内存清理、自动清理、Polkit、Swap/ZRAM、root GUI 与活动 Hyprland 操作继续禁止。
 
@@ -39,7 +39,7 @@
 ## 决策与下一步
 
 - 已有 ADR-0001 至 ADR-0003 继续有效；ADR-0004 持久化设计仍为 PROPOSED。
-- 下一步先由 ChatGPT 复审 PR #6 的本地集成冲突稿、CI 草稿与下游影响；PR #6 的提交/推送、改 Base、标记 Ready 和合并均需后续分阶段授权。不得自动推进至 PR #7 或 P3A 生产实现。
+- PR #6 分支集成与旧 Base CI 已获独立复审；本次仅处理两份记忆文件的真实当前状态，并验证文档提交后的 CI。**将 PR #6 Base 改为 main、标记 Ready、合并，及处理 PR #7 均须后续分别明确授权**；不得自动推进至 PR #7 或 P3A 生产实现。
 
 ## 历史快照：PR #6 P2B 阶段记忆（原记录日期 2026-10-25）
 

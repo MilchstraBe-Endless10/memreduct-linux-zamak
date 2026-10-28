@@ -1,6 +1,17 @@
 # 短期记忆 / Latest Handoff
 
-## 当前集成状态（2026-10-28；本地 PR #6 集成审计）
+## 当前真实状态（2026-10-28；PR #6 分支集成已推送，尚未改 Base）
+
+- `main` 为 `b78785af233dbae7a80085fd7a9f45f30ae42711`，PR #2、#4、#5 已合并；PR #6 的生产窗口仍未合入 `main`。
+- PR #6 仍 OPEN / Draft，Base 仍为 `docs/issue-3-p2a-ui-spec`（该分支 HEAD `a19474ca3f79de65a18e76f6852ab503ce11b173`）。PR #6 已普通快进推送双亲集成 Merge Commit `3b73868287c9ed13d3e8fc25f3b9d6fbe06cdc5a`，Tree `22022b50f6233c2e729b02cf678b426e12af0d21`；父提交按序为原 PR #6 HEAD `911a3d0b99b05f15bd0109dca475b0b5174e7888`、当时 `main` `b78785af233dbae7a80085fd7a9f45f30ae42711`。GitHub 报告 `mergeable=true` **仅针对当前旧 Base**，不能据此视为新 main-base 验收。
+- 该集成 Head 的 [GUI Push 40627628308](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40627628308)、[GUI PR 40627633632](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40627633632)、[Build Push 40627628264](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40627628264)、[Build PR 40627633638](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40627633638) 全部 SUCCESS；Xvfb/XTEST、Weston Headless 各两条 GUI lane 通过，APT update/install 诊断 PASS，主项目 Zamak 13/13。PR GUI 事件 Base 仍为旧 P2A 分支；**PR #6 新 main-base CI NOT RUN**。本次文档状态修正的后续 HEAD 与 CI 应另以 GitHub 远端结果核验。
+- PR #6 生产 UI 的三条原始缺陷 Review 已有对应证据并解决；2026-10-28 新增的两条记忆状态审查需要在本状态修正提交推送后复核。本次状态修正不改生产 GUI、清理权限或测试逻辑。
+- PR #7 OPEN / Draft，HEAD `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`，Base 分支指向 PR #6，但旧 HEAD 尚未继承本轮集成历史，GitHub 当前 `mergeable=false/dirty`。新 #6 与旧 #7 两点 Tree 比较有 46 个路径差异（含 10 个表观删除），三点 PR 比较为 30 个 P2C 变更路径；这些不是未来真实三方合并的删除结论。#7 未修改，后续必须独立冲突解决，保护 PR #4 探针与 PR #6 生产 GUI CI。
+- P2C-4R1 几何 184/184 PASS、最大分量偏差 1.5 px，**整页 Windows/GTK 1:1 未通过、真实 Wayland/Hyprland 输入 NOT RUN**；托盘、清理确认/结果及特权清理未验收。12 项简中原版来源差异仍为 `DECISION_REQUIRED`；未经另行授权不得改 Base、标记 Ready、合并或修改 PR #7。
+
+## 历史快照（2026-10-28；PR #6 本地集成审计、推送前）
+
+> 以下记录属于当时仅完成本地冲突模拟、尚未推送的阶段；旧 HEAD、旧合并状态与旧 Review 线程信息不代表当前 GitHub 状态，当前状态以上方记录为准。
 
 - `main` 当前为 `b78785af233dbae7a80085fd7a9f45f30ae42711`；PR #2、#4、#5 已合并。PR #5 的原分支 Head 为 `a19474ca3f79de65a18e76f6852ab503ce11b173`，其集成 Merge Commit 已进入 main。
 - PR #6 OPEN / Draft，Head `911a3d0b99b05f15bd0109dca475b0b5174e7888`，base 分支 `docs/issue-3-p2a-ui-spec`；远端该分支 Head 为 `a19474ca3f79de65a18e76f6852ab503ce11b173`。GitHub PR 状态报告 `mergeable=false / DIRTY`。本地 merge-tree 与合并模拟在 `docs/UI_FIDELITY_TEST_PLAN.md`、`memory/MEDIUM_TERM.md`、`memory/SHORT_TERM.md`、`memory/SESSION_LOG.md` 发现冲突；只在独立 worktree 形成解决草稿。
