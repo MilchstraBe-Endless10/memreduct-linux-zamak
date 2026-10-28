@@ -1,14 +1,50 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-10-29 — 用户反馈后修复共享状态重绘并复核第三方路线
+
+- **Git：**隔离分支 `codex/p2c-main-integration-r1`。本地代码提交 `640fb5df044475df827308388c3da5be25d4ffad`、Tree `f30cac1ce113016dfef58eca46417549253d2be2`、父 `f8bd6cc876b3cbb4623d6dbe6f5d4b94a348c05d`。远端 main `83dbf58fb039645f08e08bc89170adcdaa7997be`、PR #7 `019a7f1e0755570c2c3a0b1202a6c764540f14e2` 未变；PR #7 仍 OPEN / Draft / Base main，未推送。
+- **实际修复：**主窗口语言或主题菜单更新后，现会通知已打开的设置 Canvas 重绘；Zamak 新增状态选择回归。fake `pkexec` 测试覆盖异步桥退出码 1、3、126，确认不重复启动；没有真实 Polkit 或内核写入。
+- **Winelib 实测：**已有 R6 隔离 General 页 POC 以官方 `resource.rc` 和 Win32 控件树编译。背景/焦点状态对齐后，558×335 changed-pixel 英文 13.2531%、简中 12.2725%，背景样本 0/2500 不同；GroupBox 仍 20.6%–21.7%，按钮约 37.3%–37.6%。英文垂直字体度量与 Windows GDI 同为 11/2 px，但 CJK 使用 Noto Sans CJK SC (13/3 px) 且字形/栅格仍不同。Wine Common Controls v6 manifest 缺 assembly 的 warning 未解决。该 POC 不是完整原版或生产迁移，状态不能与 GTK 截图直接排名。
+- **界面问题：**设置页同源文本仅 25/120 宽高差≤2 px、95/120 超差；全页 1:1 仍 NOT PASS。设置页禁用灰度源自未实现功能，不能假装启用；主窗旧 20.9436% 比较因动态值、边界和安全状态不匹配，不是验收率。详见 `docs/ZAMAK_UI_FEASIBILITY.md`。
+- **验证：**治理 34 项、C/Python 12/12、Shell 全脚本语法、Zamak 0.2.0 44/44、生产 GUI/helper build、Canvas 探针 12/12、`git diff --check` 均 PASS。Xvfb/Openbox/Weston/Wine/winegcc/wrc 未安装，因此这轮没有隔离 GUI/Winelib 重跑；没有新 GitHub CI。真实 Hyprland 输入、内存清理、Polkit、Swap/ZRAM 和 root GUI均未执行。
+- **证据：**R6 并排/Overlay/Difference/Heatmap、比较 CSV、字体输出与 PNG SHA 保存在用户 AI 产出数据目录的 `P2C-UI-Core-Fidelity-R6-20261029` artifact；R7 本轮生产构建与探针日志保存在同目录 `P2C-UI-Core-Fidelity-R7-20261029`。原始证据未覆盖。
+
+## 历史快照（2026-10-29，R6 Winelib 小样与重绘修复之前）— UI 路线与内存核心并行收口
+
+- **远端边界：**当前隔离候选分支 `codex/p2c-main-integration-r1`。PR #7 仍 OPEN / Draft、Base `main`、远端 HEAD `019a7f1e0755570c2c3a0b1202a6c764540f14e2`；`main@83dbf58fb039645f08e08bc89170adcdaa7997be` 未改。本地代码提交 `f8bd6cc876b3cbb4623d6dbe6f5d4b94a348c05d`，Tree `eaa616a12bc17761881fbf86d5cc9a209a96a670`，父 `cd6703d670d82f9712e83012dde0325efec5e615`；文档/记忆收口在后续本地提交，未推送。
+- **实修与并行：**生产 GUI 已在之前本地提交修复平铺窗口可拉伸及首屏焦点框；当前代码另行校验 `/proc/meminfo` 必需/可选字段必须使用 kB，并把 `Cached` 与 `SReclaimable` 分开。helper/异步桥只接受固定 `pagecache` 动作与固定生产路径；拒绝 `metadata/all`、符号链接与非普通测试目标；EINTR 仅重试一次，短写/close 错误返回不确定且不自动重试。UI 不调用 helper；未做 Polkit、真实内核写入、Swap/ZRAM 或 root GUI。
+- **UI 事实：**P2C 几何 184/184、最大分量 1.5 px；文本 25/120 宽高差≤2 px、95/120 超过；有效深色配对 changed-pixel 5.4004%–12.6625%；全页 1:1 仍 NOT PASS；12 项简中来源差异维持 `DECISION_REQUIRED`。GTK 主窗客户区 337×369、设置客户区 558×335；历史主窗 20.9436% 图像差异是数据/状态/边界不一致的定位样本，不是验收率。R6 有界 Wayland 启动截图退出 0；本轮不重新打开用户窗口或注入输入。
+- **第三方路线结论：**Qt 6.12 `QProxyStyle` 单页 POC 与 Wine Tahoma 字体测试没有降低整页差异；当前 GTK/Pango/Cairo 也没有 Win32 GDI 字体/控件。下一步以官方 v3.5.2 `.rc`/控件树做 Winelib 单页 POC。Wine 官方 Winelib 可用 `winegcc`/`wrc` 编译 Win32 源码；Wine 9.22 起 Wayland driver 进入默认配置，11.15 启动回归已在 11.16 标记修复，Arch 仓库当前 Wine 为 11.20-1。当前本机未安装 `wine`/`winegcc`/`wrc`、Xvfb、Weston；Winelib 与本机隔离 GUI 交互仍为 NOT RUN。Wine/Winelib 不等于 Windows GDI，不承诺像素一致。
+- **本轮验证：**`scripts/ci/build-production-gui.sh` PASS：治理 34、C/Python 11/11、Shell 4 项、Zamak 0.2.0 check、43/43 tests、生产 GUI/helper build；`scripts/ci/build-canvas-probe.sh` 12/12；`scripts/build-arch.sh` check/test/native build PASS（未运行安装器）；全 Shell 语法与 `git diff --check origin/main...HEAD`、工作树/暂存区检查 PASS。没有本轮 GitHub CI；远端 PR #7 无变化。
+- **证据限制：**主窗/设置页 PNG SHA-256 分别为 `afe45efcfd72317bc99880e7c6602ab71f6b8c7aebb5e0b56b3259df1875c573` / `ee33df415eacd6e69d448cc269b44be7fd17092ee436bab616e0d494798e1551`。当前会话环境报告 `GDK_SCALE=2`，但 GTK factor 1 及逻辑尺寸不变；未取得 compositor 装饰框物理尺寸，不能据此断言缩放为“大窗口”原因。完整上游路线资料见 `docs/ZAMAK_UI_FEASIBILITY.md`；独立报告和截图保存在用户 AI 产出目录。
+- **本次最终复跑：**生产 GUI 检查治理 34、C/Python 11/11、Zamak 43/43、GUI/helper build PASS；独立 Canvas 探针 12/12；Arch check/test/native build PASS；全 Shell 语法和 diff check PASS。没有新的 GitHub CI、Winelib POC 或本机 GUI 输入结果；PR #7/main 未修改。
+
+## 2026-10-28 P2C toolkit/core follow-up（本地未推送）
+
+- 用户指出不应把 1:1 目标包装成已达成，并要求同时推进界面路线和内存核心。复核确认：设置页 `184/184` 只测控件矩形；当前 General 页配对 PNG 的 Qt POC 整页 English/简中差异为 `12.7155%/11.9740%`，GTK 为 `12.0184%/10.6617%`，截图状态不同，只用于定位，不作为工具包公平排名。Qt General group ROI 有局部改善，但导航/按钮没有；Qt Reset/Close ROI 差异约 55%，目前没有生产迁移证据。
+- 当前主窗候选请求 GTK logical `337×369`、Canvas `313×345`；固定 Windows 原版主窗图为 `352×407`，截图/客户区边界并非相同类型，不能据此声称完全同尺寸。早期 R1 探针曾被平铺为 `941×1030`，已作废；R6 有界 Wayland 启动记录 scale factor 1，但未测 compositor 外框或物理显示比例，也未操作 Hyprland。
+- 内存核心安全收敛：helper 与异步桥现只接收 `pagecache`（固定写值 `1`），拒绝 `metadata/all`；测试构建才允许临时 regular-file 目标；`EINTR` 一次重试，短写/close 错误返回不确定且不自动重试。GUI 未连接 helper；ADR-0005 仍为 PROPOSED；未运行真实内核写入。
+- 修正字体统计：P2C 的 120 条同源设置文本为 25 项宽高差≤2 px、95 项>2 px。P2C 设置页 Pango 度量是 10/3 px；P2B 主窗口记录为 11/3 px，两者来自不同 Canvas 采集。历史“9/120”是误记，已按 `docs/P2C-3_VISUAL_FIDELITY_REPORT.md` 更正。
+- 最终本机回归：Zamak `0.2.0` check/test/build PASS，测试 `43/43`；生产 GUI/helper build PASS；独立 Canvas probe `12/12` PASS；治理 34 项、C/Python 安全 `11/11`、Shell `12/12`、Arch build、候选相对 `origin/main` diff check 均 PASS。精确日志、PNG/Qt/Wine 字体 POC 与构建 SHA 在用户输出目录 `.../P2C-UI-Core-Fidelity-R4-20261028/`。
+- Qt 6.12 可用；GTK3 为 3.24.52。Wine/winegcc、Xvfb/Openbox、Weston 本机缺失。未安装包、启动活动桌面 GUI、查询 Hyprland IPC 或注入输入；因此 real Hyprland interaction NOT RUN。PR #7/main 未修改。
+
+## 2026-10-28 P2C 工具路线初次复核快照（helper 单动作收紧前；本地，未推送）
+
+- **Git：**安全工作树 `codex/p2c-main-integration-r1`，开始 HEAD `cd6703d670d82f9712e83012dde0325efec5e615`；远端 PR #7 OPEN / Draft、Base `main@83dbf58fb039645f08e08bc89170adcdaa7997be`、Head `019a7f1e0755570c2c3a0b1202a6c764540f14e2`，本轮未推送/改 Base/Ready/合并。另一 `p2b-r6-integration-audit` 工作树有预暂存内容，本轮未触碰。
+- **UI 调查：**正式 3.5.2 逻辑字体 `MS Shell Dlg 2` 在核验 Windows 文档中映射 Tahoma；P2C 设置页 Linux Pango 为 Sans 8 pt、度量 10/3 px，P2B 主窗口另记录 11/3 px；Windows GDI 为 8.25 pt、11/2 px。120 条同源设置文本中 25 项宽高差≤2 px、95 项仍不同；12 项中文来源差异依旧 `DECISION_REQUIRED`。历史“9/120”已更正。Liberation Sans 候选 English 64/66 改善，但 CJK 12 改善、12 退化，未采用。Qt 6.12 `QWindowsStyle` 离屏探针匹配 Liberation Sans、度量 10/2 px，控件图仍不接近原版；默认切换控件库不能得到 1:1。新增 `docs/ZAMAK_UI_FEASIBILITY.md` 的第三方路线、字体证据及单页 Qt `QProxyStyle`/`QCommonStyle` POC 建议。
+- **差异诚实分级：**P2C 设置页 184/184 几何（最大分量 1.5 px）、10/10 导航、102/102 树线、36/36 栅格仍 PASS；有效暗色 changed-pixel 5.4004%–12.6625%，整页 1:1 NOT PASS。主窗旧 20.943604% 是数据/禁用状态/渲染未配对样本，不能作为等价验收率。真实完整外框和 Hyprland 键鼠交互当前 NOT RUN。
+- **内存核心并行进展：**新增 PROPOSED `docs/ADR/0005-manual-page-cache-reclaim.md`；helper 固定生产路径 `/proc/sys/vm/drop_caches`，仅测试构建可写临时目标，拒绝 symlink/非 regular 文件，`EINTR` 最多重试一次，短写/close 错误返回“不确定”且不自动重试。7 项 C/Python 测试用临时文件/注入 write fault，无真实内核写入；UI 仍未连接 helper，清理仍禁用。
+- **本轮最新构建：**生产脚本 PASS：治理 34 项、C/Python 安全 11/11、Zamak 0.2.0 check、主项目 43/43、production GUI/helper build；Canvas 独立探针 check/test/build 12/12 PASS。另有全仓 Shell 12/12 与 Arch build PASS。Artifacts 写入外部 `.../P2C-UI-Core-Fidelity-R4-20261028/final-build/` 和 `probe-final/`，没有覆盖原 `artifacts/`。Xvfb/Openbox/Weston/Wine 未安装，因此本机隔离交互 GUI/Winelib 未运行；活动 Hyprland 未触碰。当前文档修正后的最终回归已完成，远端 PR 与 main 未修改。
+
 ## 本地 P2B-R6 界面复验（2026-10-28；未推送）
 
 - **Git 基线：** 当前安全工作树 `codex/p2c-main-integration-r1`。生产/测试代码已本地提交 `5101be104500e61a41d102747216c5ff407b7595`，Tree `36b5f2428a7663842d124b668101fc2dc17d5ac9`，父提交 `16eae08d95cd3f8ca19ccad205ae1cce3bcc4901`；提交只包含 8 个源码、测试与 GUI CI 文件。README、P2B 报告、交互矩阵及短/中期记忆已同步更新并本地提交，未推送。远端 PR #7 仍 `019a7f1e0755570c2c3a0b1202a6c764540f14e2`、`main` 仍 `83dbf58fb039645f08e08bc89170adcdaa7997be`；没有改 Base、Ready 或合并。
 - **复现与修复：** 同尺寸官方 Windows/Linux 客户区对照发现 Linux 首屏错误地在 `File` 周围绘制键盘焦点框。原因是 `src/main.zm` 初始逻辑焦点为 index 0；现改为无焦点 `-1`，Tab 首次转到 File，方向键/Enter 从无焦点状态仍可进入 File，并新增焦点初始化/循环回归测试。旧截图保留，未覆盖。
-- **本地回归：** 最终 `scripts/ci/build-production-gui.sh` PASS（治理 33/33、C/Python 安全 3/3、Shell 4/4、Zamak 0.2.0 check、测试 `41/41`、GTK GUI 与 C helper build）；独立 Canvas 探针 check/build PASS、`12/12` PASS；最终 `git diff --check` PASS。最终构建记录及二进制位于 `/mnt/Server_Data_Center/Personal_Files(个人文件)/Cosmos_File/AI产出数据文件/报告与研究/Mem Reduct Linux/P2B-Frontend-Cal-20261028-R6/build-r5/`，生产二进制 SHA-256 `50f17c01c5e4764b4febcafb1cb8e69ebf781208ef1e3d3dcbd88ede451af9a5`；`src/main.zm` SHA-256 `81c910ff5343ed5d3bdb7e2aeb028098fef61f8e0e4045c692cd72627f81799b`。独立探针最终产物与 12 项日志在该目录下的 `probe-build-r5/`。
+- **本地回归：** 最终 `scripts/ci/build-production-gui.sh` PASS（治理 33/33、C/Python 安全 3/3、Shell 4/4、Zamak 0.2.0 check、测试 `41/41`、GTK GUI 与 C helper build）；独立 Canvas 探针 check/build PASS、`12/12` PASS；最终 `git diff --check` PASS。最终构建记录及二进制位于 AI 产出目录的 `P2B-Frontend-Cal-20261028-R6/build-r5/`，生产二进制 SHA-256 `50f17c01c5e4764b4febcafb1cb8e69ebf781208ef1e3d3dcbd88ede451af9a5`；`src/main.zm` SHA-256 `81c910ff5343ed5d3bdb7e2aeb028098fef61f8e0e4045c692cd72627f81799b`。独立探针最终产物与 12 项日志在该目录下的 `probe-build-r5/`。
 - **真实 Wayland 有界截图：** 普通用户以 `GDK_BACKEND=wayland` 启动生产 GUI，测试计时器 6 秒后退出码 0；GTK 没有 `WARNING/CRITICAL`，报告 scale factor 1，主窗分配/客户端为 `337×369`、Canvas `325×357`。完成窗口是应用本身的 337×369 客户区；GTK 该次没有给出可用于核实 compositor 可见标题栏尺寸的独立数据。因此证据没有证明客户区“很大”，也没有测完整屏幕装饰尺寸。没有发送键鼠输入。
 - **1:1 对照：** 官方 Windows v3.5.2 client crop 与 Linux 截图都是 `337×369`，English/light/第三组选中；Windows crop SHA-256 `d61e4c22d72c7fe647a5ed347873370140db1fd36256524ce600b0c95bd37857`，Linux 修正后 SHA-256 `8536d5de806916afeb11310b65572eb363fea11aa712f287804d59200e5fa9fc`。原始 exact RGB 参考差异为 `26,044/124,353 = 20.943604%`。该 pair 仍非语义像素验收：Linux 实时 `/proc/meminfo` 值不同、System working set 不支持故显示 em dash、清理按钮必须禁用，且 Win32/GDI 与 GTK/Pango 字体栅格不同。全页 1:1 `NOT PASS`，P2C 设置页 `184/184` 几何不代表主窗像素通过。
 - **GUI 运行边界：** 本机无 `Xvfb`、`xvfb-run`、Openbox、Weston，未安装系统包；因此本地 XTEST、五页 GUI 自动切换和 Weston 生命周期未运行。旧 PR #7 HEAD `019a7f1…` 的 GitHub 8/8 PASS 不验证此未推送候选。真实 Wayland 鼠标/键盘、Alt+F4/WM_CLOSE、设置窗五页实机交互继续 `NOT RUN`。没有真实清理、Polkit、Swap/ZRAM、root GUI 或活动桌面输入。
-- **证据：** R6 主窗截图、Windows/Linux 并排图、Overlay、Difference、Heatmap、像素指标 JSON、运行日志和 SHA 文件位于 `/mnt/Server_Data_Center/Personal_Files(个人文件)/Cosmos_File/AI产出数据文件/报告与研究/Mem Reduct Linux/P2B-Frontend-Cal-20261028-R6/visual/main-r6-final/`。含设计差异与迭代历史的 `design-qa.md` 位于 `/mnt/Server_Data_Center/Personal_Files(个人文件)/Cosmos_File/AI产出数据文件/报告与研究/Mem Reduct Linux/P2B-Frontend-Cal-20261028-R6/`。
+- **证据：** R6 主窗截图、Windows/Linux 并排图、Overlay、Difference、Heatmap、像素指标 JSON、运行日志和 SHA 文件位于 AI 产出目录的 `P2B-Frontend-Cal-20261028-R6/visual/main-r6-final/`。含设计差异与迭代历史的 `design-qa.md` 位于同一项目目录。
 
 ## 本地 P2B-R2/R3 复验（2026-10-28；未推送）
 
@@ -17,7 +53,7 @@
 - **真实 Wayland 启动和截图：** 最终二进制以普通用户、`GDK_BACKEND=wayland` 运行约 5 秒，测试计时器使应用正常退出码 0。主窗与 General 设置窗均被捕获，日志无 GTK warning/critical；这是实际 GTK/Wayland 启动和绘制证据，不是键鼠交互或 WM close 验收。主窗 client `337×369`、Canvas `325×357`；设置窗 client `558×335`；GTK `scale_factor=1`。
 - **尺寸调查：** 外层环境有 `GDK_SCALE=2`，但 GTK 的 widget scale factor 是 1。分别以 `GDK_SCALE=1` 与 `GDK_SCALE=2` 启动得到同一 factor 和相同 client 尺寸，故 `GDK_SCALE` 没有解释本轮所说“窗口太大”；撤回此前“尺寸翻倍”的推断。GTK 应用捕获不含 compositor 外框，所以完整可见外框仍未测量；未擅自缩小 DLU 派生尺寸，也未调用 Hyprland IPC 或抓取整桌面。
 - **本地改动：** 保留此前的紧凑固定窗口、Canvas 内缩修正、分组 disclosure/collapse、分隔线、Usage 百分比、隐藏未映射设置窗捕获保护；修正菜单快捷键宽度按 8 pt 绘制也按 8 pt 测量。最终源码哈希见输出目录 `source-and-binary-sha256.txt`。菜单弹出像素和 collapse 真实点击未在本机 GUI 自动化，本地 Xvfb/Openbox 不存在。
-- **证据归档：** 原始报告、PNG、日志、build manifest 位于 `/mnt/Server_Data_Center/Personal_Files(个人文件)/Cosmos_File/AI产出数据文件/报告与研究/Mem Reduct Linux/P2B-Real-Wayland-20261028-R4/`。最终 main PNG SHA-256 `68c9f133bc73a38dabd485a3bfb299d45f9cf21e281934e6264e6e55d910241f`，General PNG `ee33df415eacd6e69d448cc269b44be7fd17092ee436bab616e0d494798e1551`，Wayland log `aad95dd5179e0871e91f8079fe658077bd5f1d4bc9ebd330d5f556fca4a2a570`。Windows HWND 与 Linux client 的自然尺寸并排图仅供观察，不是像素对齐差异图。Windows 3.5.2 全页 1:1 继续 NOT PASS；184/184、36/36 等既有 P2C 设置指标不为主窗背书。真实 Wayland 键鼠交互、五页实机切换、HiDPI 和完整外框比较仍 NOT RUN。
+- **证据归档：** 原始报告、PNG、日志、build manifest 位于 AI 产出目录的 `P2B-Real-Wayland-20261028-R4/`。最终 main PNG SHA-256 `68c9f133bc73a38dabd485a3bfb299d45f9cf21e281934e6264e6e55d910241f`，General PNG `ee33df415eacd6e69d448cc269b44be7fd17092ee436bab616e0d494798e1551`，Wayland log `aad95dd5179e0871e91f8079fe658077bd5f1d4bc9ebd330d5f556fca4a2a570`。Windows HWND 与 Linux client 的自然尺寸并排图仅供观察，不是像素对齐差异图。Windows 3.5.2 全页 1:1 继续 NOT PASS；184/184、36/36 等既有 P2C 设置指标不为主窗背书。真实 Wayland 键鼠交互、五页实机切换、HiDPI 和完整外框比较仍 NOT RUN。
 
 ## 当前真实状态（2026-10-28；PR #7 main-base CI 已验收）
 

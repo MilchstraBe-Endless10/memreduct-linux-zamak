@@ -1,5 +1,22 @@
 # 中期记忆 / Roadmap State
-更新时间：2026-10-28；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+更新时间：2026-10-29；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+
+## 2026-10-29 当前补充：Winelib 实测、前端修复与内存核心并行
+
+- **Git 状态：**隔离分支 `codex/p2c-main-integration-r1`；本地代码提交 `640fb5df044475df827308388c3da5be25d4ffad`、Tree `f30cac1ce113016dfef58eca46417549253d2be2`、父 `f8bd6cc876b3cbb4623d6dbe6f5d4b94a348c05d`。文档/记忆/README/架构/安全和治理修改仍有未提交项；远端 main `83dbf58fb039645f08e08bc89170adcdaa7997be`、PR #7 OPEN/Draft、Base main、Head `019a7f1e0755570c2c3a0b1202a6c764540f14e2` 未改，没有新 GitHub CI。
+- **前端缺口：**设置页 `184/184` 矩形、最大分量 `1.5 px` 只验证位置外框；同源文本 `95/120` 仍超过 2 px。有效配对浅色页 changed-pixel `5.0741%–14.8853%`，深色 `5.4004%–12.6625%`，整页 1:1 NOT PASS。主窗 `337×369` 是 GTK 客户区候选；Hyprland 装饰外框尚未测量，Windows DLU 换算仍 provisional。简中 12 项资源差异保持 `DECISION_REQUIRED`。
+- **第三方前端结论：**R6 已完成固定上游资源的 Winelib General 页小样，复用了 Win32 `.rc`/标准控件树；558×335 changed-pixel 为 English `13.2531%`、简中 `12.2725%`，GroupBox 约 `20.6%–21.7%`、按钮约 `37.3%–37.6%` 仍不同。英文 ascent/descent `11/2 px` 与 Windows GDI 垂直度量相同，但 CJK fallback、字形和控件栅格不同。因此 Winelib 是最值得继续做的原资源前端路线，不是已经实现 1:1 的生产迁移。Qt 6 Widgets + `QProxyStyle` 可作原生前端备选，但现有 POC 未通过整页像素指标；GTK CSS/Pango 不能替代 GDI。Windows 专有字体不得打包。
+- **实际前端修复：**本地代码提交修复主窗切换主题/语言后已打开设置窗口不重绘的问题，并新增 Zamak 状态回归。内存核心独立并行：严格 `/proc/meminfo` 解析、Cached 与 SReclaimable 分离、固定 pagecache helper 与故障注入均在父提交；GUI 不调用 helper，真实清理/Polkit/Swap-ZRAM/root GUI/自动模式仍禁用，ADR-0005 为 PROPOSED。
+- **本机验证：**治理 34 项、C/Python 12/12、Zamak 44/44、生产 GUI/helper 构建、Canvas 探针 12/12、Shell 语法及 `git diff --check` PASS。当前未安装 Wine/winegcc/wrc、Xvfb、Weston，因此本机没有重跑隔离 GUI/Winelib；活动 Hyprland 未操作。本地候选没有 GitHub Actions 结果。
+- **下一步：**在具备隔离 Wine/Winelib 与真实双语 Windows 基线的环境中，将上游五页、菜单、交互状态逐页编译/捕获；优先定位 GroupBox、按钮、字体 fallback 与 COMCTL v6。生产迁移需经过同页面、同文案、同状态、同 DPI 的五页复验和安全接口审查；内存核心可继续由独立 C ABI/固定枚举边界推进，无需等待前端定型。
+
+## 2026-10-28 当前补充：第三方 UI 路线与内存核心并行
+
+- PR #7 远端仍 OPEN / Draft、Base `main`、HEAD `019a7f1e0755570c2c3a0b1202a6c764540f14e2`；当前调查候选在本地 `codex/p2c-main-integration-r1`，未推送。`main` 和 PR 未修改。
+- 不把几何通过称作 1:1：设置页 `184/184` 最大 `1.5 px` 只说明控件矩形；P2C 有效暗色 changed-pixel 仍 `5.4004%–12.6625%`。120 条同源设置文本中 25 条宽高差≤2 px、95 条>2 px；12 个简中来源差异待产品决策。主窗的 20.943604% 差异样本有状态/数据错配，非验收数据。
+- Qt 6.12 离屏 `QWindowsStyle` 与 `QProxyStyle` 实测解析为 Liberation Sans，字体度量仍不同于 GDI；当前配对 POC 整页 changed-pixel English/简中为 `12.7155%/11.9740%`，GTK 对应图为 `12.0184%/10.6617%`，且控件状态不完全相同。ROI 统计显示 Qt 的 group box 局部有收益、导航与按钮没有；不足以批准迁移。下一步若继续 Qt，应完成相同状态、五页和菜单的独立 POC；若 1:1 是硬门槛，另行做 Wine/Winelib 单页可行性试验，不直接替换生产。
+- 内存核心与 UI 同时推进：ADR-0005 保持 PROPOSED，helper 仅接受固定 `pagecache`，拒绝 metadata/all，固定生产目标并保留临时文件故障注入；尚无 GUI 接线、Polkit 验收或真实内核写入，不能称为可清理内存的产品能力。
+- 当前本机生产构建及主项目 43/43、安全 11/11、Canvas 探针 12/12通过；治理 34 项、Shell 12/12 与 Arch build 通过。Xvfb/Openbox/Weston/Wine 缺失，本机隔离交互与 Winelib NOT RUN；用户活动 Hyprland 未连接/操作。所有现有 P2C CI 与 PR 远端证据仍只适用于已发布 PR HEAD。
 
 ## 当前阶段（2026-10-28；PR #7 main-base CI 已验收）
 

@@ -223,3 +223,36 @@
 - PR #4 的 12 项 Canvas 探针源码、CI 与来源文件均保留；probe build/check/test 12/12 通过，source SHA-256 为 `d3487e4c9a51c2a0cea6ac25f1e58e19f2d435028cef872e3827d145b96f05a3`。PR #6 生产 GUI 路径保留；`p2b-production-xvfb.sh` 只有基于 12 px 内容内缩校准的鼠标坐标变化；`p2b-production-wayland.sh` 保留主窗生命周期并增加私有 Weston 设置窗表面/退出验证，不声称 Wayland 输入；`build-production-gui.sh` 增加设置 UI 与 GTK bridge 源文件 SHA；失败采样后的清空/重绘/不可用值断言仍存在。
 - 本地 PASS：治理 33 项、Python/C 安全 3/3、Shell 语法、Zamak 0.2.0 check/test 30/30/build、Arch 原生构建、四个 workflow YAML 解析、candidate 对 main 与原 PR7 head 的 `git diff --check`。本机缺少 Xvfb、Weston、actionlint，故真实隔离 XTEST/Weston 与 actionlint 为 NOT RUN。
 - 候选未推送；无新的精确候选 HEAD GitHub Actions。未改 PR #7 Base/Ready/merge，未更改 main/#6 远端；未执行特权操作或活动 Hyprland 输入。
+
+## 2026-10-28 — 第三方界面路线复核与内存 helper 测试硬化
+
+- 起始本地安全工作树 `codex/p2c-main-integration-r1@cd6703d670d82f9712e83012dde0325efec5e615`。只读核验 PR #7 仍 OPEN / Draft、Base main、远端 Head `019a7f1e0755570c2c3a0b1202a6c764540f14e2`；远端 main `83dbf58fb039645f08e08bc89170adcdaa7997be`。本轮未推送、未改分支 Base/main；旧 P2B 审计工作树未触碰。
+- 查阅 Microsoft、Qt、GTK、wxWidgets、Wine/Winelib 与 Linux kernel 官方资料，并复核现有 GDI/Pango/截图证据。Qt 6.12 `QWindowsStyle` 在本机仍映射 Liberation Sans，单纯换库不会复制 Win32 GDI 控件；推荐后续固定尺寸 General 单页 Qt `QProxyStyle` POC，保留原文资源与状态像素验收。字体/暗色和几何现有 PASS 项不扩大为整体 1:1。
+- 更新 `docs/ZAMAK_UI_FEASIBILITY.md` 的第三方工具路线、字体与真实差异、单页 POC 建议；`docs/ADR/0005-manual-page-cache-reclaim.md` 保持 PROPOSED，限制为未来手动页缓存候选，不连接 GUI。
+- harden `native/memreduct_helper.c`：生产路径固定，测试宏单独开放临时普通文件；拒绝 symlink/非 regular target，EINTR 一次重试、短写/close 错误作为 outcome uncertain，不自动重试。`tests/test_native.py` 与 `tests/native_write_shim.c` 注入 EINTR/短写并测试临时文件，无真实 `/proc/sys/vm/drop_caches` 写入。
+- 本轮最新生产脚本：治理 34 项、C/Python 安全 7/7、Zamak 0.2.0 check/test（41/41）及 GUI/helper build PASS；独立 Canvas probe 12/12 PASS。构建 Artifact 写入外部报告目录。Xvfb/Openbox/Weston 工具缺失，本机隔离 GUI 输入/生命周期未运行，用户活动 Hyprland 未触碰。
+- 新增/修改文件仍在工作树，待做最终 diff/SHA 与完整回归；不推 PR #7，不改 Ready/Merge。
+
+## 2026-10-29 — Winelib/Qt/GTK 路线核验与内存核心提交
+
+- 从 `codex/p2c-main-integration-r1@cd6703d670d82f9712e83012dde0325efec5e615` 继续；只读核对远端 main `83dbf58fb039645f08e08bc89170adcdaa7997be`、PR #7 `019a7f1e0755570c2c3a0b1202a6c764540f14e2`，PR #7 保持 OPEN / Draft / Base main。没有远端写入；`p2b-r6-integration-audit` 预暂存 worktree 未触碰。
+- 官方资料确认 Winelib 的 `winegcc`/`wrc` 可重编译 Win32 C/RC 资源；Qt `QProxyStyle` 可局部重画，`QCommonStyle` 适用于完整自定义样式；GTK CSS/Pango 仍受主题级联与 Linux 字体 fallback 影响。Winelib 是优先验证的原资源单页 POC，不保证 Windows GDI 像素一致。最新 WineHQ 开发版 11.20；2026-08 的 11.15 Arch Wayland bug 报告仅作为待复验风险。当前本机缺少 Wine/Winelib、Xvfb、Weston，故 Winelib 与本机隔离 GUI 交互均 NOT RUN。
+- 内存 core 修改 8 个文件，提交 `f8bd6cc876b3cbb4623d6dbe6f5d4b94a348c05d`、Tree `eaa616a12bc17761881fbf86d5cc9a209a96a670`、父 `cd6703d670d82f9712e83012dde0325efec5e615`。严格检查 `/proc/meminfo` 的 kB 单位并拆分 Cached/SReclaimable；helper 仅 pagecache 固定路径，测试临时文件注入 symlink/FIFO/EINTR/短写/close/waitpid 故障。GUI 未调用 helper，测试没有触碰 `/proc/sys/vm/drop_caches`。
+- 回归 PASS：治理 34、C/Python 11/11、Shell 脚本语法、Zamak 0.2.0 check/43 tests/build、生产 GUI/helper build、独立 Canvas 12/12、Arch build、`git diff --check`。本地无新 GitHub CI。
+- 视觉事实沿用现有精确基线：设置几何 184/184、最大 1.5 px；同源文本 25/120 在 2 px 内；整页 1:1 NOT PASS；12 项简中差异 DECISION_REQUIRED。有限 Wayland 图像有 SHA，但没有 compositor 外框物理尺寸，且不是本次交互验收。报告已追加在 `docs/ZAMAK_UI_FEASIBILITY.md`，README 与 MEDIUM/SHORT/SESSION memory 随此文档候选更新。
+- 不运行清理、Polkit、Swap/ZRAM、root GUI、活动桌面输入；未推送、未改 PR Base/Ready/Merge、未改 main。
+
+## 2026-10-29 — 用户反馈后的视觉差异盘点与路线校正
+
+- 复核用户指出的窗口观感、字体及布局问题。设置页几何 184/184（最大分量 1.5 px）仍只覆盖控件矩形；同源 120 条文本仅 25 条宽高差≤2 px，95 条超差。有效配对五页浅色整页 changed-pixel 为 5.0741%–14.8853%，深色为 5.4004%–12.6625%；整页 1:1 均未通过。简中资源 12 项差异仍 `DECISION_REQUIRED`。主窗历史 20.9436% 配对因数据/边界/安全状态不一致，不是有效验收率。
+- 现有 Wayland capture 报告 GTK main client allocation 337×369、scale factor 1；GDK_SCALE 1/2 旧截图尺寸相同。没有 Hyprland decoration/物理外框测量，因此“大窗口”成因未确认；本轮没有擅自缩小固定 DLU 尺寸或操作活动桌面。
+- 查阅 WineHQ 官方资料并校正先前过度谨慎表述：Wayland driver 已在 Wine 9.22 发布说明中注明进入默认配置；Bug 60152 的 Wine 11.15 启动回归在上游标记为 11.16 已修，当前 Arch 仓库为 11.20-1。Wine/Winelib 仍不等于 Windows GDI，尚未安装或实测 Winelib；下一项前端试验改为官方 `resource.rc`/Win32 标准控件的 Winelib General 单页 POC，不再先做 Qt 平行演示。
+- 本轮重新运行 `scripts/ci/build-production-gui.sh`（治理34、C/Python 11/11、Zamak 43/43、GUI/helper build）、Canvas probe 12/12、`scripts/build-arch.sh` check/test/native build、全 Shell 语法及 diff check，均 PASS。测试未写真实内核、不运行 helper、未触碰桌面。没有新 GitHub CI，PR #7 与 main 未修改。
+## 2026-10-29 — R6 Winelib 结果收口与共享设置重绘修复
+
+- 在 `codex/p2c-main-integration-r1` 继续完成此前开始的 UI 路线核验。代码修复提交 `640fb5df044475df827308388c3da5be25d4ffad`，Tree `f30cac1ce113016dfef58eca46417549253d2be2`，父提交 `f8bd6cc876b3cbb4623d6dbe6f5d4b94a348c05d`。远端 main、PR #7 与 PR 状态没有变化；未推送、未改 Base、未 Ready、未合并。
+- R6 Winelib General 页证据来自固定上游 `2f5c55d15f69a2c88859e036b16c6f4c971e1968` 的 `.rc`/标准控件子集。校正背景与焦点后，558×335 changed-pixel 为 English `13.2531%`、简中 `12.2725%`，背景样本 0/2500 不同；GroupBox 仍 20.5864%–21.7213%，按钮 37.2570%–37.6336%。英文 Winelib/GDI 垂直度量均为 ascent/descent `11/2 px`；简中需要 Noto Sans CJK SC，Winelib 为 `13/3 px`。Wine Common Controls v6 manifest 报缺 assembly。结果证明可复用资源，但不是 Windows GDI 1:1。
+- 修复 `src/main.zm`：共享主题/语言动作现在会使已打开设置 Canvas 重绘；加入相关状态断言。`tests/test_native.py` 增加 fake `pkexec`，覆盖异步桥退出码 `1`、`3`、`126` 且验证不重复调用。
+- 本轮最终本机结果：治理 34、C/Python 12/12、Zamak 44/44、生产 GUI/helper 构建、Canvas 探针 12/12、Shell 语法、`git diff --check` PASS。Wine/winegcc/wrc、Xvfb、Weston 未安装，本机 Winelib/隔离图形测试未运行；活动 Hyprland 未操作；未执行真实清理、Polkit 或内核写入。
+- 前端差异清单：设置文本 95/120 宽高差大于 2 px；有效配对浅色 changed-pixel 5.0741%–14.8853%，深色 5.4004%–12.6625%；全页 1:1 NOT PASS。主窗 GTK 客户区 337×369 的 Windows DLU 换算仍 provisional，Hyprland 外框未测；12 项原版简中来源差异仍 `DECISION_REQUIRED`。完整技术路线与来源见 `docs/ZAMAK_UI_FEASIBILITY.md`。
+- R6/当前构建证据保留在用户 AI 产出目录的 R6/R7 子目录；没有覆盖原截图。本地候选未取得 GitHub CI 结果。

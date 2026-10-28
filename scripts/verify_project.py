@@ -8,6 +8,7 @@ required=[
  'docs/PRD.md','docs/ARCHITECTURE.md','docs/SECURITY.md','docs/TEST_PLAN.md','docs/ROADMAP.md',
  'docs/AI_COLLABORATION.md','docs/GITHUB_BOOTSTRAP.md',
  'docs/ADR/0001-zamak-platform.md','docs/ADR/0002-privileged-boundary.md','docs/ADR/0003-memory-and-collab.md',
+ 'docs/ADR/0005-manual-page-cache-reclaim.md',
  'memory/LONG_TERM.md','memory/MEDIUM_TERM.md','memory/SHORT_TERM.md','memory/SESSION_LOG.md',
  'prompts/CODEX-P0-BOOTSTRAP.md','prompts/CODEX-P1.md','prompts/CHATGPT-REVIEW.md',
  '.github/pull_request_template.md','.github/workflows/test.yml']

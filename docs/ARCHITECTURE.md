@@ -19,8 +19,8 @@
           PRIVILEGED PROCESS, ROOT-OWNED
 ┌────────────────────────────────────────────────┐
 │ /usr/libexec/memreduct-zamak-helper            │
-│ - validate args = pagecache | metadata | all │
-│ - kernel drop_caches = 1 | 2 | 3              │
+│ - validate args = pagecache                  │
+│ - kernel drop_caches = 1                      │
 │ - return explicit error; exit                 │
 └────────────────────────────────────────────────┘
 
@@ -57,6 +57,13 @@ Optional future: ZRAM status (read-only) → independently approved manager
 - Display observed available RAM delta with timestamp and concurrent workload disclaimer. Preserve negative deltas.
 - Instrument latency and error reason; no claims of exact reclaimed bytes.
 
+### Implementation status (2026-10-29 local R7 investigation)
+- The GUI currently does not call `mr_start_reclaim()` or `mr_poll_reclaim()`; the clean button and Windows cleanup-region items remain disabled.
+- The standalone helper now accepts only the fixed `pagecache` action (`drop_caches=1`); `metadata` and `all` are rejected. The kernel documents `drop_caches` as a testing/debugging interface and warns that discarded cache can cost significant I/O and CPU to rebuild. This is not evidence that the GUI has an approved, user-facing cleaner.
+- A test-only build redirects the helper to a temporary regular file and injects write faults. It proves the single enum payload and error reporting without touching kernel state. The production target remains fixed.
+- Local code HEAD `640fb5df044475df827308388c3da5be25d4ffad` passes Zamak 0.2.0 tests (44), C/Python safety tests (12), governance (34), the independent Canvas probe (12), and production GUI/helper build. A fake authorization launcher also verifies bridge exit-code propagation without requesting real authorization.
+- A proposed manual-page-cache action and its explicit warning/authorization requirements are recorded in `docs/ADR/0005-manual-page-cache-reclaim.md`; the ADR is not accepted and no UI action is enabled.
+
 ## Memory data contracts
 - `/proc/meminfo` values are KiB; convert to MiB only at presentation layer.
 - `MemAvailable` approximates additional memory available for allocation; `MemFree` alone is misleading.
@@ -71,9 +78,9 @@ Optional future: ZRAM status (read-only) → independently approved manager
 - Automatic mode must not ask users for repeated privilege prompts or silently maintain privileged credentials.
 
 ## Dependences and portability
-- Toolchain pin: `@veyralux/zamak@0.2.0`, C compiler, gtk3 + pkgconf + polkit. This is a hypothesis until build passes on target workstation.
+- Toolchain pin: `@veyralux/zamak@0.2.0`, C compiler, GTK3 + pkgconf; `pkexec`/Polkit are used only by a future explicitly approved helper flow. The local build has passed, but packaging and authorization behavior remain separate gates.
 - Zamak 0.2.0 is an early language/runtime; lock version and run CI compatibility checks before upgrading.
-- `std/ui` on Linux uses GTK 3 / libui-ng. Wayland compositor integration is **not proven** in the current artifact.
+- `std/ui` on Linux uses GTK 3 / libui-ng. P2B-R6 recorded a real Wayland GTK launch/draw/exit with no warning; real pointer/keyboard input, decoration bounds, tray integration, and full interaction remain unverified.
 
 ## Options rejected or deferred
 - **Python/PySide6 as main runtime**: replaced by Zamak to honor selected stack; retain no runtime Python requirement (Python only development tests).
