@@ -1,6 +1,16 @@
 # 短期记忆 / Latest Handoff
 
-## 当前真实状态（2026-10-28；PR #6 分支集成已推送，尚未改 Base）
+## 当前真实状态（2026-10-28；PR #6 main-base 验收）
+
+- `main` 为 `b78785af233dbae7a80085fd7a9f45f30ae42711`。PR #6 仍 OPEN / Draft、未合并，Base 为 `main`，Head 为 `36d548d3dedcefffc37dceab13be887a1473187f`；当前 GitHub 报告 `mergeable=true`。Head `36d548d…` 的父提交是此前双亲集成提交 `3b73868287c9ed13d3e8fc25f3b9d6fbe06cdc5a`。
+- 记忆修正前 Head `36d548d…` 的 main-base PR 检查通过：[Build 40632783618](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40632783618)、[P2A GUI 40632783623](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40632783623)、[P2B GUI 40632783657](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40632783657)。Build 的 Linux job、两条 GUI workflow 的 Xvfb/XTEST 与 Weston Headless/Pixman jobs 均成功；PR 事件针对 `main` 与该 Head。**这些 PASS 只属于 `36d548d…`；记忆修正产生的新 Head 必须独立复验，不能沿用旧结果。** P2A artifacts：X11 `12792291897` SHA-256 `7393d70168a11587a382bfece61a1bb1233c4a14c67e7c0b8c3850988c9ea242`，Weston `12792560638` SHA-256 `57d030b5ad64ebb89c9722e5b431e45caa8b34d32e45ad9c17b521ff30c53119`。P2B artifacts：X11 `12792660966` SHA-256 `8b2a9d099b8992c8901788eeb62ed294619472ef3e536b90dfae43e1684f20d2`，Weston `12791754327` SHA-256 `92063912e303491206bee5ccbb2a672d32578ec401a9868f4371a5cd31059815`。
+- 本次复核发现两条尚未解决的记忆状态 Review：[`SHORT_TERM.md` #4396911245](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/6#discussion_r4396911245) 与 [`MEDIUM_TERM.md` #4396911255](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/pull/6#discussion_r4396911255)。本次只修正状态记录并保留旧阶段历史；线程状态留待独立复审，不在这里代替审查者解决。
+- PR #7 仍 OPEN / Draft，Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`，Base 分支仍指向 PR #6。该 PR 有独立集成冲突且未获本轮修改授权；本轮未改 PR #7。GitHub API 此次仍报告 `mergeable=false`，并返回旧 Base SHA `911a3d0b99b05f15bd0109dca475b0b5174e7888`，需后续单独核实其基线刷新与冲突解决。
+- Windows Mem Reduct 3.5.2 整页 1:1 像素验收未通过；真实 Wayland/Hyprland 键鼠输入未验收。实际内存清理、Polkit、Swap/ZRAM 操作不属于本轮验收；相关功能继续保持未验收状态。
+
+## 历史快照（2026-10-28；PR #6 Base 改为 main 前）
+
+> 以下保留本轮授权改 Base 之前的完整状态与测试记录。“尚未改 Base”及 main-base CI 未运行仅描述该时点，不代表当前 GitHub 状态。
 
 - `main` 为 `b78785af233dbae7a80085fd7a9f45f30ae42711`，PR #2、#4、#5 已合并；PR #6 的生产窗口仍未合入 `main`。
 - PR #6 仍 OPEN / Draft，Base 仍为 `docs/issue-3-p2a-ui-spec`（该分支 HEAD `a19474ca3f79de65a18e76f6852ab503ce11b173`）。PR #6 已普通快进推送双亲集成 Merge Commit `3b73868287c9ed13d3e8fc25f3b9d6fbe06cdc5a`，Tree `22022b50f6233c2e729b02cf678b426e12af0d21`；父提交按序为原 PR #6 HEAD `911a3d0b99b05f15bd0109dca475b0b5174e7888`、当时 `main` `b78785af233dbae7a80085fd7a9f45f30ae42711`。GitHub 报告 `mergeable=true` **仅针对当前旧 Base**，不能据此视为新 main-base 验收。

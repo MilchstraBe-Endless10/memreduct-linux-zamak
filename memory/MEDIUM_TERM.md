@@ -1,14 +1,22 @@
 # 中期记忆 / Roadmap State
 
-更新时间：2026-10-28；以下是当前 GitHub 状态与已见证据，不将 Draft 分支结果计入 main。
+更新时间：2026-10-28；以下是当前 GitHub 状态与已核实证据，不将 Draft 分支结果计入 main。
 
 ## 当前阶段
 
 **P1 / P2A 基础已集成。** PR #2、#4、#5 均已合入 `main`; 当前 main 为 `b78785af233dbae7a80085fd7a9f45f30ae42711`。PR #4 的 12 项独立 Canvas 探针和隔离 Xvfb/Weston CI 已在 main。
 
-**P2B 生产窗口仍在 Draft PR #6，尚未合入 main。** 已快进推送两父集成 Commit `3b73868287c9ed13d3e8fc25f3b9d6fbe06cdc5a`（Tree `22022b50f6233c2e729b02cf678b426e12af0d21`；父提交按序为原 #6 `911a3d0…`、当前 main `b78785a…`）。PR #6 保留旧 P2A Base `docs/issue-3-p2a-ui-spec`，GitHub 对旧 Base 报告 mergeable=true。集成 Head 的 GUI Push/PR `40627628308` / `40627633632` 与 Build Push/PR `40627628264` / `40627633638` 均 SUCCESS；新的 **main-base PR CI NOT RUN**。此文档后续修正 HEAD 的 CI 需单独核验。
+**P2B 生产窗口仍在 Draft PR #6，尚未合入 main。** 本状态快照核验时，Base 为 `main@b78785af233dbae7a80085fd7a9f45f30ae42711`，Head `36d548d3dedcefffc37dceab13be887a1473187f`（父提交 `3b73868287c9ed13d3e8fc25f3b9d6fbe06cdc5a`）；GitHub 报告 `mergeable=true`。该 Head 的 main-base [Build 40632783618](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40632783618)、[P2A GUI 40632783623](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40632783623) 和 [P2B GUI 40632783657](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/40632783657) 均 PASS，build job 与两套 GUI 的 Xvfb/Weston jobs 均完成。**这些检查对应记忆修正前的 `36d548d…`；本次文档提交后的新 Head 必须独立复验，不能沿用这些 PASS。** 2026-10-28 的 ChatGPT Review 指出 `SHORT_TERM.md`、`MEDIUM_TERM.md` 顶部仍记录旧 Base 与“main-base CI 未运行”；本次修改将旧状态保留为带日期的历史快照，并回应两条状态评论。PR 仍 Draft，尚未合并。
 
-**P2C 仍在 Draft PR #7。** Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`，Base 分支为 PR #6，因 #6 HEAD 前移 GitHub 当前报 mergeable=false/dirty；其 HEAD 未修改。P2C-4R1 几何 184/184 PASS、最大分量偏差 1.5 px，但整页 1:1 NOT PASS，真实 Wayland/Hyprland 输入 NOT RUN，托盘及清理确认/结果仍受限。
+**P2C 仍在 Draft PR #7。** Head `b7ea31e6aea121b0b606866704f52ac0ddfe8be8`，Base 分支指向 PR #6，独立集成冲突尚未解决；本轮未修改 #7。GitHub API 报告 `mergeable=false`，返回的 Base SHA 仍为旧 #6 Head `911a3d0b99b05f15bd0109dca475b0b5174e7888`，需后续核实状态刷新。P2C-4R1 几何 184/184 PASS、最大分量偏差 1.5 px，但整页 Windows 1:1 NOT PASS，真实 Wayland/Hyprland 输入 NOT RUN，托盘及清理确认/结果仍受限。
+
+## 历史快照（2026-10-28；PR #6 Base 改为 main 前）
+
+> 以下保留此前“尚未改 Base”的准确状态、旧 Base CI 证据和当时的冲突判断；仅描述该时点，当前状态以上方为准。
+
+- PR #6 尚未改 Base；Base 为 `docs/issue-3-p2a-ui-spec`，Head 为双亲集成提交 `3b73868287c9ed13d3e8fc25f3b9d6fbe06cdc5a`。该时点只验证了旧 Base 上的 GUI/Build Push 与 PR CI，main-base PR CI 尚未运行。
+- 当时 PR #7 以旧 PR #6 Head 为 Base，GitHub 报告 `mergeable=false/dirty`；相对前移后的 PR #6 的差异及冲突需重新核验。以上为历史判断，不作为当前冲突数量的结论。
+- 该阶段旧 Base Head `3b738682…` 的 GUI Push/PR `40627628308` / `40627633632`、Build Push/PR `40627628264` / `40627633638` 均 SUCCESS；Xvfb/XTEST、Weston 生命周期、APT 诊断、主项目 13/13 与独立探针 12/12 通过。这些旧 Base/旧 Head 证据保留为历史结果，不替代 `36d548d…` 的 main-base 检查，也不替代本次文档提交的新 Head 检查。
 
 ## 已具备的代码
 
@@ -18,8 +26,9 @@
 
 ## 当前阻塞与边界
 
-- PR #6 的四个文档冲突已在推送的双亲集成提交中解决，净差异为 16 文件、零删除；PR #4 独立探针保留。已核实旧 Base 上新 HEAD 的 GUI/Build CI SUCCESS，但 **改 Base 到 main 及其 PR CI 尚未执行**。两条新增记忆现状审查待本次修正后复核。
-- PR #7 的 Base 分支指向已前移的 PR #6，当前 mergeable=false/dirty。新 #6 与旧 #7 HEAD 的两点树差异为 46 路径（其中 10 个表观删除，含 PR #4 探针/工作流），三点 PR 比较仍为 30 个 P2C 路径。不能采用 #7 旧 Tree 覆盖当前基线；未来必须独立完成三方合并和 CI，并须另行授权。
+- PR #6 的四个文档冲突已在双亲集成提交中解决，净差异为 16 文件、零删除；PR #4 独立探针保留。PR #6 仍 OPEN/Draft、未合并。两条记忆状态 Review 由本次文档修改回应，推送后仍待 ChatGPT 独立复审；修改后的新 HEAD 必须另行完成 CI 验证。
+- PR #7 仍以 PR #6 分支为 Base，存在独立集成冲突，且本轮没有修改授权。不能采用 #7 旧 Tree 覆盖当前基线；后续需独立核对祖先、三方合并、PR #4 探针与 P2B CI 保留情况，并重新跑 CI。
+- Windows Mem Reduct 3.5.2 整页 1:1 像素一致性尚未通过；真实 Wayland/Hyprland 鼠标与键盘输入未验收。托盘与清理确认/结果受限；真实内存清理、Polkit、Swap/ZRAM 和 root GUI 均不属于已验收能力。
 - 12 项简体中文来源差异仍为 `DECISION_REQUIRED`；不得通过规格合并批准具体译文。
 - 未完成的内存清理、自动清理、Polkit、Swap/ZRAM、root GUI 与活动 Hyprland 操作继续禁止。
 
@@ -39,7 +48,7 @@
 ## 决策与下一步
 
 - 已有 ADR-0001 至 ADR-0003 继续有效；ADR-0004 持久化设计仍为 PROPOSED。
-- PR #6 分支集成与旧 Base CI 已获独立复审；本次仅处理两份记忆文件的真实当前状态，并验证文档提交后的 CI。**将 PR #6 Base 改为 main、标记 Ready、合并，及处理 PR #7 均须后续分别明确授权**；不得自动推进至 PR #7 或 P3A 生产实现。
+- PR #6 的 main-base CI 已在 `36d548d…` 通过；本轮仅修正两份状态记忆，推送后须确认新 Head 的三条 main-base workflow 全部完成，再交 ChatGPT 复审两条评论。PR #6 标记 Ready、合并，及处理 PR #7 均须另行明确授权；不得自动推进至 PR #7 或 P3A 生产实现。
 
 ## 历史快照：PR #6 P2B 阶段记忆（原记录日期 2026-10-25）
 
