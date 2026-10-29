@@ -7,8 +7,10 @@
 /* Stable GTK3/GLib ABI declarations keep this bridge independent of Gtk headers. */
 typedef struct _GtkWidget GtkWidget;
 typedef struct _GtkWindow GtkWindow;
+typedef struct _GtkSettings GtkSettings;
 typedef struct _GtkBin GtkBin;
 typedef struct _GtkContainer GtkContainer;
+typedef struct _GdkWindow GdkWindow;
 typedef struct _GList GList;
 typedef struct {
     double red;
@@ -23,6 +25,12 @@ struct _GList {
 };
 
 extern GList *gtk_window_list_toplevels(void);
+extern GtkSettings *gtk_settings_get_default(void);
+extern void gtk_settings_set_string_property(
+    GtkSettings *settings,
+    const char *name,
+    const char *value,
+    const char *origin);
 extern const char *gtk_window_get_title(GtkWindow *window);
 extern void gtk_window_set_default_size(GtkWindow *window, int width, int height);
 extern void gtk_window_resize(GtkWindow *window, int width, int height);
@@ -36,6 +44,8 @@ extern unsigned int gtk_container_get_border_width(GtkContainer *container);
 extern void gtk_container_set_border_width(GtkContainer *container, unsigned int border_width);
 extern void gtk_widget_queue_resize(GtkWidget *widget);
 extern void gtk_widget_queue_draw(GtkWidget *widget);
+extern void gtk_widget_add_events(GtkWidget *widget, int events);
+extern GdkWindow *gtk_widget_get_window(GtkWidget *widget);
 extern void gtk_widget_override_background_color(GtkWidget *widget, unsigned int state, const GdkRGBA *color);
 extern void gtk_widget_set_margin_start(GtkWidget *widget, int margin);
 extern void gtk_widget_set_margin_end(GtkWidget *widget, int margin);
@@ -70,6 +80,10 @@ extern unsigned long g_signal_connect_data(
     void *destroy_data,
     int connect_flags);
 extern void g_list_free(GList *list);
+extern int gdk_event_get_root_coords(const void *event, double *x_root, double *y_root);
+extern int gdk_event_get_scroll_direction(const void *event, int *direction);
+extern int gdk_event_get_scroll_deltas(const void *event, double *delta_x, double *delta_y);
+extern int gdk_window_get_origin(GdkWindow *window, int *x, int *y);
 
 static int settings_close_requested;
 static GtkWindow *settings_window;
@@ -80,6 +94,114 @@ static unsigned int settings_delete_signal_id;
 static int settings_geometry_prepared;
 static int main_geometry_prepared;
 static int gtk_version_logged;
+static unsigned long settings_scroll_handler_id;
+static int64_t settings_scroll_x;
+static int64_t settings_scroll_y;
+static int64_t settings_scroll_taken_x;
+static int64_t settings_scroll_taken_y;
+static double settings_scroll_smooth_remainder;
+
+enum {
+    GDK_SCROLL_UP = 0,
+    GDK_SCROLL_DOWN = 1,
+    GDK_SCROLL_LEFT = 2,
+    GDK_SCROLL_RIGHT = 3,
+    GDK_SCROLL_SMOOTH = 4,
+    GDK_SCROLL_MASK = 1 << 21
+};
+
+#define SETTINGS_SCROLL_QUEUE_LIMIT 32
+
+typedef struct {
+    int64_t delta;
+    int64_t x;
+    int64_t y;
+} SettingsScrollEvent;
+
+static SettingsScrollEvent settings_scroll_queue[SETTINGS_SCROLL_QUEUE_LIMIT];
+static unsigned int settings_scroll_head;
+static unsigned int settings_scroll_count;
+
+static int on_settings_scroll(GtkWidget *widget, void *event, void *data)
+{
+    (void)data;
+    double x_root = 0.0;
+    double y_root = 0.0;
+    int window_x = 0;
+    int window_y = 0;
+    int direction = -1;
+    int64_t delta = 0;
+
+    GdkWindow *window = gtk_widget_get_window(widget);
+    if (window == NULL || !gdk_event_get_root_coords(event, &x_root, &y_root) ||
+        !gdk_window_get_origin(window, &window_x, &window_y) ||
+        !gdk_event_get_scroll_direction(event, &direction)) {
+        return 0;
+    }
+    const double x = x_root - (double)window_x;
+    const double y = y_root - (double)window_y;
+
+    if (direction == GDK_SCROLL_UP) {
+        delta = -1;
+    } else if (direction == GDK_SCROLL_DOWN) {
+        delta = 1;
+    } else if (direction == GDK_SCROLL_SMOOTH) {
+        double delta_x = 0.0;
+        double delta_y = 0.0;
+        if (!gdk_event_get_scroll_deltas(event, &delta_x, &delta_y) || delta_y == 0.0) {
+            return 0;
+        }
+        settings_scroll_smooth_remainder += delta_y;
+        if (settings_scroll_smooth_remainder >= 1.0) {
+            delta = (int64_t)settings_scroll_smooth_remainder;
+        } else if (settings_scroll_smooth_remainder <= -1.0) {
+            delta = (int64_t)settings_scroll_smooth_remainder;
+        }
+        settings_scroll_smooth_remainder -= (double)delta;
+    } else {
+        return 0;
+    }
+
+    if (delta == 0) {
+        return 0;
+    }
+    if (settings_scroll_count == SETTINGS_SCROLL_QUEUE_LIMIT) {
+        if (getenv("MEMREDUCT_CI") != NULL) {
+            fputs("CI_SETTINGS_SCROLL_QUEUE full=true\n", stderr);
+            fflush(stderr);
+        }
+        return 0;
+    }
+
+    const unsigned int tail = (settings_scroll_head + settings_scroll_count) % SETTINGS_SCROLL_QUEUE_LIMIT;
+    settings_scroll_queue[tail] = (SettingsScrollEvent){delta, (int64_t)x, (int64_t)y};
+    settings_scroll_count++;
+    if (getenv("MEMREDUCT_CI") != NULL) {
+        fprintf(stderr, "CI_SETTINGS_SCROLL_CAPTURE x=%lld y=%lld delta=%lld queued=%u\n",
+                (long long)x, (long long)y, (long long)delta, settings_scroll_count);
+        fflush(stderr);
+    }
+    return 0;
+}
+
+static int install_settings_scroll_handler(GtkWindow *window)
+{
+    GtkWidget *widget = (GtkWidget *)window;
+    gtk_widget_add_events(widget, GDK_SCROLL_MASK);
+    const unsigned long handler_id = g_signal_connect_data(
+        widget, "scroll-event", on_settings_scroll, NULL, NULL, 0);
+    if (handler_id == 0) {
+        return 0;
+    }
+
+    settings_scroll_handler_id = handler_id;
+    if (getenv("MEMREDUCT_CI") != NULL) {
+        fprintf(stderr, "CI_SETTINGS_SCROLL_HANDLER widget=%s mask=%d connected=%d coordinates=root-to-client\n",
+                g_type_name_from_instance(widget), GDK_SCROLL_MASK, handler_id != 0);
+        fflush(stderr);
+    }
+    return 1;
+}
 
 int64_t mr_gui_set_main_background(int64_t dark)
 {
@@ -122,6 +244,32 @@ int64_t mr_gui_set_main_background(int64_t dark)
     }
     g_list_free(windows);
     return main_window != NULL ? 1 : 0;
+}
+
+int64_t mr_gui_set_compat_font(void)
+{
+    const char *candidate = getenv("P2C_FONT_CANDIDATE");
+
+    /* A font override is an isolated experiment, never a production default. */
+    if (getenv("MEMREDUCT_CI") == NULL) {
+        return 2;
+    }
+    if (candidate == NULL || strcmp(candidate, "default") == 0) {
+        return 2;
+    }
+    if (strcmp(candidate, "liberation") != 0) {
+        return 0;
+    }
+
+    GtkSettings *settings = gtk_settings_get_default();
+    if (settings == NULL) {
+        return 0;
+    }
+
+    /* This override is used only by the isolated English/CJK comparison lane. */
+    gtk_settings_set_string_property(settings, "gtk-font-name", "Liberation Sans 8",
+                                     "Mem Reduct v3.5.2 resource font compatibility");
+    return 1;
 }
 
 /* Keep the main canvas at the client top edge while preserving its source x inset. */
@@ -339,6 +487,12 @@ int64_t mr_gui_window_mode(int64_t show_settings)
         }
     }
 
+    if (settings_window_found != NULL && settings_scroll_handler_id == 0 &&
+        !install_settings_scroll_handler(settings_window_found)) {
+        g_list_free(windows);
+        return 0;
+    }
+
     if (settings_window_found != NULL && !settings_geometry_prepared) {
         GtkWidget *root = gtk_bin_get_child((GtkBin *)settings_window_found);
         const char *root_type = root == NULL ? "(null)" : g_type_name_from_instance(root);
@@ -417,11 +571,14 @@ int64_t mr_gui_window_mode(int64_t show_settings)
     }
 
     if (settings_window_found == NULL || main_window == NULL || !settings_geometry_prepared ||
-        !settings_close_handler_connected) {
+        !settings_close_handler_connected || settings_scroll_handler_id == 0) {
         g_list_free(windows);
         return 0;
     }
 
+    settings_scroll_head = 0;
+    settings_scroll_count = 0;
+    settings_scroll_smooth_remainder = 0.0;
     if (show_settings != 0) {
         gtk_widget_show((GtkWidget *)settings_window_found);
         gtk_window_present(settings_window_found);
@@ -438,6 +595,29 @@ int64_t mr_gui_take_settings_close_request(void)
     const int requested = settings_close_requested;
     settings_close_requested = 0;
     return requested;
+}
+
+int64_t mr_gui_take_settings_scroll_steps(void)
+{
+    if (settings_scroll_count == 0) {
+        return 0;
+    }
+    const SettingsScrollEvent event = settings_scroll_queue[settings_scroll_head];
+    settings_scroll_head = (settings_scroll_head + 1) % SETTINGS_SCROLL_QUEUE_LIMIT;
+    settings_scroll_count--;
+    settings_scroll_taken_x = event.x;
+    settings_scroll_taken_y = event.y;
+    return event.delta;
+}
+
+int64_t mr_gui_settings_scroll_x(void)
+{
+    return settings_scroll_taken_x;
+}
+
+int64_t mr_gui_settings_scroll_y(void)
+{
+    return settings_scroll_taken_y;
 }
 
 int64_t mr_gui_settings_window_exists(void)

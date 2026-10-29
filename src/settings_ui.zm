@@ -3,6 +3,7 @@
 # All setting controls remain non-persistent and non-operational in this phase.
 use std/ui
 use ui_geometry
+use settings_resources
 
 pub struct State:
     page: i64
@@ -15,6 +16,8 @@ pub struct State:
     language_open: bool
     language_focus: i64
     test_mode: bool
+    widget_preview_id: i64
+    widget_preview_checked: bool
     logged_page: i64
     logged_zh: bool
     logged_width: f64
@@ -25,7 +28,41 @@ pub struct State:
     logged_region_scroll: i64
 
 pub fn initial(test_mode: bool) -> State:
-    State(page: 0, focus: 100, modal: 0, status: "", dark: false, hover: 0.0, pressed: 0.0, language_open: false, language_focus: 801, test_mode: test_mode, logged_page: -1, logged_zh: false, logged_width: -1.0, logged_height: -1.0, logged_dark: false, emit_geometry: false, region_scroll: 0, logged_region_scroll: -1)
+    State(page: 0, focus: 100, modal: 0, status: "", dark: false, hover: 0.0, pressed: 0.0, language_open: false, language_focus: 801, test_mode: test_mode, widget_preview_id: 0, widget_preview_checked: false, logged_page: -1, logged_zh: false, logged_width: -1.0, logged_height: -1.0, logged_dark: false, emit_geometry: false, region_scroll: 0, logged_region_scroll: -1)
+
+fn checkbox_preview_spec(id: i64) -> settings_resources.ControlSpec:
+    if id == 116: return settings_resources.lookup(0, id)
+    if id == 136: return settings_resources.lookup(2, id)
+    settings_resources.lookup(-1, -1)
+
+pub fn enable_widget_preview_checkbox(s: &mut State, id: i64):
+    if not s.test_mode: return
+    let resource = checkbox_preview_spec(id)
+    if resource.kind != "checkbox": return
+    s.widget_preview_id = id
+    s.widget_preview_checked = resource.checked
+    s.page = resource.page
+    s.focus = 100 + resource.page
+    println(f"CI_WIDGET_PREVIEW enabled=true resource={id} persistence=none side_effects=none")
+
+fn checkbox_enabled(s: &State, id: i64, resource_enabled: bool) -> bool:
+    resource_enabled or (s.test_mode and s.widget_preview_id == id and preview_checkbox_on_page(s) == id)
+
+fn checkbox_checked(s: &State, id: i64, resource_checked: bool) -> bool:
+    if s.test_mode and s.widget_preview_id == id and preview_checkbox_on_page(s) == id: return s.widget_preview_checked
+    resource_checked
+
+fn toggle_preview_checkbox(s: &mut State, id: i64, source: string, zh: bool):
+    if not s.test_mode or s.widget_preview_id != id or preview_checkbox_on_page(s) != id: return
+    s.widget_preview_checked = not s.widget_preview_checked
+    s.status = text(zh, "Preview only; no setting changed or saved", "仅预览；未更改或保存设置")
+    println(f"CI_WIDGET_PREVIEW resource={id} checked={s.widget_preview_checked} source={source} persistence=none side_effects=none")
+
+fn preview_checkbox_on_page(s: &State) -> i64:
+    if s.widget_preview_id == 0: return 0
+    let resource = settings_resources.lookup(s.page, s.widget_preview_id)
+    if resource.kind == "checkbox": return s.widget_preview_id
+    0
 
 fn text(zh: bool, en: string, cn: string) -> string:
     if zh: return cn
@@ -51,6 +88,10 @@ fn page_control_ids(index: i64) -> string:
 fn child(s: &State, w: f64, h: f64, x: f64, y: f64, width: f64, height: f64) -> ui.Rect:
     ui_geometry.settings_child_rect(w, h, x, y, width, height)
 
+fn resource_rect(s: &State, id: i64, w: f64, h: f64) -> ui.Rect:
+    let resource = settings_resources.lookup(s.page, id)
+    settings_resources.visible_rect(&resource, w, h)
+
 fn emit_geometry(s: &State, id: i64, part: string, r: &ui.Rect):
     if s.emit_geometry:
         let locale = text(s.logged_zh, "en", "zh-CN")
@@ -72,9 +113,11 @@ fn canvas_text(s: &State, p: &ui.Painter, id: i64, part: string, x: f64, y: f64,
     p.text(x, y, value, color, size=size, bold=bold)
 
 fn upstream_default_checked(id: i64, row: i64) -> bool:
-    # Mem Reduct v.3.5.2 defaults from src/main.c WM_INITDIALOG and src/app.h.
-    if id == 120 or id == 121 or id == 136 or id == 151 or id == 152: return true
+    # Checked defaults are split from Linux availability in the resource map.
     if id == 124: return row == 0 or row == 1 or row == 4 or row == 5 or row == 6 or row == 7
+    if id == 120 or id == 121: return settings_resources.lookup(0, id).checked
+    if id == 136: return settings_resources.lookup(2, id).checked
+    if id == 151 or id == 152: return settings_resources.lookup(3, id).checked
     false
 
 fn upstream_color(index: i64) -> ui.Color:
@@ -91,10 +134,73 @@ fn upstream_color_text(index: i64) -> ui.Color:
 fn region_data_index(slot: i64, scroll: i64) -> i64:
     slot + scroll
 
+fn clamp_region_scroll(offset: i64) -> i64:
+    max(0, min(2, offset))
+
 fn outline(p: &ui.Painter, r: &ui.Rect, color: &ui.Color):
     p.begin()
     p.add_rect(r)
     p.stroke(color, 1.0)
+
+fn pixel_outline(p: &ui.Painter, r: &ui.Rect, color: &ui.Color):
+    # Cairo's centered stroke expands outside a fractional resource rect. Win32
+    # borders occupy one device pixel inside the mapped rectangle.
+    let left = i64(r.x + 0.5)
+    let top = i64(r.y + 0.5)
+    let right = i64(r.right() + 0.5) - 1
+    let bottom = i64(r.bottom() + 0.5) - 1
+    if right < left or bottom < top: return
+    p.fill_rect(&ui.rect(f64(left), f64(top), f64(right - left + 1), 1.0), color)
+    p.fill_rect(&ui.rect(f64(left), f64(bottom), f64(right - left + 1), 1.0), color)
+    p.fill_rect(&ui.rect(f64(left), f64(top), 1.0, f64(bottom - top + 1)), color)
+    p.fill_rect(&ui.rect(f64(right), f64(top), 1.0, f64(bottom - top + 1)), color)
+
+fn groupbox_pixel_rect(r: &ui.Rect) -> ui.Rect:
+    let left = i64(r.x + 0.5)
+    let right = i64(r.right() + 0.5) - 1
+    # BS_GROUPBOX paints inside its resource window: the top rule is inset six
+    # device pixels and the bottom rule one pixel. This comes from the pinned
+    # Windows 3.5.2 client captures, not from changing the DLU control bounds.
+    let top = i64(r.y + 6.5)
+    let bottom = i64(r.bottom() + 0.5) - 2
+    ui.rect(f64(left), f64(top), f64(right - left + 1), f64(bottom - top + 1))
+
+fn group_title_x(r: &ui.Rect) -> f64:
+    r.x + 8.0
+
+fn group_title_y(r: &ui.Rect) -> f64:
+    r.y - 1.0
+
+fn pixel_group_border(p: &ui.Painter, r: &ui.Rect, title_x: f64, title_width: f64, color: &ui.Color):
+    let border = groupbox_pixel_rect(r)
+    let left = i64(border.x)
+    let top = i64(border.y)
+    let right = i64(border.right()) - 1
+    let bottom = i64(border.bottom()) - 1
+    let gap_left = max(left, i64(r.x + 7.5))
+    let gap_right = min(right + 1, i64(title_x + title_width + 0.5))
+    if right < left or bottom < top: return
+    if gap_left > left:
+        p.fill_rect(&ui.rect(f64(left), f64(top), f64(gap_left - left), 1.0), color)
+    if gap_right < right + 1:
+        p.fill_rect(&ui.rect(f64(gap_right), f64(top), f64(right + 1 - gap_right), 1.0), color)
+    p.fill_rect(&ui.rect(f64(left), f64(top), 1.0, f64(bottom - top + 1)), color)
+    p.fill_rect(&ui.rect(f64(right), f64(top), 1.0, f64(bottom - top + 1)), color)
+    p.fill_rect(&ui.rect(f64(left), f64(bottom), f64(right - left + 1), 1.0), color)
+
+fn dotted_outline(p: &ui.Painter, r: &ui.Rect, color: &ui.Color):
+    let left = i64(r.x)
+    let top = i64(r.y)
+    let right = i64(r.right()) - 1
+    let bottom = i64(r.bottom()) - 1
+    for offset in 0..i64(r.w):
+        if offset % 2 == 0:
+            p.fill_rect(&ui.rect(f64(left + offset), f64(top), 1.0, 1.0), color)
+            p.fill_rect(&ui.rect(f64(left + offset), f64(bottom), 1.0, 1.0), color)
+    for offset in 0..i64(r.h):
+        if offset % 2 == 0:
+            p.fill_rect(&ui.rect(f64(left), f64(top + offset), 1.0, 1.0), color)
+            p.fill_rect(&ui.rect(f64(right), f64(top + offset), 1.0, 1.0), color)
 
 fn raised_button(s: &State, p: &ui.Painter, r: &ui.Rect, pressed: bool):
     # Match the measured Win32 button client: 1 px system-face inset, a 1 px
@@ -117,39 +223,110 @@ fn group(s: &State, p: &ui.Painter, r: &ui.Rect, id: i64, title: string, fg: &ui
     # Measured on the Win32 3.5.2 GroupBox edge in the pinned 96-DPI capture.
     let mut edge = ui.rgb(0xdcdcdc)
     if s.dark: edge = ui.rgb(0x404040)
-    let aligned = ui.rect(r.x + 0.5, r.y + 0.5, r.w - 1.0, r.h - 1.0)
-    p.begin()
-    p.add_rect(&aligned)
-    p.stroke(&edge, 1.0)
-    let mut bg = ui.rgb(0xf0f0f0)
-    if s.dark: bg = ui.rgb(0x171717)
-    p.fill_rect(&ui.rect(r.x + 7.0, r.y - 2.0, f64(len(title)) * 5.2 + 8.0, 5.0), &bg)
-    canvas_text(s, p, id, "group-title", r.x + 10.0, r.y - 5.0, title, fg, 8.0, false)
+    # Use the same Pango width as the following text draw. Byte/character-count
+    # estimates over-erased the top rule for CJK and punctuation-heavy titles.
+    let title_width = ui.text_width(title, size=8.0, bold=false)
+    let title_x = group_title_x(r)
+    pixel_group_border(p, r, title_x, title_width, &edge)
+    canvas_text(s, p, id, "group-title", title_x, group_title_y(r), title, fg, 8.0, false)
 
-fn checkbox(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color):
-    let r = child(s, w, h, x, y, width, height)
+fn checkbox_focus_rect(r: &ui.Rect, label_width: f64) -> ui.Rect:
+    let label_x = r.x + ui_geometry.settings_checkbox_label_inset_px()
+    let width = min(label_width, max(0.0, r.right() - label_x))
+    ui.rect(label_x - 2.0, r.y + 1.0, width + 4.0, max(0.0, r.h - 2.0))
+
+fn checkbox(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, title: string, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color):
+    let resource = settings_resources.lookup(s.page, id)
+    let r = settings_resources.visible_rect(&resource, w, h)
     emit_geometry(s, id, "control", &r)
     let box_size = ui_geometry.settings_checkbox_size_px()
     let box = ui.rect(r.x, r.y + max(0.0, (r.h - box_size) / 2.0), box_size, box_size)
+    # The measured Win32 glyph bounds are 14x14 px; the DLU fixture remains 13 px.
+    let pixel_box = ui.rect(f64(i64(box.x + 0.5)), f64(i64(box.y + 0.5)), box_size, box_size)
+    let enabled = checkbox_enabled(s, id, resource.linux_enabled)
+    let checked = checkbox_checked(s, id, resource.checked)
+    let state = settings_resources.checkbox_visual_state(enabled, checked, s.focus == id, s.hover == f64(id), s.pressed == f64(id))
     let mut bg = ui.rgb(0xf4f4f4)
+    if enabled:
+        # Native Win32 unchecked boxes use a white face and #333 outline at
+        # the pinned 96-DPI light baseline. Unsupported production controls
+        # keep their separate disabled palette below.
+        bg = ui.rgb(0xffffff)
     # Native Windows dark-mode capture keeps the checkbox face white; only
     # the surrounding dialog and text switch to the dark palette.
     if s.dark: bg = ui.rgb(0xffffff)
-    p.fill_rect(&box, &bg)
-    outline(p, &box, border)
-    if upstream_default_checked(id, -1):
-        p.line(box.x + 2.0, box.y + 6.5, box.x + 5.0, box.y + 9.5, disabled)
-        p.line(box.x + 5.0, box.y + 9.5, box.x + 11.0, box.y + 2.0, disabled)
+    if state == 6 or state == 7: bg = ui.rgb(0xe8f0fb)
+    if state == 8 or state == 9: bg = ui.rgb(0xd9e6f7)
+    p.fill_rect(&pixel_box, &bg)
+    if state == 6 or state == 7 or state == 8 or state == 9: pixel_outline(p, &pixel_box, fg)
+    elif enabled:
+        let normal_edge = ui.rgb(0x333333)
+        pixel_outline(p, &pixel_box, &normal_edge)
+    else: pixel_outline(p, &pixel_box, border)
+    if checked:
+        if enabled:
+            p.line(pixel_box.x + 2.0, pixel_box.y + 6.5, pixel_box.x + 5.0, pixel_box.y + 9.5, fg)
+            p.line(pixel_box.x + 5.0, pixel_box.y + 9.5, pixel_box.x + 11.0, pixel_box.y + 2.0, fg)
+        else:
+            p.line(pixel_box.x + 2.0, pixel_box.y + 6.5, pixel_box.x + 5.0, pixel_box.y + 9.5, disabled)
+            p.line(pixel_box.x + 5.0, pixel_box.y + 9.5, pixel_box.x + 11.0, pixel_box.y + 2.0, disabled)
     let mut text_size = 8.0
     if id == 153: text_size = 7.0
-    canvas_text(s, p, id, "label", r.x + ui_geometry.settings_checkbox_label_inset_px(), r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, text_size, false)
-    if s.focus == id: outline(p, &r, focus)
+    let label_x = r.x + ui_geometry.settings_checkbox_label_inset_px()
+    let has_checkbox_focus = enabled and s.focus == id
+    let mut focus_rect = ui.rect(r.x, r.y, 0.0, 0.0)
+    if has_checkbox_focus:
+        focus_rect = checkbox_focus_rect(&r, ui.text_width(title, size=text_size, bold=false))
+    if enabled:
+        canvas_text(s, p, id, "label", label_x, r.y + max(0.0, (r.h - 10.0) / 2.0), title, fg, text_size, false)
+    else:
+        canvas_text(s, p, id, "label", label_x, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, text_size, false)
+    if has_checkbox_focus:
+        dotted_outline(p, &focus_rect, focus)
 
-fn frame(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, fg: &ui.Color):
-    let r = child(s, w, h, x, y, width, height)
+fn frame(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, title: string, fg: &ui.Color):
+    let resource = settings_resources.lookup(s.page, id)
+    let r = settings_resources.visible_rect(&resource, w, h)
     emit_geometry(s, id, "control", &r)
     group(s, p, &r, id, title, fg)
-    if s.test_mode: println(f"CI_SETTINGS_FRAME id={id} x={x} y={y} w={width} h={height}")
+    if s.test_mode: println(f"CI_SETTINGS_FRAME id={id} class={resource.class_name} style={resource.style} dlu={resource.x},{resource.y},{resource.w},{resource.h} x={r.x} y={r.y} w={r.w} h={r.h}")
+
+fn combo(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, value: string, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color):
+    let resource = settings_resources.lookup(s.page, id)
+    let r = settings_resources.visible_rect(&resource, w, h)
+    let enabled = resource.linux_enabled
+    let is_open = id == 123 and s.language_open
+    let has_focus = id == 123 and s.focus == 105
+    let state = settings_resources.combo_visual_state(enabled, has_focus, s.hover == f64(id), s.pressed == f64(id), is_open)
+    emit_geometry(s, id, "control", &r)
+    let mut bg = ui.rgb(0xe1e1e1)
+    let mut edge = ui.rgb(0xadadad)
+    let mut hover_bg = ui.rgb(0xf2f2f2)
+    let mut active_bg = ui.rgb(0xd9d9d9)
+    let mut active_edge = ui.rgb(0x7a7a7a)
+    if s.dark:
+        bg = ui.rgb(0x404040)
+        edge = ui.rgb(0x808080)
+        hover_bg = ui.rgb(0x343b43)
+        active_bg = ui.rgb(0x3f4a56)
+        active_edge = ui.rgb(0x6cb6ff)
+    if state == 3: bg = hover_bg
+    if state == 4 or state == 5: bg = active_bg
+    if state == 3 or state == 4 or state == 5: edge = active_edge
+    let mut focus_rect = ui.rect(r.x, r.y, 0.0, 0.0)
+    if has_focus:
+        let label_width = min(ui.text_width(value, size=8.0, bold=false) + 4.0, r.w - 24.0)
+        focus_rect = ui.rect(r.x + 3.0, r.y + 1.0, label_width, r.h - 2.0)
+    let pixel_rect = ui.rect(f64(i64(r.x + 0.5)), f64(i64(r.y + 0.5)), f64(i64(r.right() + 0.5) - i64(r.x + 0.5)), f64(i64(r.bottom() + 0.5) - i64(r.y + 0.5)))
+    p.fill_rect(&pixel_rect, &bg)
+    pixel_outline(p, &pixel_rect, &edge)
+    if enabled:
+        canvas_text(s, p, id, "value", r.x + 5.0, r.y + max(1.0, (r.h - 10.0) / 2.0), value, fg, 8.0, false)
+    else:
+        canvas_text(s, p, id, "value", r.x + 5.0, r.y + max(1.0, (r.h - 10.0) / 2.0), value, disabled, 8.0, false)
+    combo_arrow(s, p, &r, not enabled, state == 4 or state == 5)
+    if has_focus:
+        dotted_outline(p, &focus_rect, focus)
 
 fn text_row(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, width: f64, height: f64, title: string, disabled: &ui.Color):
     let r = child(s, w, h, x, y, width, height)
@@ -194,16 +371,22 @@ fn spinner(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, x: f64, y: f64, w
     p.line(split + 6.0, mid + 4.0, split + 9.0, mid + 1.0, &arrow)
     if s.focus == id: outline(p, &r, focus)
 
-fn combo_arrow(s: &State, p: &ui.Painter, r: &ui.Rect, border: &ui.Color, disabled: bool):
-    let split = r.right() - 18.0
-    let mut divider = ui.rgb(0x8c8c8c)
-    let mut arrow = ui.rgb(0x8c8c8c)
-    if s.dark:
-        divider = ui.rgb(0x404040)
-        arrow = if disabled: ui.rgb(0x8b8b8b) else: ui.rgb(0x808080)
-    p.line(split, r.y, split, r.bottom(), &divider)
-    p.line(split + 5.0, r.y + 6.0, split + 9.0, r.y + 10.0, &arrow)
-    p.line(split + 9.0, r.y + 10.0, split + 13.0, r.y + 6.0, &arrow)
+fn combo_arrow(s: &State, p: &ui.Painter, r: &ui.Rect, disabled: bool, active: bool):
+    let right = i64(r.right() + 0.5) - 1
+    let center_y = i64(r.y + 0.5) + i64(r.h / 2.0)
+    # Windows 3.5.2 uses a 10x6 themed arrow; dark mode shifts its inset left.
+    let x_base = if s.dark: right - 16 else: right - 13
+    let y_base = center_y - 2
+    for row in 0..6:
+        for col in 0..10:
+            let mut pixel = settings_resources.combo_arrow_pixel_rgb(row, col, s.dark)
+            if pixel != 0:
+                if active:
+                    pixel = if s.dark: 0x6cb6ff else: 0x404040
+                elif disabled:
+                    pixel = 0x8b8b8b
+                let color = ui.rgb(pixel)
+                p.fill_rect(&ui.rect(f64(x_base + col), f64(y_base + row), 1.0, 1.0), &color)
 
 fn draw_list_row(s: &State, p: &ui.Painter, r: &ui.Rect, id: i64, title: string, disabled: &ui.Color, border: &ui.Color, index: i64):
     if id == 124: emit_region_row_geometry(s, index, r)
@@ -227,32 +410,23 @@ fn draw_list_row(s: &State, p: &ui.Painter, r: &ui.Rect, id: i64, title: string,
     canvas_text(s, p, id, f"row-{index}", text_x, r.y + max(0.0, (r.h - 10.0) / 2.0), title, disabled, 8.0, false)
 
 fn draw_general(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
-    frame(s, p, w, h, 107, 0.0, 0.0, 260.0, 90.0, text(zh, "General configuration:", "选项:"), fg)
-    checkbox(s, p, w, h, 116, 8.0, 12.0, 244.0, 10.0, text(zh, "Always on top", "窗口始终置顶"), disabled, border, focus)
-    checkbox(s, p, w, h, 117, 8.0, 24.0, 244.0, 10.0, text(zh, "Load on system startup", "开机自启"), disabled, border, focus)
-    checkbox(s, p, w, h, 118, 8.0, 36.0, 244.0, 10.0, text(zh, "Start minimized", "最小化启动（不显示窗口）"), disabled, border, focus)
-    checkbox(s, p, w, h, 120, 8.0, 48.0, 244.0, 10.0, text(zh, "Confirm memory cleaning start", "在内存清理前手动确认"), disabled, border, focus)
-    checkbox(s, p, w, h, 119, 8.0, 60.0, 244.0, 10.0, text(zh, "Skip \"User Account Control\" prompt warning", "跳过“用户账户控制（UAC）”提示"), disabled, border, focus)
-    checkbox(s, p, w, h, 121, 8.0, 72.0, 244.0, 10.0, text(zh, "Periodically check for updates (recommended)", "自动检查更新（推荐）"), disabled, border, focus)
-    frame(s, p, w, h, 108, 0.0, 92.0, 260.0, 32.0, text(zh, "Language: (Language)", "语言: (Language)"), fg)
+    frame(s, p, w, h, 107, text(zh, "General configuration:", "选项:"), fg)
+    checkbox(s, p, w, h, 116, text(zh, "Always on top", "窗口始终置顶"), fg, disabled, border, focus)
+    checkbox(s, p, w, h, 117, text(zh, "Load on system startup", "开机自启"), fg, disabled, border, focus)
+    checkbox(s, p, w, h, 118, text(zh, "Start minimized", "最小化启动（不显示窗口）"), fg, disabled, border, focus)
+    checkbox(s, p, w, h, 120, text(zh, "Confirm memory cleaning start", "在内存清理前手动确认"), fg, disabled, border, focus)
+    checkbox(s, p, w, h, 119, text(zh, "Skip \"User Account Control\" prompt warning", "跳过“用户账户控制（UAC）”提示"), fg, disabled, border, focus)
+    checkbox(s, p, w, h, 121, text(zh, "Periodically check for updates (recommended)", "自动检查更新（推荐）"), fg, disabled, border, focus)
+    frame(s, p, w, h, 108, text(zh, "Language: (Language)", "语言: (Language)"), fg)
     text_row(s, p, w, h, 122, 8.0, 104.0, 112.0, 12.0, text(zh, "Select language:", "选择语言："), fg)
-    let lang = child(s, w, h, 128.0, 104.0, 124.0, 13.0)
-    emit_geometry(s, 123, "control", &lang)
-    let mut lang_bg = ui.rgb(0xffffff)
-    let mut lang_border = ui.rgb(0x8c8c8c)
-    if s.dark: lang_bg = ui.rgb(0x404040)
-    if s.dark: lang_border = ui.rgb(0x808080)
-    p.fill_rect(&lang, &lang_bg)
-    outline(p, &lang, &lang_border)
-    canvas_text(s, p, 123, "value", lang.x + 5.0, lang.y + 3.0, text(zh, "English", "简体中文"), fg, 8.0, false)
-    combo_arrow(s, p, &lang, border, false)
-    if s.focus == 123: outline(p, &lang, focus)
+    combo(s, p, w, h, 123, text(zh, "English", "简体中文"), fg, disabled, border, focus)
 
 fn draw_memory(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
-    frame(s, p, w, h, 109, 0.0, 0.0, 260.0, 90.0, text(zh, "Memory regions to be cleaned:", "要清理的内存区域:"), fg)
+    frame(s, p, w, h, 109, text(zh, "Memory regions to be cleaned:", "要清理的内存区域:"), fg)
     let names_en = ["Working set", "System file cache", "Modified page list*", "Standby list*", "Standby list (without priority)", "Modified file cache", "Registry cache (win8.1+)", "Combine memory lists (win10+)"]
     let names_zh = ["工作集", "系统文件缓存", "已修改页列表*", "备用列表*", "无优先级备用列表", "已修改文件缓存", "注册表缓存（Windows 8.1+）", "合并内存列表（Windows 10+）"]
-    let list = child(s, w, h, 8.0, 12.0, 244.0, 70.0)
+    let list_resource = settings_resources.lookup(s.page, 124)
+    let list = settings_resources.visible_rect(&list_resource, w, h)
     let mut list_bg = ui.rgb(0xffffff)
     if s.dark: list_bg = ui.rgb(0x171717)
     p.fill_rect(&list, &list_bg)
@@ -280,25 +454,25 @@ fn draw_memory(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disable
     p.line(scrollbar.x + 8.0, scrollbar.y + 5.0, scrollbar.x + 11.0, scrollbar.y + 9.0, border)
     p.line(scrollbar.x + 5.0, scrollbar.bottom() - 9.0, scrollbar.x + 8.0, scrollbar.bottom() - 5.0, border)
     p.line(scrollbar.x + 8.0, scrollbar.bottom() - 5.0, scrollbar.x + 11.0, scrollbar.bottom() - 9.0, border)
-    frame(s, p, w, h, 110, 0.0, 90.0, 260.0, 46.0, text(zh, "Memory management:", "自动管理内存:"), fg)
-    checkbox(s, p, w, h, 125, 8.0, 102.0, 194.0, 12.0, text(zh, "Clean when above: (%)", "占用达阈值时清理（%）"), disabled, border, focus)
+    frame(s, p, w, h, 110, text(zh, "Memory management:", "自动管理内存:"), fg)
+    checkbox(s, p, w, h, 125, text(zh, "Clean when above: (%)", "占用达阈值时清理（%）"), fg, disabled, border, focus)
     field(s, p, w, h, 126, 208.0, 102.0, 33.3333, 12.0, "90", disabled, border, focus)
     spinner(s, p, w, h, 127, 240.0, 102.0, 12.0, 12.0, border, focus)
-    checkbox(s, p, w, h, 128, 8.0, 116.0, 194.0, 12.0, text(zh, "Clean every: (min.)", "每隔指定时间清理（分钟）"), disabled, border, focus)
+    checkbox(s, p, w, h, 128, text(zh, "Clean every: (min.)", "每隔指定时间清理（分钟）"), fg, disabled, border, focus)
     field(s, p, w, h, 129, 208.0, 116.0, 33.3333, 12.0, "30", disabled, border, focus)
     spinner(s, p, w, h, 130, 240.0, 116.0, 12.0, 12.0, border, focus)
-    frame(s, p, w, h, 111, 0.0, 136.0, 260.0, 32.0, text(zh, "Hotkeys (global):", "快捷键（通用）:"), fg)
-    checkbox(s, p, w, h, 131, 8.0, 150.0, 144.0, 12.0, text(zh, "Clean memory:", "清理内存："), disabled, border, focus)
+    frame(s, p, w, h, 111, text(zh, "Hotkeys (global):", "快捷键（通用）:"), fg)
+    checkbox(s, p, w, h, 131, text(zh, "Clean memory:", "清理内存："), fg, disabled, border, focus)
     field(s, p, w, h, 132, 158.0, 148.0, 94.0, 12.0, "Ctrl+F1", disabled, border, focus)
 
 fn draw_appearance(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
-    frame(s, p, w, h, 107, 0.0, 0.0, 260.0, 78.0, text(zh, "General configuration:", "选项:"), fg)
-    checkbox(s, p, w, h, 133, 8.0, 12.0, 244.0, 10.0, text(zh, "Use transparent background", "使用透明背景（不显示颜色提示）"), disabled, border, focus)
-    checkbox(s, p, w, h, 134, 8.0, 24.0, 244.0, 10.0, text(zh, "Show border", "显示边框"), disabled, border, focus)
-    checkbox(s, p, w, h, 135, 8.0, 36.0, 244.0, 10.0, text(zh, "Round corners", "圆角模式"), disabled, border, focus)
-    checkbox(s, p, w, h, 136, 8.0, 48.0, 244.0, 10.0, text(zh, "Change background color (instead text and border)", "更改背景颜色（不包括文本及边框）"), disabled, border, focus)
-    checkbox(s, p, w, h, 137, 8.0, 60.0, 244.0, 10.0, text(zh, "Use antialiasing", "启用抗锯齿"), disabled, border, focus)
-    frame(s, p, w, h, 112, 0.0, 80.0, 260.0, 88.0, text(zh, "Style:", "个性化:"), fg)
+    frame(s, p, w, h, 107, text(zh, "General configuration:", "选项:"), fg)
+    checkbox(s, p, w, h, 133, text(zh, "Use transparent background", "使用透明背景（不显示颜色提示）"), fg, disabled, border, focus)
+    checkbox(s, p, w, h, 134, text(zh, "Show border", "显示边框"), fg, disabled, border, focus)
+    checkbox(s, p, w, h, 135, text(zh, "Round corners", "圆角模式"), fg, disabled, border, focus)
+    checkbox(s, p, w, h, 136, text(zh, "Change background color (instead text and border)", "更改背景颜色（不包括文本及边框）"), fg, disabled, border, focus)
+    checkbox(s, p, w, h, 137, text(zh, "Use antialiasing", "启用抗锯齿"), fg, disabled, border, focus)
+    frame(s, p, w, h, 112, text(zh, "Style:", "个性化:"), fg)
     text_row(s, p, w, h, 138, 8.0, 92.0, 112.0, 12.0, text(zh, "Font:", "字体："), disabled)
     button(s, p, w, h, 139, 128.0, 92.0, 124.0, 12.0, "Lucida Console, 8px, 400", fg, disabled, border, focus)
     let colors_en = ["Text color", "Background color", "\"Warning level\" color", "\"Danger level\" color"]
@@ -316,28 +490,26 @@ fn draw_appearance(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, dis
         draw_list_row(s, p, &row, 140, name, disabled, border, i)
 
 fn draw_tray(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
-    frame(s, p, w, h, 113, 0.0, 0.0, 260.0, 46.0, text(zh, "Color indication:", "颜色指示:"), fg)
+    frame(s, p, w, h, 113, text(zh, "Color indication:", "颜色指示:"), fg)
     text_row(s, p, w, h, 141, 8.0, 12.0, 194.0, 12.0, text(zh, "\"Warning level\" started at: (%)", "“警告级别”阈值： (%)"), disabled)
     field(s, p, w, h, 142, 208.0, 12.0, 33.3333, 12.0, "70", disabled, border, focus)
     spinner(s, p, w, h, 143, 240.0, 12.0, 12.0, 12.0, border, focus)
     text_row(s, p, w, h, 144, 8.0, 26.0, 194.0, 12.0, text(zh, "\"Danger level\" started at: (%)", "“危险级别”阈值：（%）"), disabled)
     field(s, p, w, h, 145, 208.0, 26.0, 33.3333, 12.0, "90", disabled, border, focus)
     spinner(s, p, w, h, 146, 240.0, 26.0, 12.0, 12.0, border, focus)
-    frame(s, p, w, h, 114, 0.0, 48.0, 260.0, 48.0, text(zh, "Mouse control:", "鼠标控制:"), fg)
+    frame(s, p, w, h, 114, text(zh, "Mouse control:", "鼠标控制:"), fg)
     text_row(s, p, w, h, 147, 8.0, 60.0, 114.0, 12.0, text(zh, "Single click:", "单击："), disabled)
-    field(s, p, w, h, 148, 128.0, 60.0, 124.0, 12.0, text(zh, "Show/Hide", "显示/隐藏"), disabled, border, focus)
-    combo_arrow(s, p, &child(s, w, h, 128.0, 60.0, 124.0, 12.0), border, true)
+    combo(s, p, w, h, 148, text(zh, "Show/Hide", "显示/隐藏"), fg, disabled, border, focus)
     text_row(s, p, w, h, 149, 8.0, 74.0, 114.0, 12.0, text(zh, "Middle click:", "中键单击："), disabled)
-    field(s, p, w, h, 150, 128.0, 74.0, 124.0, 12.0, text(zh, "Clean memory", "清理内存"), disabled, border, focus)
-    combo_arrow(s, p, &child(s, w, h, 128.0, 74.0, 124.0, 12.0), border, true)
-    frame(s, p, w, h, 115, 0.0, 98.0, 260.0, 40.0, text(zh, "Balloon tips:", "气泡提示（Windows 通知）:"), fg)
-    checkbox(s, p, w, h, 152, 8.0, 110.0, 244.0, 12.0, text(zh, "Show memory cleaning results", "显示内存清理结果"), disabled, border, focus)
-    checkbox(s, p, w, h, 151, 8.0, 122.0, 244.0, 12.0, text(zh, "Enable notifications sound", "开启通知音效"), disabled, border, focus)
+    combo(s, p, w, h, 150, text(zh, "Clean memory", "清理内存"), fg, disabled, border, focus)
+    frame(s, p, w, h, 115, text(zh, "Balloon tips:", "气泡提示（Windows 通知）:"), fg)
+    checkbox(s, p, w, h, 152, text(zh, "Show memory cleaning results", "显示内存清理结果"), fg, disabled, border, focus)
+    checkbox(s, p, w, h, 151, text(zh, "Enable notifications sound", "开启通知音效"), fg, disabled, border, focus)
 
 fn draw_advanced(s: &State, p: &ui.Painter, w: f64, h: f64, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color, zh: bool):
-    frame(s, p, w, h, 107, 0.0, 0.0, 260.0, 46.0, text(zh, "General configuration:", "选项:"), fg)
-    checkbox(s, p, w, h, 153, 8.0, 12.0, 244.0, 10.0, text(zh, "Allow \"Standby lists\" and \"Modified page list\" cleanup on autoreduct", "允许自动清理备用列表和已修改页列表"), disabled, border, focus)
-    checkbox(s, p, w, h, 154, 8.0, 24.0, 244.0, 10.0, text(zh, "Log cleaning results into a debug log", "将清理结果写入调试日志"), disabled, border, focus)
+    frame(s, p, w, h, 107, text(zh, "General configuration:", "选项:"), fg)
+    checkbox(s, p, w, h, 153, text(zh, "Allow \"Standby lists\" and \"Modified page list\" cleanup on autoreduct", "允许自动清理备用列表和已修改页列表"), fg, disabled, border, focus)
+    checkbox(s, p, w, h, 154, text(zh, "Log cleaning results into a debug log", "将清理结果写入调试日志"), fg, disabled, border, focus)
 
 pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, height: f64):
     s.dark = dark
@@ -433,18 +605,33 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
         canvas_text(s, p, 0, "cancel-reset", no.x + 19.0, no.y + 5.0, text(zh, "Cancel", "取消"), fg, 8.0, false)
 
     if s.language_open and s.page == 0:
-        let combo = child(s, width, height, 128.0, 104.0, 124.0, 13.0)
+        let combo = resource_rect(s, 123, width, height)
         let popup = ui.rect(combo.x, combo.bottom(), combo.w, 36.0)
         p.fill_rect(&popup, &bg)
         outline(p, &popup, &border)
         let english = ui.rect(popup.x + 1.0, popup.y + 1.0, popup.w - 2.0, 17.0)
         let chinese = ui.rect(popup.x + 1.0, popup.y + 18.0, popup.w - 2.0, 17.0)
-        if s.language_focus == 801: p.fill_rect(&english, &selected)
-        if s.language_focus == 802: p.fill_rect(&chinese, &selected)
-        canvas_text(s, p, 123, "popup-english", english.x + 5.0, english.y + 4.0, "English", fg, 8.0, false)
-        canvas_text(s, p, 123, "popup-chinese", chinese.x + 5.0, chinese.y + 4.0, "简体中文", fg, 8.0, false)
-        if not zh: canvas_text(s, p, 123, "selected-mark", english.right() - 16.0, english.y + 4.0, "✓", fg, 8.0, false)
-        if zh: canvas_text(s, p, 123, "selected-mark", chinese.right() - 16.0, chinese.y + 4.0, "✓", fg, 8.0, false)
+        let english_state = settings_resources.combo_item_visual_state(s.language_focus == 801, s.hover == 801.0, s.pressed == 801.0)
+        let chinese_state = settings_resources.combo_item_visual_state(s.language_focus == 802, s.hover == 802.0, s.pressed == 802.0)
+        let highlight = ui.rgb(0x0078d4)
+        let highlight_text = ui.rgb(0xffffff)
+        let pressed_highlight = ui.rgb(0x005a9e)
+        if english_state == 1 or english_state == 2:
+            p.fill_rect(&english, &highlight)
+            canvas_text(s, p, 123, "popup-english", english.x + 5.0, english.y + 4.0, "English", &highlight_text, 8.0, false)
+        elif english_state == 3:
+            p.fill_rect(&english, &pressed_highlight)
+            canvas_text(s, p, 123, "popup-english", english.x + 5.0, english.y + 4.0, "English", &highlight_text, 8.0, false)
+        else:
+            canvas_text(s, p, 123, "popup-english", english.x + 5.0, english.y + 4.0, "English", fg, 8.0, false)
+        if chinese_state == 1 or chinese_state == 2:
+            p.fill_rect(&chinese, &highlight)
+            canvas_text(s, p, 123, "popup-chinese", chinese.x + 5.0, chinese.y + 4.0, "简体中文", &highlight_text, 8.0, false)
+        elif chinese_state == 3:
+            p.fill_rect(&chinese, &pressed_highlight)
+            canvas_text(s, p, 123, "popup-chinese", chinese.x + 5.0, chinese.y + 4.0, "简体中文", &highlight_text, 8.0, false)
+        else:
+            canvas_text(s, p, 123, "popup-chinese", chinese.x + 5.0, chinese.y + 4.0, "简体中文", fg, 8.0, false)
 
 pub fn hit(s: &State, x: f64, y: f64, width: f64, height: f64) -> f64:
     if s.modal == 1:
@@ -452,7 +639,7 @@ pub fn hit(s: &State, x: f64, y: f64, width: f64, height: f64) -> f64:
         if ui_geometry.settings_modal_button_rect(width, height, false).contains(x, y): return 702.0
         return 700.0
     if s.language_open and s.page == 0:
-        let combo = child(s, width, height, 128.0, 104.0, 124.0, 13.0)
+        let combo = resource_rect(s, 123, width, height)
         let popup = ui.rect(combo.x, combo.bottom(), combo.w, 36.0)
         if ui.rect(popup.x, popup.y, popup.w, 18.0).contains(x, y): return 801.0
         if ui.rect(popup.x, popup.y + 18.0, popup.w, 18.0).contains(x, y): return 802.0
@@ -461,12 +648,11 @@ pub fn hit(s: &State, x: f64, y: f64, width: f64, height: f64) -> f64:
     if ui_geometry.settings_reset_rect(width, height).contains(x, y): return 105.0
     if ui_geometry.settings_close_rect(width, height).contains(x, y): return 106.0
     if s.page == 0:
-        if child(s, width, height, 128.0, 104.0, 124.0, 13.0).contains(x, y): return 123.0
+        if resource_rect(s, 123, width, height).contains(x, y): return 123.0
         for id in [116, 117, 118, 120, 119, 121]:
-            let row = if id == 116: 12.0 elif id == 117: 24.0 elif id == 118: 36.0 elif id == 120: 48.0 elif id == 119: 60.0 else: 72.0
-            if child(s, width, height, 8.0, row, 244.0, 10.0).contains(x, y): return f64(id)
+            if resource_rect(s, id, width, height).contains(x, y): return f64(id)
     elif s.page == 1:
-        let list = child(s, width, height, 8.0, 12.0, 244.0, 70.0)
+        let list = resource_rect(s, 124, width, height)
         for slot in 0..6:
             let row = ui_geometry.settings_list_item_rect(width, height, 8.0, 12.0, 244.0, 70.0, slot, 17.0)
             if row.contains(x, y): return 1240.0 + f64(slot + s.region_scroll)
@@ -475,18 +661,17 @@ pub fn hit(s: &State, x: f64, y: f64, width: f64, height: f64) -> f64:
             if y > list.bottom() - 17.0: return 1249.0
             if y < (list.y + list.bottom()) / 2.0: return 1248.0
             return 1249.0
-        if child(s, width, height, 8.0, 102.0, 194.0, 12.0).contains(x, y): return 125.0
+        if resource_rect(s, 125, width, height).contains(x, y): return 125.0
         if child(s, width, height, 208.0, 102.0, 33.3333, 12.0).contains(x, y): return 126.0
         if child(s, width, height, 240.0, 102.0, 12.0, 12.0).contains(x, y): return 127.0
-        if child(s, width, height, 8.0, 116.0, 194.0, 12.0).contains(x, y): return 128.0
+        if resource_rect(s, 128, width, height).contains(x, y): return 128.0
         if child(s, width, height, 208.0, 116.0, 33.3333, 12.0).contains(x, y): return 129.0
         if child(s, width, height, 240.0, 116.0, 12.0, 12.0).contains(x, y): return 130.0
-        if child(s, width, height, 8.0, 150.0, 144.0, 12.0).contains(x, y): return 131.0
+        if resource_rect(s, 131, width, height).contains(x, y): return 131.0
         if child(s, width, height, 158.0, 148.0, 94.0, 12.0).contains(x, y): return 132.0
     elif s.page == 2:
         for id in [133, 134, 135, 136, 137]:
-            let row = if id == 133: 12.0 elif id == 134: 24.0 elif id == 135: 36.0 elif id == 136: 48.0 else: 60.0
-            if child(s, width, height, 8.0, row, 244.0, 10.0).contains(x, y): return f64(id)
+            if resource_rect(s, id, width, height).contains(x, y): return f64(id)
         if child(s, width, height, 128.0, 92.0, 124.0, 12.0).contains(x, y): return 139.0
         for row_index in 0..4:
             let row = ui_geometry.settings_list_item_rect(width, height, 8.0, 110.0, 244.0, 50.0, row_index, 0.0)
@@ -496,13 +681,13 @@ pub fn hit(s: &State, x: f64, y: f64, width: f64, height: f64) -> f64:
         if child(s, width, height, 240.0, 12.0, 12.0, 12.0).contains(x, y): return 143.0
         if child(s, width, height, 208.0, 26.0, 33.3333, 12.0).contains(x, y): return 145.0
         if child(s, width, height, 240.0, 26.0, 12.0, 12.0).contains(x, y): return 146.0
-        if child(s, width, height, 128.0, 60.0, 124.0, 12.0).contains(x, y): return 148.0
-        if child(s, width, height, 128.0, 74.0, 124.0, 12.0).contains(x, y): return 150.0
-        if child(s, width, height, 8.0, 110.0, 244.0, 12.0).contains(x, y): return 152.0
-        if child(s, width, height, 8.0, 122.0, 244.0, 12.0).contains(x, y): return 151.0
+        if resource_rect(s, 148, width, height).contains(x, y): return 148.0
+        if resource_rect(s, 150, width, height).contains(x, y): return 150.0
+        if resource_rect(s, 152, width, height).contains(x, y): return 152.0
+        if resource_rect(s, 151, width, height).contains(x, y): return 151.0
     else:
-        if child(s, width, height, 8.0, 12.0, 244.0, 10.0).contains(x, y): return 153.0
-        if child(s, width, height, 8.0, 24.0, 244.0, 10.0).contains(x, y): return 154.0
+        if resource_rect(s, 153, width, height).contains(x, y): return 153.0
+        if resource_rect(s, 154, width, height).contains(x, y): return 154.0
     return 0.0
 
 fn unavailable_status(target: i64, zh: bool) -> string:
@@ -519,7 +704,17 @@ fn unavailable_status(target: i64, zh: bool) -> string:
 pub fn pointer(s: &mut State, target: f64, down: bool):
     s.hover = target
     if down: s.pressed = target
-    else: s.pressed = 0.0
+
+pub fn release(s: &mut State, target: f64, zh: bool) -> i64:
+    let was_pressed = s.pressed
+    s.hover = target
+    s.pressed = 0.0
+    if s.language_open and target != 123.0 and target != 801.0 and target != 802.0:
+        s.language_open = false
+        if s.test_mode: println("CI_SETTINGS_LANGUAGE_CANCEL reason=outside-release")
+    if was_pressed != 0.0 and was_pressed == target:
+        return click(s, target, zh)
+    0
 
 pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
     s.pressed = 0.0
@@ -533,6 +728,9 @@ pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
             s.status = text(zh, "Reset cancelled", "已取消重置")
             if s.test_mode: println("CI_RESET_CANCELLED no_system_change=true")
         return 0
+    if s.language_open and target != 123.0 and target != 801.0 and target != 802.0:
+        s.language_open = false
+        if s.test_mode: println("CI_SETTINGS_LANGUAGE_CANCEL reason=outside-click")
     if target >= 1040.0 and target <= 1044.0:
         s.page = i64(target - 1040.0)
         s.focus = 100 + s.page
@@ -544,6 +742,7 @@ pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
         s.status = ""
         if s.test_mode: println("CI_RESET_CONFIRMATION resource=105 resource_string=83")
     elif target == 106.0:
+        s.focus = 107
         if s.test_mode: println("CI_SETTINGS_CLOSE resource=106 action=return_to_main")
         return 1
     elif target == 123.0:
@@ -553,14 +752,19 @@ pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
             if zh: s.language_focus = 802
             else: s.language_focus = 801
         if s.test_mode: println(f"CI_SETTINGS_LANGUAGE resource=123 popup_open={s.language_open}")
+    elif s.widget_preview_id != 0 and target == f64(s.widget_preview_id):
+        s.focus = s.widget_preview_id
+        toggle_preview_checkbox(s, s.widget_preview_id, "mouse", zh)
     elif target == 801.0 or target == 802.0:
         s.language_open = false
         if target == 801.0:
-            s.status = text(zh, "Language selection applies for this session only; settings are not saved", "语言选择仅在当前会话有效；设置不会保存")
+            # The main loop redraws with the destination locale after this
+            # returns 2, so the feedback must already use that locale too.
+            s.status = "Language selection applies for this session only; settings are not saved"
             if s.test_mode: println("CI_SETTINGS_LANGUAGE_SELECT resource=123 locale=en")
             if zh: return 2
         else:
-            s.status = text(zh, "Language selection applies for this session only; settings are not saved", "语言选择仅在当前会话有效；设置不会保存")
+            s.status = "语言选择仅在当前会话有效；设置不会保存"
             if s.test_mode: println("CI_SETTINGS_LANGUAGE_SELECT resource=123 locale=zh-CN")
             if not zh: return 2
     elif target >= 1240.0 and target < 1248.0:
@@ -568,8 +772,8 @@ pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
         s.status = unavailable_status(124, zh)
         if s.test_mode: println(f"CI_SETTINGS_DISABLED resource=124 row={index} action=none")
     elif target == 1248.0 or target == 1249.0:
-        if target == 1248.0: s.region_scroll = max(0, s.region_scroll - 1)
-        else: s.region_scroll = min(2, s.region_scroll + 1)
+        if target == 1248.0: s.region_scroll = clamp_region_scroll(s.region_scroll - 1)
+        else: s.region_scroll = clamp_region_scroll(s.region_scroll + 1)
         s.status = ""
         if s.test_mode: println(f"CI_SETTINGS_REGION_SCROLL resource=124 offset={s.region_scroll}")
     elif target >= 1400.0 and target < 1404.0:
@@ -582,22 +786,40 @@ pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
         if s.test_mode: println(f"CI_SETTINGS_DISABLED resource={id} action=none")
     0
 
+pub fn scroll(s: &mut State, x: f64, y: f64, width: f64, height: f64, delta: i64) -> bool:
+    if delta == 0 or s.modal != 0 or s.page != 1: return false
+    let list = resource_rect(s, 124, width, height)
+    if not list.contains(x, y): return false
+    let previous = s.region_scroll
+    s.region_scroll = clamp_region_scroll(s.region_scroll + delta)
+    if s.region_scroll == previous: return false
+    s.status = ""
+    if s.test_mode:
+        println(f"CI_SETTINGS_REGION_SCROLL_INPUT resource=124 source=wheel x={x} y={y} delta={delta} offset={s.region_scroll}")
+    true
+
 fn next_focus(s: &mut State, direction: i64):
-    if s.page == 0:
-        s.focus += direction
-        if s.focus > 107: s.focus = 100
-        if s.focus < 100: s.focus = 107
+    let nav_focus = 100 + s.page
+    let preview_id = preview_checkbox_on_page(s)
+    if direction > 0:
+        if s.focus == nav_focus:
+            if preview_id != 0: s.focus = preview_id
+            else: s.focus = if s.page == 0: 105 else: 106
+        elif preview_id != 0 and s.focus == preview_id:
+            s.focus = if s.page == 0: 105 else: 106
+        elif s.focus == 105: s.focus = 106
+        elif s.focus == 106: s.focus = 107
+        else: s.focus = nav_focus
     else:
-        if direction > 0:
-            if s.focus >= 104: s.focus = 106
-            elif s.focus == 106: s.focus = 107
-            elif s.focus == 107: s.focus = 100
-            else: s.focus += 1
-        else:
-            if s.focus <= 100: s.focus = 107
-            elif s.focus == 107: s.focus = 106
-            elif s.focus == 106: s.focus = 104
-            else: s.focus -= 1
+        if s.focus == nav_focus: s.focus = 107
+        elif s.focus == 107: s.focus = 106
+        elif s.focus == 106:
+            if s.page == 0: s.focus = 105
+            elif preview_id != 0: s.focus = preview_id
+            else: s.focus = nav_focus
+        elif s.focus == 105 and preview_id != 0: s.focus = preview_id
+        elif preview_id != 0 and s.focus == preview_id: s.focus = nav_focus
+        else: s.focus = nav_focus
 
 pub fn key(s: &mut State, name: string, zh: bool) -> i64:
     if s.modal == 1:
@@ -614,14 +836,31 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
         if name == "Escape" or name == "Esc" or name == "\x1b":
             s.language_open = false
             if s.test_mode: println("CI_SETTINGS_LANGUAGE_CANCEL reason=Escape")
+        elif name == "Shift+Tab" or name == "ISO_Left_Tab":
+            s.language_open = false
+            next_focus(s, -1)
+            if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_CANCEL reason=Shift+Tab focus={s.focus}")
+        elif name == "F4" or name == "Alt+Up":
+            s.language_open = false
+            if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_CANCEL reason={name}")
+        elif name == "Tab" or name == "\t":
+            s.language_open = false
+            next_focus(s, 1)
+            if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_CANCEL reason=Tab focus={s.focus}")
         elif name == "Down" or name == "Up":
             if s.language_focus == 801: s.language_focus = 802
             else: s.language_focus = 801
             if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_KEY name={name} focus={s.language_focus}")
-        elif name == "Enter" or name == "Return" or name == "\r" or name == "\n":
+        elif name == "Home" or name == "PageUp":
+            s.language_focus = 801
+            if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_KEY name={name} focus={s.language_focus}")
+        elif name == "End" or name == "PageDown":
+            s.language_focus = 802
+            if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_KEY name={name} focus={s.language_focus}")
+        elif name == "Enter" or name == "Return" or name == "\r" or name == "\n" or name == "Space" or name == " ":
             let selected = s.language_focus
             s.language_open = false
-            if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_KEY name=Enter selected={selected}")
+            if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_KEY name={name} selected={selected}")
             if selected == 801 and zh: return 2
             if selected == 802 and not zh: return 2
         return 0
@@ -630,6 +869,18 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
         return 1
     if name == "Tab" or name == "\t":
         next_focus(s, 1)
+    elif name == "Shift+Tab":
+        next_focus(s, -1)
+    elif (name == "Up" or name == "Down" or name == "Space" or name == " " or name == "F4" or name == "Alt+Down") and s.focus == 105 and s.page == 0:
+        s.language_open = true
+        if zh: s.language_focus = 802
+        else: s.language_focus = 801
+        if s.test_mode: println(f"CI_SETTINGS_LANGUAGE resource=123 popup_open=true source={name}")
+    elif (name == "Home" or name == "PageUp" or name == "End" or name == "PageDown") and s.focus == 105 and s.page == 0:
+        s.language_open = true
+        if name == "Home" or name == "PageUp": s.language_focus = 801
+        else: s.language_focus = 802
+        if s.test_mode: println(f"CI_SETTINGS_LANGUAGE resource=123 popup_open=true source={name} focus={s.language_focus}")
     elif name == "Up" or name == "Down":
         if s.focus >= 100 and s.focus <= 104:
             if name == "Down": s.page = min(4, s.page + 1)
@@ -657,6 +908,16 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
             if zh: s.language_focus = 802
             else: s.language_focus = 801
             if s.test_mode: println("CI_SETTINGS_LANGUAGE resource=123 popup_open=true source=keyboard")
+    elif name == "Space" or name == " " or name == "Spacebar":
+        if s.focus >= 100 and s.focus <= 104:
+            s.page = s.focus - 100
+        elif preview_checkbox_on_page(s) != 0 and s.focus == preview_checkbox_on_page(s):
+            toggle_preview_checkbox(s, s.widget_preview_id, "keyboard-space", zh)
+        elif s.focus == 105 and s.page == 0:
+            s.language_open = true
+            if zh: s.language_focus = 802
+            else: s.language_focus = 801
+            if s.test_mode: println("CI_SETTINGS_LANGUAGE resource=123 popup_open=true source=Space")
     if s.test_mode: println(f"CI_SETTINGS_KEY name={name} page_idd={page_dialog_id(s.page)} focus={s.focus}")
     0
 
@@ -717,6 +978,37 @@ fn test_regions_list_scroll_is_bounded_and_keeps_all_rows_read_only():
     assert s.region_scroll == 2
     assert upstream_default_checked(124, 7)
 
+fn test_region_wheel_scroll_is_page_and_viewport_scoped_and_clamped():
+    let mut s = initial(false)
+    let list = resource_rect(&s, 124, 558.0, 335.0)
+    let x = list.x + 20.0
+    let y = list.y + 20.0
+    assert(not scroll(&mut s, x, y, 558.0, 335.0, -1))
+    assert(s.region_scroll == 0)
+
+    s.page = 0
+    assert(not scroll(&mut s, x, y, 558.0, 335.0, 1))
+    assert(s.region_scroll == 0)
+    s.page = 1
+    assert(not scroll(&mut s, list.x - 1.0, y, 558.0, 335.0, 1))
+    assert(not scroll(&mut s, x, list.bottom() + 1.0, 558.0, 335.0, 1))
+
+    assert(scroll(&mut s, x, y, 558.0, 335.0, 1))
+    assert(s.region_scroll == 1)
+    assert(scroll(&mut s, x, y, 558.0, 335.0, 1))
+    assert(s.region_scroll == 2)
+    assert(not scroll(&mut s, x, y, 558.0, 335.0, 1))
+    assert(s.region_scroll == 2)
+    assert(scroll(&mut s, x, y, 558.0, 335.0, -2))
+    assert(s.region_scroll == 0)
+    assert(not scroll(&mut s, x, y, 558.0, 335.0, -1))
+    assert(s.region_scroll == 0)
+
+    s.region_scroll = 1
+    s.modal = 1
+    assert(not scroll(&mut s, x, y, 558.0, 335.0, 1))
+    assert(s.region_scroll == 1)
+
 fn test_regions_visible_rows_stay_inside_viewport_when_scrolled():
     let list = ui_geometry.settings_child_rect(558.0, 335.0, 8.0, 12.0, 244.0, 70.0)
     let first = ui_geometry.settings_list_item_rect(558.0, 335.0, 8.0, 12.0, 244.0, 70.0, 0, 17.0)
@@ -755,6 +1047,15 @@ fn test_settings_navigation_language_and_reset_are_interactive():
     assert s.modal == 0
     assert click(&mut s, 106.0, true) == 1
 
+fn test_language_selection_feedback_uses_destination_locale():
+    let mut s = initial(true)
+    assert click(&mut s, 802.0, false) == 2
+    assert s.status == "语言选择仅在当前会话有效；设置不会保存"
+
+    s = initial(true)
+    assert click(&mut s, 801.0, true) == 2
+    assert s.status == "Language selection applies for this session only; settings are not saved"
+
 fn test_escape_returns_from_settings_or_cancels_reset():
     let mut s = initial(true)
     assert key(&mut s, "Escape", false) == 1
@@ -764,7 +1065,7 @@ fn test_escape_returns_from_settings_or_cancels_reset():
 
 fn test_keyboard_focus_activates_language_reset_and_close_controls():
     let mut s = initial(true)
-    for _ in 0..5: key(&mut s, "Tab", false)
+    key(&mut s, "Tab", false)
     assert s.focus == 105
     assert key(&mut s, "Enter", false) == 0
     assert s.language_open
@@ -781,3 +1082,249 @@ fn test_keyboard_focus_activates_language_reset_and_close_controls():
 
     s.focus = 107
     assert key(&mut s, "Enter", true) == 1
+
+fn test_combo_pointer_keyboard_focus_and_cancel_paths():
+    let mut s = initial(true)
+    let combo = resource_rect(&s, 123, 558.0, 335.0)
+    assert hit(&s, combo.x + 4.0, combo.y + 4.0, 558.0, 335.0) == 123.0
+    pointer(&mut s, 123.0, true)
+    assert s.pressed == 123.0 and s.hover == 123.0
+    assert settings_resources.combo_visual_state(true, false, true, true, false) == 4
+    assert click(&mut s, 123.0, false) == 0
+    assert s.language_open and s.focus == 105
+    assert settings_resources.combo_visual_state(true, true, true, false, true) == 5
+    pointer(&mut s, 801.0, false)
+    assert s.hover == 801.0
+    assert settings_resources.combo_item_visual_state(false, s.hover == 801.0, s.pressed == 801.0) == 2
+    pointer(&mut s, 801.0, true)
+    assert s.pressed == 801.0
+    assert settings_resources.combo_item_visual_state(false, s.hover == 801.0, s.pressed == 801.0) == 3
+    pointer(&mut s, 801.0, false)
+    assert key(&mut s, "Escape", false) == 0
+    assert not s.language_open and s.focus == 105
+    assert key(&mut s, "Down", false) == 0
+    assert s.language_open and s.language_focus == 801
+    assert key(&mut s, "Down", false) == 0
+    assert s.language_focus == 802
+    assert key(&mut s, "Tab", false) == 0
+    assert not s.language_open and s.focus == 106
+
+fn test_combo_keyboard_space_f4_alt_and_shift_tab():
+    let mut s = initial(true)
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 105
+    assert key(&mut s, "Space", false) == 0
+    assert s.language_open and s.language_focus == 801
+    assert key(&mut s, "Down", false) == 0
+    assert s.language_focus == 802
+    assert key(&mut s, "Space", false) == 2
+    assert not s.language_open
+
+    assert key(&mut s, "F4", false) == 0
+    assert s.language_open
+    assert key(&mut s, "F4", false) == 0
+    assert not s.language_open and s.focus == 105
+
+    assert key(&mut s, "Alt+Down", false) == 0
+    assert s.language_open
+    assert key(&mut s, "Alt+Up", false) == 0
+    assert not s.language_open and s.focus == 105
+
+    assert key(&mut s, "Down", false) == 0
+    assert s.language_open
+    assert key(&mut s, "Shift+Tab", false) == 0
+    assert not s.language_open and s.focus == 100
+
+fn test_combo_home_end_and_page_keys_select_first_and_last_without_early_apply():
+    let mut s = initial(true)
+    assert key(&mut s, "Tab", false) == 0
+    assert key(&mut s, "End", false) == 0
+    assert s.language_open and s.language_focus == 802
+    assert key(&mut s, "Home", false) == 0
+    assert s.language_focus == 801
+    assert key(&mut s, "PageDown", false) == 0
+    assert s.language_focus == 802
+    assert key(&mut s, "PageUp", false) == 0
+    assert s.language_focus == 801
+    assert key(&mut s, "Escape", false) == 0
+    assert not s.language_open
+
+    assert key(&mut s, "End", false) == 0
+    assert s.language_open and s.language_focus == 802
+    assert key(&mut s, "Enter", false) == 2
+    assert not s.language_open
+
+fn test_mouse_hit_targets_cover_all_five_resource_pages():
+    let mut s = initial(true)
+    for page in 0..5:
+        let item = ui_geometry.settings_nav_item_rect(558.0, 335.0, page)
+        let target = hit(&s, item.x + item.w / 2.0, item.y + item.h / 2.0, 558.0, 335.0)
+        assert target == 1040.0 + f64(page)
+        assert click(&mut s, target, false) == 0
+        assert s.page == page
+        assert s.focus == 100 + page
+
+fn test_tab_order_uses_only_live_controls_and_wraps():
+    let mut s = initial(true)
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 105
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 106
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 107
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 100
+    assert key(&mut s, "Shift+Tab", false) == 0
+    assert s.focus == 107
+    assert click(&mut s, 1042.0, false) == 0
+    assert s.page == 2
+    assert s.focus == 102
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 106
+
+fn test_disabled_native_settings_never_toggle_or_open():
+    let mut s = initial(true)
+    assert not settings_resources.lookup(0, 116).linux_enabled
+    pointer(&mut s, 116.0, true)
+    assert settings_resources.checkbox_visual_state(false, false, false, true, true) == 1
+    assert release(&mut s, 116.0, false) == 0
+    assert not upstream_default_checked(116, -1)
+    assert s.status == unavailable_status(116, false)
+    s.page = 3
+    assert not settings_resources.lookup(3, 148).linux_enabled
+    assert settings_resources.combo_visual_state(false, false, true, true, true) == 1
+
+fn test_checkbox_preview_is_test_only_transient_and_side_effect_free():
+    let mut s = initial(false)
+    enable_widget_preview_checkbox(&mut s, 116)
+    assert s.widget_preview_id == 0
+    assert not checkbox_enabled(&s, 116, settings_resources.lookup(0, 116).linux_enabled)
+
+    s = initial(true)
+    enable_widget_preview_checkbox(&mut s, 125)
+    assert s.widget_preview_id == 0
+    enable_widget_preview_checkbox(&mut s, 116)
+    assert s.widget_preview_id == 116 and not s.widget_preview_checked
+    assert checkbox_enabled(&s, 116, settings_resources.lookup(0, 116).linux_enabled)
+    assert not checkbox_enabled(&s, 117, settings_resources.lookup(0, 117).linux_enabled)
+    assert not checkbox_checked(&s, 116, settings_resources.lookup(0, 116).checked)
+
+    pointer(&mut s, 116.0, true)
+    assert settings_resources.checkbox_visual_state(true, false, false, true, true) == 8
+    assert release(&mut s, 0.0, false) == 0
+    assert not s.widget_preview_checked
+
+    pointer(&mut s, 116.0, true)
+    assert release(&mut s, 116.0, false) == 0
+    assert s.widget_preview_checked and s.focus == 116
+    assert s.status == "Preview only; no setting changed or saved"
+    assert settings_resources.checkbox_visual_state(true, true, false, true, false) == 7
+    assert checkbox_checked(&s, 116, false)
+    assert not upstream_default_checked(116, -1)
+
+fn test_checkbox_preview_keyboard_space_and_tab_order():
+    let mut s = initial(true)
+    enable_widget_preview_checkbox(&mut s, 116)
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 116
+    assert key(&mut s, "Space", false) == 0
+    assert s.widget_preview_checked
+    assert key(&mut s, "Enter", false) == 0
+    assert s.widget_preview_checked
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 105
+    assert key(&mut s, "Shift+Tab", false) == 0
+    assert s.focus == 116
+    assert key(&mut s, "Space", true) == 0
+    assert not s.widget_preview_checked
+    assert s.status == "仅预览；未更改或保存设置"
+
+    s = initial(true)
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 105
+
+fn test_appearance_checkbox_preview_uses_resource_default_and_page_tab_order():
+    let mut s = initial(true)
+    enable_widget_preview_checkbox(&mut s, 136)
+    assert s.widget_preview_id == 136 and s.widget_preview_checked
+    assert s.page == 2 and s.focus == 102
+    assert checkbox_enabled(&s, 136, settings_resources.lookup(2, 136).linux_enabled)
+    assert checkbox_checked(&s, 136, false)
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 136
+    assert key(&mut s, "Space", false) == 0
+    assert not s.widget_preview_checked
+    assert upstream_default_checked(136, -1)
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 106
+    assert key(&mut s, "Shift+Tab", false) == 0
+    assert s.focus == 136
+    assert key(&mut s, "Space", true) == 0
+    assert s.widget_preview_checked
+    assert s.status == "仅预览；未更改或保存设置"
+
+fn test_groupbox_frame_inset_matches_win32_capture_without_changing_resource_rect():
+    let general_spec = settings_resources.lookup(0, 107)
+    let general = settings_resources.visible_rect(&general_spec, 558.0, 335.0)
+    let general_border = groupbox_pixel_rect(&general)
+    assert general.x == 156.0 and general.y == 10.0 and general.w == 390.0 and general.h == 146.25
+    assert general_border.x == 156.0 and general_border.y == 16.0
+    assert general_border.w == 390.0 and general_border.bottom() == 155.0
+    assert group_title_x(&general) == 164.0 and group_title_y(&general) == 9.0
+
+    let language_spec = settings_resources.lookup(0, 108)
+    let language = settings_resources.visible_rect(&language_spec, 558.0, 335.0)
+    let language_border = groupbox_pixel_rect(&language)
+    assert language.y == 159.5 and language.h == 52.0
+    assert language_border.y == 166.0 and language_border.bottom() == 211.0
+    assert group_title_x(&language) == 164.0 and group_title_y(&language) == 158.5
+
+fn test_groupbox_is_static_and_not_a_hit_or_focus_target():
+    let mut s = initial(true)
+    let resource = settings_resources.lookup(0, 107)
+    let group_rect = settings_resources.visible_rect(&resource, 558.0, 335.0)
+    assert resource.kind == "groupbox"
+    assert resource.style == "WS_CHILD | WS_VISIBLE | BS_GROUPBOX"
+    let x = group_rect.right() - 5.0
+    let y = group_rect.bottom() - 1.0
+    assert hit(&s, x, y, 558.0, 335.0) == 0.0
+    let previous_focus = s.focus
+    let target = hit(&s, x, y, 558.0, 335.0)
+    assert click(&mut s, target, false) == 0
+    assert s.focus == previous_focus
+
+fn test_checkbox_focus_bounds_follow_caption_not_full_resource_row():
+    let row = settings_resources.visible_rect(&settings_resources.lookup(0, 116), 558.0, 335.0)
+    let focus = checkbox_focus_rect(&row, 50.0)
+    assert focus.x > row.x and focus.w < row.w and focus.right() < row.right()
+
+fn test_mouse_press_survives_drag_and_release_cancels_outside_combo():
+    let mut s = initial(true)
+    assert(release(&mut s, 123.0, false) == 0)
+    # No press began, so a release cannot open a control.
+    assert(not s.language_open)
+    pointer(&mut s, 123.0, true)
+    pointer(&mut s, 0.0, false)
+    assert(s.pressed == 123.0 and s.hover == 0.0)
+    assert(settings_resources.combo_visual_state(true, true, false, true, false) == 2)
+    assert(release(&mut s, 0.0, false) == 0)
+    assert(s.pressed == 0.0 and not s.language_open)
+
+    pointer(&mut s, 123.0, true)
+    assert(release(&mut s, 123.0, false) == 0)
+    assert(s.language_open)
+    pointer(&mut s, 123.0, true)
+    pointer(&mut s, 801.0, true)
+    assert(release(&mut s, 801.0, false) == 0)
+    assert(not s.language_open)
+    assert(s.pressed == 0.0)
+
+fn test_combo_mouse_release_selects_language_through_production_transition():
+    let mut s = initial(true)
+    pointer(&mut s, 123.0, true)
+    assert(release(&mut s, 123.0, false) == 0)
+    assert(s.language_open and s.focus == 105)
+    pointer(&mut s, 802.0, false)
+    pointer(&mut s, 802.0, true)
+    assert(release(&mut s, 802.0, false) == 2)
+    assert(not s.language_open and s.pressed == 0.0)

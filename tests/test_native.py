@@ -213,5 +213,51 @@ class TestNativeBackend(unittest.TestCase):
                     os.environ[name] = value
 
 
+class TestGuiTestBridge(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.temp.cleanup)
+        cls.library_path = pathlib.Path(cls.temp.name) / 'libgui-test.so'
+        gtk_flags = subprocess.run(
+            ['pkg-config', '--cflags', '--libs', 'gtk+-3.0'],
+            check=True, capture_output=True, text=True,
+        ).stdout.split()
+        subprocess.run(
+            ['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic',
+             '-shared', '-fPIC', str(ROOT / 'native/gui_test.c'), *gtk_flags,
+             '-o', str(cls.library_path)],
+            check=True,
+        )
+
+    def test_widget_preview_environment_is_ci_gated_and_allowlisted(self):
+        library = ctypes.CDLL(str(self.library_path))
+        library.mr_gui_test_widget_preview_resource.restype = ctypes.c_longlong
+        names = ('MEMREDUCT_CI', 'MEMREDUCT_CI_WIDGET_PREVIEW')
+        previous = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ['MEMREDUCT_CI_WIDGET_PREVIEW'] = 'checkbox-136'
+            os.environ.pop('MEMREDUCT_CI', None)
+            self.assertEqual(library.mr_gui_test_widget_preview_resource(), 0)
+
+            os.environ['MEMREDUCT_CI'] = '1'
+            for value, expected in (
+                ('checkbox-116', 116),
+                ('checkbox-136', 136),
+                ('checkbox-125', 0),
+                ('checkbox-153', 0),
+                ('checkbox-999', 0),
+            ):
+                with self.subTest(value=value):
+                    os.environ['MEMREDUCT_CI_WIDGET_PREVIEW'] = value
+                    self.assertEqual(library.mr_gui_test_widget_preview_resource(), expected)
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
 if __name__ == '__main__':
     unittest.main()

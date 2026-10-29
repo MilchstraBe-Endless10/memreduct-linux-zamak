@@ -269,6 +269,21 @@ long long mr_gui_test_start_settings(void)
     return mr_gui_test_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
 }
 
+long long mr_gui_test_widget_preview_resource(void)
+{
+    const char *value = getenv("MEMREDUCT_CI_WIDGET_PREVIEW");
+    if (mr_gui_test_mode() == 0 || value == NULL) {
+        return 0;
+    }
+    if (strcmp(value, "checkbox-116") == 0) {
+        return 116;
+    }
+    if (strcmp(value, "checkbox-136") == 0) {
+        return 136;
+    }
+    return 0;
+}
+
 long long mr_gui_test_log_canvas_font(void)
 {
     if (mr_gui_test_mode() == 0) {

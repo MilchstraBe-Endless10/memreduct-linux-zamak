@@ -44,7 +44,7 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
 } | tee "$artifact_dir/environment.txt"
 
 {
-  sha256sum src/main.zm src/settings_ui.zm src/ui_geometry.zm native/gui_test.c native/gui_window.c zam.toml \
+  sha256sum src/main.zm src/settings_ui.zm src/settings_resources.zm src/ui_geometry.zm native/gui_test.c native/gui_window.c zam.toml \
     | sed 's#  #  #'
   sha256sum "$artifact_dir/memreduct-zamak-production" \
     | awk '{print $1 "  memreduct-zamak-production"}'

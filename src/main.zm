@@ -12,6 +12,7 @@ extern fn mr_gui_test_timeout_ms() -> i64
 extern fn mr_gui_test_fail_sample_after(elapsed_ms: i64) -> i64
 extern fn mr_gui_test_log_canvas_font() -> i64
 extern fn mr_gui_test_start_settings() -> i64
+extern fn mr_gui_test_widget_preview_resource() -> i64
 extern fn mr_gui_test_schedule_capture() -> i64
 extern fn mr_gui_test_selected_group() -> i64
 extern fn mr_gui_window_mode(settings: i64) -> i64
@@ -20,6 +21,10 @@ extern fn mr_gui_settings_window_exists() -> i64
 extern fn mr_gui_settings_close_handler_connected() -> i64
 extern fn mr_gui_lock_window_sizes(main_width: i64, main_height: i64, settings_width: i64, settings_height: i64) -> i64
 extern fn mr_gui_set_main_background(dark: i64) -> i64
+extern fn mr_gui_set_compat_font() -> i64
+extern fn mr_gui_take_settings_scroll_steps() -> i64
+extern fn mr_gui_settings_scroll_x() -> i64
+extern fn mr_gui_settings_scroll_y() -> i64
 
 struct MainWindow:
     canvas: ui.Canvas
@@ -59,6 +64,8 @@ fn normalized_key_name(name: string) -> string:
     if name == "\t": return "Tab"
     if name == "\r" or name == "\n": return "Enter"
     if name == "\x1b": return "Escape"
+    if name == "Page_Up" or name == "Prior": return "PageUp"
+    if name == "Page_Down" or name == "Next": return "PageDown"
     name
 
 fn next_focus_index(focus: f64) -> f64:
@@ -71,6 +78,11 @@ fn menu_item_has_keyboard_focus(focus: f64, index: i64) -> bool:
 
 fn settings_canvas_needs_redraw(settings_open: bool, target: f64) -> bool:
     settings_open and (target == 202.0 or target == 601.0 or target == 602.0)
+
+fn font_policy_name(policy: i64) -> string:
+    if policy == 1: return "Liberation Sans"
+    if policy == 2: return "system-default"
+    "unavailable"
 
 fn root_menu_target(menu: i64, row: i64) -> f64:
     if menu == 1:
@@ -443,6 +455,9 @@ fn set_settings_open(s: &mut MainWindow, open: bool):
     s.pressed = 0.0
     if open:
         s.settings = settings_ui.initial(s.test_mode)
+        let widget_preview = mr_gui_test_widget_preview_resource()
+        if widget_preview != 0:
+            settings_ui.enable_widget_preview_checkbox(&mut s.settings, widget_preview)
         s.settings_canvas.redraw()
         if s.test_mode:
             println(f"CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true close_handler={mr_gui_settings_close_handler_connected() != 0} resource=IDD_SETTINGS_*:260x168_dlu shell={ui_geometry.settings_window_width_px()}x{ui_geometry.settings_window_height_px()}_provisional")
@@ -462,6 +477,16 @@ fn tick(s: &mut MainWindow):
     if s.elapsed_ms >= s.test_timeout_ms:
         println("CI_QUIT source=bounded_test_timer")
         ui.quit()
+
+fn settings_scroll_tick(s: &mut MainWindow):
+    if not s.settings_open: return
+    let delta = mr_gui_take_settings_scroll_steps()
+    if delta == 0: return
+    let x = f64(mr_gui_settings_scroll_x())
+    let y = f64(mr_gui_settings_scroll_y())
+    let changed = settings_ui.scroll(&mut s.settings, x, y, f64(ui_geometry.settings_client_width_px()), f64(ui_geometry.settings_client_height_px()), delta)
+    if s.test_mode: println(f"CI_SETTINGS_SCROLL_DISPATCH x={x} y={y} delta={delta} changed={changed}")
+    if changed: s.settings_canvas.redraw()
 
 fn activate(s: &mut MainWindow, target: f64):
     if target == 1.0 or target == 2.0 or target == 3.0 or target == 4.0:
@@ -673,10 +698,9 @@ fn settings_mouse(s: &mut MainWindow, event: &ui.Mouse):
         s.settings_canvas.redraw()
     elif event.up() == 1:
         let was_pressed = s.settings.pressed
-        settings_ui.pointer(&mut s.settings, target, false)
+        let action = settings_ui.release(&mut s.settings, target, s.zh)
         if s.test_mode: println(f"CI_SETTINGS_MOUSE_UP target={target}")
         if was_pressed != 0.0 and was_pressed == target:
-            let action = settings_ui.click(&mut s.settings, target, s.zh)
             if action == 1: set_settings_open(s, false)
             elif action == 2:
                 s.zh = not s.zh
@@ -710,6 +734,8 @@ fn test_normalized_settings_key_names():
     assert(normalized_key_name("\t") == "Tab")
     assert(normalized_key_name("\r") == "Enter")
     assert(normalized_key_name("\x1b") == "Escape")
+    assert(normalized_key_name("Page_Up") == "PageUp")
+    assert(normalized_key_name("Page_Down") == "PageDown")
 
 fn test_initial_menu_focus_is_hidden_and_tab_starts_at_file():
     assert(not menu_item_has_keyboard_focus(-1.0, 0))
@@ -723,6 +749,11 @@ fn test_shared_theme_and_language_changes_redraw_open_settings():
     assert(not settings_canvas_needs_redraw(false, 202.0))
     assert(not settings_canvas_needs_redraw(false, 601.0))
     assert(not settings_canvas_needs_redraw(true, 204.0))
+
+fn test_font_policy_name_reports_only_a_confirmed_result():
+    assert(font_policy_name(0) == "unavailable")
+    assert(font_policy_name(1) == "Liberation Sans")
+    assert(font_policy_name(2) == "system-default")
 
 fn close_window(s: &mut MainWindow):
     if s.test_mode: println("CI_WINDOW_CLOSE")
@@ -740,6 +771,8 @@ fn main():
     let settings_window = ui.window("Settings - Mem Reduct", settings_width, settings_height)
     let settings_canvas = ui.canvas()
     settings_window.set_child(settings_canvas)
+    let font_policy = mr_gui_set_compat_font()
+    let font_family = font_policy_name(font_policy)
     let fixed_size_policy = mr_gui_lock_window_sizes(width, height, settings_width, settings_height)
     let main_background_ready = mr_gui_set_main_background(0)
     let test_mode = mr_gui_test_mode() != 0
@@ -751,6 +784,7 @@ fn main():
         println(f"CI_TEST_TIMEOUT_MS={test_timeout}")
         println(f"CI_CAPTURE_SCHEDULED={capture_scheduled}")
         println(f"CI_WINDOW_SIZE_POLICY fixed={fixed_size_policy}")
+        println(f"CI_FONT_POLICY result={font_policy} family={font_family} size_pt=8")
         println(f"CI_MAIN_BACKGROUND initialized={main_background_ready}")
         if initial_selected_group >= 0: println(f"CI_GROUP_SELECT group={initial_selected_group} selected=true source=test-fixture")
         println(f"CI_GEOMETRY resource=IDD_MAIN:224x214_dlu provisional_window={width}x{height}")
@@ -766,6 +800,7 @@ fn main():
     app.on_key(settings_canvas, settings_key)
     app.on_close(close_window)
     app.every(1000, tick)
+    app.every(50, settings_scroll_tick)
     let mut state = MainWindow(
         canvas: canvas, settings_canvas: settings_canvas, width: f64(width - 12), height: f64(height - 12),
         zh: false, dark: false, menu: 0, popup: 0, hover: 0.0, pressed: 0.0,
