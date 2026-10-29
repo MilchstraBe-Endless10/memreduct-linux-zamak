@@ -1,5 +1,38 @@
 # P2C-4 — 字体、控件绘制与深色主题校准
 
+## P2C-R8 本地控件实现与证据边界（2026-10-30）
+
+本节是已提交的本地代码候选记录，不代表 PR #7 远端已更新或取得新 CI。PR #7 远端仍为 OPEN / Draft、Base `main`、HEAD `019a7f1e0755570c2c3a0b1202a6c764540f14e2`；`main` 为 `83dbf58fb039645f08e08bc89170adcdaa7997be`。本地 R8 源码提交为 `3c41879d7589472fd64b7f8563268d60bc0b99bb`，Tree `c0cdd138aa1633dc46893e11e13edb60a64338e7`，父提交 `307cd889d9878ec01cf72937f84f67ee8252f50f`。未推送、未改 PR Base、未标记 Ready 或合并。
+
+### 资源规格与生产渲染
+
+- 新增 `src/settings_resources.zm`，固定引用上游 v3.5.2 tag `2f5c55d15f69a2c88859e036b16c6f4c971e1968` 的 `resource.rc`、`resource.h`、`src/main.c` 设置初始化行为和 `src/res/manifest.xml`。每个页面的 `ControlSpec` 记录资源 ID/符号、Win32 class、control style、exstyle、DLU 矩形、ComboBox closed height、资源模板是否启用、Windows 非提权运行状态、Linux 功能状态、只读勾选值和状态来源；`DialogSpec` 记录五个 `IDD_SETTINGS_*` 子页 260×168 DLU、8 pt `Ms Shell Dlg` 与 child-dialog styles；`ManifestSpec` 记录 Common Controls v6、`asInvoker`、PerMonitorV2/PerMonitor DPI 等字段。已覆盖五页当前资源表中的所有控件 ID，并用 Zamak 测试核对 ID、样式、坐标、默认状态与平台启用状态。
+- `src/settings_ui.zm` 中的生产 Canvas 现在通过资源映射绘制静态 GroupBox、AutoCheckbox 与 ComboBox。GroupBox 不参与 hit/focus；AutoCheckbox 区分禁用、只读勾选、hover、pressed、focus 和 checked 样式；语言 ComboBox 支持鼠标开合/选择、键盘焦点、方向键、Home/End、PageUp/PageDown、Enter/Space、F4、Alt+Up/Down、Tab/Shift+Tab 与 Escape。语言选择仍只作用于当前进程。未实现的内存、托盘和其他设置保持禁用、不会写入配置或执行系统动作。仅 CI allowlist 可开启两种无副作用 Checkbox 预览值；该预览不改变生产默认值、不保存状态、不触发清理。
+- `native/gui_window.c` 增加仅连接设置顶层的滚轮事件采集，`src/main.zm` 将滚动 delta 派发给 Memory 页面可见列表；队列有界，关闭/重开清空。Xvfb 脚本现在含鼠标 wheel、Checkbox preview 与生产语言选择交互覆盖。Windows 采集脚本增加原生 DLU/字体状态数据导出。实际 GUI 自动化尚需隔离运行时验证，新增脚本没有在本机被执行通过。
+- DLU 仍保留集中转换及 96-DPI 实测 rect；当前 1.4×1.5 logical px/DLU 是该测试基线的校准参数，不宣称适用于所有字体、缩放或 DPI。Windows 专有字体没有加入仓库，生产字体仍由系统 Fontconfig/Pango 解析。
+
+### 实际截图和像素结果
+
+现有本地 PNG 仅覆盖 English / Light / General 页，且生成时间早于最终 ComboBox 10×6 箭头栅格修改：该截图二进制的 `src/settings_ui.zm` SHA-256 为 `c63264ad2d60fb109ddd2f6e92eea0d9f40554984ad0ae47654fff83d67af499`；当前文件 SHA 不同。因此它只能作历史控件修复对照，不能标成当前 R8 exact-source 截图或验收新箭头。对应原图、叠图、热力/差异图和 CSV 指标存放在用户 AI 产出数据目录的 `Mem Reduct P2C-R8-2026-10-30/r8-final-local-20261030-v1/` 与 `r8-final-verification-2026-10-30-v2/`。
+
+| English / Light / General 历史比较（558×335） | 修复前 | GroupBox 修复后 | 解释 |
+|---|---:|---:|---|
+| Windows 对 Linux 全页 changed pixels | 17,457 / 186,930 = 9.3388% | 14,328 / 186,930 = 7.6649% | 单页历史截图；修复后仍非像素等价，且早于最终 ComboBox 箭头代码 |
+| General GroupBox 顶线 ROI | 355 / 390 = 91.0256% | 99 / 390 = 25.3846% | 描边布局明显收敛但未全像素匹配 |
+| GroupBox 标题 ROI | 1,014 / 2,600 = 39.0000% | 746 / 2,600 = 28.6923% | Pango/GDI 字体与抗锯齿差异仍在 |
+| 只读 Checkbox（Linux disabled state）ROI | 219 / 483 = 45.3416% | 未变化 | 与 Windows enabled state 不同，属于安全状态差异 |
+| CI 专用启用 Checkbox preview ROI | — | 50 / 483 = 10.3520% | 测试专用、非生产功能状态；不能代表生产截图等价 |
+| 整个 ComboBox ROI（箭头修改前） | — | 346 / 4,092 = 8.4555% | 仅为箭头修复前截图；不能外推新 10×6 模板 |
+
+最后一项 ComboBox 修改按固定 Windows Light/Dark 原生截图采样更新 10×6 箭头栅格，并由 Zamak 单测断言状态矩阵和若干像素颜色。**由于本机缺少 Xvfb、Weston、`wine`、`winegcc`、`wrc`，此修改之后没有新生产截图、五页双语/深色逐页指标、XTEST、Weston 或 Winelib A/B 数据。** 本机工作站虽有 Wayland/Hyprland 环境标记，但本轮未连接 compositor IPC、启动 GUI 或注入输入；不得把较早的 7 秒 Wayland capture 计作 R8 输入验收。没有执行实际内存清理、Polkit、Swap/ZRAM 或 root GUI。
+
+### 回归、字体及验收限制
+
+- 本地生产 GUI 构建脚本：治理 34 项、C/Python 安全测试 13/13、Zamak 0.2.0 tests 68/68、GUI 与 C helper build 全部 PASS；独立 Canvas 探针 12/12 PASS；全仓 `scripts/**/*.sh` 语法 12/12、`scripts/build-arch.sh` PASS、`git diff --check` PASS。日志和本地二进制 SHA 清单位于新的 `r8-closeout-20261030-v3/` evidence 目录。
+- Xvfb 设置交互脚本因 `Xvfb` 命令不存在，在启动 GUI 前退出码 2；私有 Weston 测试脚本因 `weston` 不存在退出码 2。Winelib runtime/toolchain (`wine`, `winegcc`, `wrc`) 均未安装，因此本轮 A/B 为 NOT RUN。历史 R6 General 页 Winelib 13.2531%/12.2725% 数据只作历史背景，缺少本轮要求的 Appearance 与同条件重复截图，不能据此作技术路线切换结论。
+- 文字基线沿用既有 GDI/Pango 报告：120 个同源文本样本仍有 95 项宽高差超过 2 px；本轮没有更换系统字体或减小字号。简中原版来源差异 12 项继续标为 `DECISION_REQUIRED`，未改变文字。
+- 原有 184/184 控件矩形、最大 1.5 px、导航 10/10、树线 102/102、栅格 36/36、滚动样本 2/2 仍是之前精确源码 HEAD 的历史结果；本轮只通过源码几何/绘制逻辑测试，没有新的 Windows/Linux 真实截图复验，不能把旧结果写成 R8 exact-head visual PASS。整页 1:1 **NOT PASS**。
+
 ## P2C 阶段归档：P2C-4R1 已复审基线（2026-10-27）
 
 P2C-4R1 的工程与 CI 证据按以下 checkpoint 区分，避免把生产代码、测试源码和 PR 最新提交混成一个 SHA：

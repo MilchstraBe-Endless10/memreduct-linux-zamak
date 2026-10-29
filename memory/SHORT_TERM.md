@@ -1,5 +1,14 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-10-30 — P2C-R8 控件实现与本地验收边界
+
+- **Git：**继续使用 `codex/p2c-main-integration-r1`；PR #7 远端 HEAD 仍 `019a7f1e0755570c2c3a0b1202a6c764540f14e2`、Base `main`，main `83dbf58fb039645f08e08bc89170adcdaa7997be`。R8 源码提交 `3c41879d7589472fd64b7f8563268d60bc0b99bb`、Tree `c0cdd138aa1633dc46893e11e13edb60a64338e7`、父 `307cd889d9878ec01cf72937f84f67ee8252f50f`。未推送、未改 Base、未 Ready/Merge；PR #6 审计工作树未触碰。原有 untracked `artifacts/` 保留。
+- **实际源码：**增加 `src/settings_resources.zm`，按固定上游资源列出五页 ID/class/style/exstyle/DLU/control defaults 与 Manifest/DPI 状态；在生产 Canvas 实现资源驱动 GroupBox、AutoCheckbox、ComboBox 绘制和相应焦点/hover/pressed/checked/dropdown/keyboard 状态；新增滚轮事件桥及设置列表派发；测试脚本覆盖鼠标 wheel、Checkbox 预览、语言下拉和 Win32 DLU/字体状态采集。安全边界保留：所有未实现设置只读/disabled，Checkbox preview 仅 CI allowlist、进程内、不保存、不清理。
+- **前后对照：**历史 English/Light/General 558×335 图在 GroupBox 修正前全页差异 9.3388%，修正后 7.6649%；组框顶线 ROI 91.0256%→25.3846%，标题 ROI 39.0000%→28.6923%。截图二进制的 `settings_ui.zm` SHA 是 `c63264ad2d60fb109ddd2f6e92eea0d9f40554984ad0ae47654fff83d67af499`，早于最终 ComboBox 箭头改动，不能当作当前源的 exact-head 截图。CI Checkbox preview 的 ROI 50/483 pixels differ；是测试状态，非生产设置。最终箭头模板已更新并有单测，但没有箭头代码后的生产 PNG。
+- **回归：**Zamak 0.2.0 68/68、项目治理 34、C/Python 13/13、全 Shell 12/12、生产 GUI/helper build、Arch/native build、Canvas probe 12/12、`git diff --check` PASS。Xvfb 与 Weston 测试脚本实际尝试后分别因缺 `Xvfb` / `weston` 在 GUI 启动前退出 2；`wine`/`winegcc`/`wrc` 不存在，R8 Winelib A/B NOT RUN。没有新 GitHub CI。
+- **差异/安全：**原来 95/120 同源文字仍有 >2 px 差异，未更换字体；简中 12 项仍 `DECISION_REQUIRED`。184/184、1.5 px、导航 10/10、树线 102/102、栅格 36/36、滚动 2/2 仍是先前 checkpoint 历史值，本轮未对当前源通过新图片重测；整页 1:1 `NOT PASS`。当前会话有 Wayland/Hyprland 标记，但没有连接 IPC、启动 GUI、键鼠输入或触碰其他桌面窗口；没有内存清理、Polkit、Swap/ZRAM 或 root GUI。
+- **证据：**测试日志、环境、源码/二进制 SHA、Canvas probe 与脚本缺依赖原始退出信息在用户 AI 产出目录 `报告与研究/Mem Reduct P2C-R8-2026-10-30/r8-closeout-20261030-v3/`；历史截图/overlay/CSV 保存在同主题 `r8-final-local-20261030-v1/` 与 `r8-final-verification-2026-10-30-v2/`。完整修复说明见 `docs/P2C-4_FONT_THEME_MENU_REPORT.md`。
+
 ## 2026-10-29 — 用户反馈后修复共享状态重绘并复核第三方路线
 
 - **Git：**隔离分支 `codex/p2c-main-integration-r1`。本地代码提交 `640fb5df044475df827308388c3da5be25d4ffad`、Tree `f30cac1ce113016dfef58eca46417549253d2be2`、父 `f8bd6cc876b3cbb4623d6dbe6f5d4b94a348c05d`；文档提交 `84dcd46af45d0f30f7b64d25256054fefe569388`、Tree `f732194385b63a7faf2a142ab72bb45b8450d6c0`。远端 main `83dbf58fb039645f08e08bc89170adcdaa7997be`、PR #7 `019a7f1e0755570c2c3a0b1202a6c764540f14e2` 未变；PR #7 仍 OPEN / Draft / Base main，未推送。

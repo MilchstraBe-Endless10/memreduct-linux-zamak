@@ -1,5 +1,13 @@
 # 中期记忆 / Roadmap State
-更新时间：2026-10-29；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+更新时间：2026-10-30；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+
+## 2026-10-30 当前补充：P2C-R8 控件源码候选
+
+- R8 代码已形成未推送本地提交 `3c41879d7589472fd64b7f8563268d60bc0b99bb`（Tree `c0cdd138aa1633dc46893e11e13edb60a64338e7`，父 `307cd889d9878ec01cf72937f84f67ee8252f50f`）。PR #7 远端仍 OPEN / Draft、Base `main`、HEAD `019a7f1e0755570c2c3a0b1202a6c764540f14e2`；main `83dbf58fb039645f08e08bc89170adcdaa7997be`；没有远端写入或新 CI。
+- `src/settings_resources.zm` 把固定 v3.5.2 `resource.rc` / `resource.h` / `main.c` / Manifest 的 ID、类、样式、DLU、只读初值和可用状态映射到生产设置 Canvas；GroupBox/AutoCheckbox/ComboBox 的绘制状态和输入逻辑在 `src/settings_ui.zm`，GTK 3 scroll bridge 在 `native/gui_window.c`。功能限制仍 fail-closed：语言为会话内切换，其余未实现设置 disabled；无持久化或真实清理。
+- 本地治理 34、C/Python 13/13、Zamak 68/68、Shell 12/12、生产 GUI/helper build、Arch/native build、Canvas probe 12/12 均 PASS。电脑没有 Xvfb、Weston、Wine/winegcc/wrc，故 exact-source GUI screenshots/XTEST/Weston 和 Winelib A/B NOT RUN；未触碰活动 Hyprland，也没有本地新 GitHub CI。
+- 历史单页 General 英文亮色截图的 GroupBox 修正前/后 full-page changed-pixel 是 `9.3388% / 7.6649%`；after 图 SHA 对应更早 `settings_ui.zm`，不含最终 ComboBox 箭头模板。该模板只有 Zamak 回归，不能称真实截图像素收敛。
+- 字体未变更；同源 95/120 文本超 2 px，12 项简中来源差异仍 `DECISION_REQUIRED`。P2C 几何 184/184、其他 raster/navigation/tree/scroll 项为旧 checkpoint 历史结果；本轮未用新源图复验。全页 1:1 `NOT PASS`。Winelib 历史 R6 General 数值仅作背景，不构成 R8 同条件 A/B，也不能单独批准迁移。
 
 ## 2026-10-29 当前补充：Winelib 实测、前端修复与内存核心并行
 

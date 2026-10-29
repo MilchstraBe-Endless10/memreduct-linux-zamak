@@ -263,3 +263,10 @@
 - 使用本地代码 HEAD `640fb5df044475df827308388c3da5be25d4ffad` 对应的生产二进制（SHA-256 `fe5c609e2718a2f348c7724ff44ccee43349488dcf9780afd1762075d9b08658`），通过 `GDK_BACKEND=wayland` 和内置 7000 ms 测试计时器打开 Main 与 English/Light General Settings。当前环境有 Wayland/Hyprland 会话标记；未调用 Hyprland IPC、未注入键鼠、未触碰其他窗口。
 - GTK 3.24.52，scale factor 1，Adwaita Sans label style 11 pt，Canvas 请求 8 pt，记录 ascent/descent `11/3 px`。Main allocation/client `337×369`、Settings `558×335`；两个 app-owned capture 成功，GDK frame extent 与 client 相同，仍未量到 Hyprland 可见装饰边界。日志未见 Gtk-WARNING/CRITICAL/ERROR；`CI_QUIT source=bounded_test_timer`、`CI_APP_RETURNED`，退出码 0。
 - PNG：Main `fe90da01aac4cfa96861d8db42bdbbe0127087b694071f893ec9d7b21f0e0f3a`；General `ee33df415eacd6e69d448cc269b44be7fd17092ee436bab616e0d494798e1551`。日志、环境记录和 PNG 在 AI 产出目录 R7 的 `verification-640fb5df/real-wayland/`。本次只验收启动/绘制/采样/计时器退出；鼠标键盘、五页切换、深色/简中、关闭重开仍 NOT RUN，整页 1:1 NOT PASS。
+
+## 2026-10-30 — P2C-R8 资源控件本地实现
+
+- 在 `codex/p2c-main-integration-r1` 完成源码提交 `3c41879d7589472fd64b7f8563268d60bc0b99bb`，Tree `c0cdd138aa1633dc46893e11e13edb60a64338e7`，父 `307cd889d9878ec01cf72937f84f67ee8252f50f`。新增资源映射与 GroupBox/AutoCheckbox/ComboBox 生产渲染/交互状态、滚轮事件桥、CI/Xvfb 测试扩展和 Windows 原生采集字段；没有包含 README、报告和记忆变动在这个代码 commit。
+- 完整本地回归：Zamak 68/68、治理34、C/Python13/13、全 Shell12/12、生产 GUI/helper build、Arch/native build、独立 Canvas probe12/12、`git diff --check` PASS。当前 UI 执行脚本未获得运行环境：Xvfb script exit2（`Xvfb` 缺失）、Weston lifecycle script exit2（`weston` 缺失）；`wine`、`winegcc`、`wrc` 缺失，故 Winelib A/B NOT RUN。没有新 GitHub Actions。
+- General English/Light 的历史截图在 GroupBox 修正前/后全页差异 9.3388%/7.6649%；这是早于最终 ComboBox 箭头改动的截图，不标为 exact-head。最终箭头栅格有 source test，无新截图。95/120 文本度量仍超 2 px；全页 1:1 NOT PASS。现有 184/184 等视觉计数不冒用为当前源码重验。
+- PR #7 仍远端 OPEN / Draft、Base `main`、HEAD `019a7f1e0755570c2c3a0b1202a6c764540f14e2`，main `83dbf58fb039645f08e08bc89170adcdaa7997be`；未推送或修改 PR。Hyprland 活动桌面未操作；未运行清理、Polkit、Swap/ZRAM 或 root GUI。R8 exact tests/logs/source hashes 在 AI 产出目录 `报告与研究/Mem Reduct P2C-R8-2026-10-30/r8-closeout-20261030-v3/`。

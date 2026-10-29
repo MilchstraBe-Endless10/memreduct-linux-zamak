@@ -161,6 +161,17 @@ P3A-pre 仅规划 `language` (`en` / `zh-CN`) 与应用 `theme` (`light` / `dark
 
 **当前实现状态仍未持久化。** 当前进程内语言/主题切换不等于设置保存；P3A 未审查、未实现。P3A 配置不得包含或启用自动清理、内存区域、helper 命令、Polkit、Swap/ZRAM 等功能。Reset 事务与四种偏好组合测试仅在设计草案中，不能记作已验收行为。
 
+## 13. P2C-R8 资源驱动设置控件状态（2026-10-30，本地源码候选）
+
+| 控件 / 资源 | 生产渲染与可操作状态 | 功能边界 | 验证情况 |
+|---|---|---|---|
+| GroupBox `Button/BS_GROUPBOX`（如 107–115） | 使用资源 DLU rect、标题宽度和 Win32 风格的一像素描边；静态，不接受 pointer hit 或键盘焦点 | 不表示分组内容可用；标题和描边仍受 Pango/GDI 栅格差异影响 | rect/state 的 Zamak 单测 PASS；历史 English/Light General ROI 改善；当前 ComboBox 箭头源码之后未取得新截图 |
+| AutoCheckbox `Button/BS_AUTOCHECKBOX`（如 116–121、133–137） | renderer 区分 disabled/normal/hover/pressed/focus/checked；焦点范围依随 caption | 所有未实现的生产设置保持 disabled、只读、不保存；CI allowlist 只允许两个进程内预览值，不改变产品默认值 | Zamak 状态与键盘/鼠标转换测试 PASS；CI 预览 PNG 不代表生产 enabled 状态；无新 XTEST 运行 |
+| Language ComboBox `IDC_LANGUAGE=123` | 支持 mouse open/select、keyboard focus、Up/Down、Home/End、PageUp/PageDown、Enter/Space、F4、Alt+Up/Down、Tab/Shift+Tab、Escape | 只切换当前进程 UI 语言；P3A 持久化仍未实现 | Zamak 交互状态测试 PASS；当前生产画面没有新的 Xvfb/Hyprland 截图 |
+| Tray action ComboBox `IDC_TRAYACTIONSC=148` / `IDC_TRAYACTIONMC=150` | 展示 disabled 状态，不开放伪造的可操作菜单 | Tray service/action 未实现 | Disabled state 的 Zamak 单测 PASS；无运行时图形验收 |
+
+本地 R8 源码提交 `3c41879d7589472fd64b7f8563268d60bc0b99bb`；没有对应 GitHub CI。Xvfb 与 Weston 当前缺少二进制；活动 Hyprland 未操作。现有 95/120 文本度量差异、12 项简中来源决策和整页 1:1 `NOT PASS` 状态不变。
+
 ## 9. P2C-3 原生视觉差异采集补充
 
 - 固定基准仍为 v3.5.2 tag `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。英文 `IDC_REGIONS=124` 后缀按固定源码保持 `win8.1+` / `win10+`；简中差异见 [P2C-3 来源语言矩阵](P2C-3_SOURCE_LANGUAGE_MATRIX.md)。
