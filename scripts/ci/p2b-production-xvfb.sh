@@ -14,6 +14,7 @@ done
 
 runtime_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/memreduct-p2b-x11.XXXXXX")"
 chmod 0700 "$runtime_dir"
+sample_failure_trigger="$runtime_dir/sample-failure.trigger"
 xvfb_pid=""
 wm_pid=""
 app_pid=""
@@ -76,7 +77,7 @@ for _ in {1..50}; do
 done
 [[ "$wm_ready" == true ]] || { cat "$artifact_dir/openbox.log" >&2; exit 1; }
 
-MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 MEMREDUCT_CI_FAIL_SAMPLE_AFTER_MS=35000 MEMREDUCT_CI_CAPTURE=1 stdbuf -oL "$app" \
+MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 MEMREDUCT_CI_SAMPLE_FAILURE_TRIGGER_FILE="$sample_failure_trigger" MEMREDUCT_CI_CAPTURE=1 stdbuf -oL "$app" \
   >"$artifact_dir/client.log" 2>&1 &
 app_pid="$!"
 window_id=""
@@ -313,16 +314,38 @@ xdotool key --clearmodifiers Down
 wait_for_new_marker "$marker" "$previous_count"
 escape_and_expect_focus 1
 
-# The CI-only fixture fails a later sample after earlier live samples succeeded.
-# The production failure path must clear data and request a redraw immediately.
-capture 'production-memory-before-failure-zh.png'
-if grep -Fq 'CI_MEMORY_INVALIDATED redraw_requested=true' "$artifact_dir/client.log"; then
-  printf 'Injected sample failure occurred before the pre-failure screenshot.\n' >&2
+# The private CI-only gate is opened explicitly after live values have been
+# rendered and the before-state screenshot has been captured. No wall-clock
+# threshold can race this interaction sequence.
+grep -Eq 'CI_MEMORY source=/proc/meminfo MemTotal=[1-9][0-9]* MemAvailable=[0-9]+' "$artifact_dir/client.log" || {
+  printf 'No successful live /proc/meminfo sample exists before the fault-injection checkpoint.\n' >&2
+  exit 1
+}
+grep -Eq 'CI_LAYOUT_GROUP index=0 locale=zh-CN .*usage=[0-9]+\.[0-9]+% available=[0-9]+\.[0-9]+ [KMGT]B total=[0-9]+\.[0-9]+ [KMGT]B' "$artifact_dir/client.log" || {
+  printf 'No live memory values were rendered in the Simplified Chinese main window before injection.\n' >&2
+  exit 1
+}
+if grep -Eq 'CI_SAMPLE_FAILURE_TRIGGER|CI_MEMORY_INVALIDATED|CI_MEMORY_ERROR' "$artifact_dir/client.log"; then
+  printf 'The controlled sampling failure gate fired before its explicit trigger.\n' >&2
   exit 1
 fi
-wait_for_marker_long 'CI_MEMORY_INVALIDATED redraw_requested=true'
-wait_for_marker_long 'CI_DRAW_SAMPLE state=unavailable values=em-dash'
+capture 'production-memory-before-failure-zh.png'
+pre_failure_sha="$(sha256sum "$artifact_dir/production-memory-before-failure-zh.png" | awk '{print $1}')"
+printf 'stage=before-trigger state=live-meminfo screenshot=production-memory-before-failure-zh.png sha256=%s\n' \
+  "$pre_failure_sha" | tee "$artifact_dir/sample-failure-sequence.txt"
+trigger_staging_file="$(mktemp "$runtime_dir/sample-failure-trigger.XXXXXX")"
+printf 'P2B_FAIL_SAMPLE_ONCE\n' >"$trigger_staging_file"
+mv -T -- "$trigger_staging_file" "$sample_failure_trigger"
+printf 'stage=trigger-created source=private-file mode=%s\n' "$(stat -c '%a' "$sample_failure_trigger")" \
+  | tee -a "$artifact_dir/sample-failure-sequence.txt"
+wait_for_new_marker 'CI_SAMPLE_FAILURE_TRIGGER consumed=1 source=private-trigger-file' 0
+wait_for_new_marker 'CI_MEMORY_ERROR injected non-privileged CI sample failure' 0
+wait_for_new_marker 'CI_MEMORY_INVALIDATED redraw_requested=true' 0
+wait_for_new_marker 'CI_DRAW_SAMPLE state=unavailable values=em-dash' 0
 capture 'production-sample-failure-zh.png'
+post_failure_sha="$(sha256sum "$artifact_dir/production-sample-failure-zh.png" | awk '{print $1}')"
+printf 'stage=after-trigger state=unavailable screenshot=production-sample-failure-zh.png sha256=%s\n' \
+  "$post_failure_sha" | tee -a "$artifact_dir/sample-failure-sequence.txt"
 convert "$artifact_dir/production-memory-before-failure-zh.png" -crop 290x245+15+40 +repage "$artifact_dir/memory-before-failure.png"
 convert "$artifact_dir/production-sample-failure-zh.png" -crop 290x245+15+40 +repage "$artifact_dir/memory-after-failure.png"
 assert_changed 'memory-before-failure.png' 'memory-after-failure.png' 'memory-failure-pixel-diff.txt'
@@ -333,10 +356,26 @@ memory_errors="$(grep '^CI_MEMORY_ERROR ' "$artifact_dir/client.log" || true)"
   printf 'The injected sampling failure was not observed.\n' >&2
   exit 1
 }
+[[ "$(grep -Fc 'CI_SAMPLE_FAILURE_TRIGGER consumed=1 source=private-trigger-file' "$artifact_dir/client.log")" == 1 ]] || {
+  printf 'The explicit sampling trigger must be consumed exactly once.\n' >&2
+  exit 1
+}
+[[ "$(grep -Fc 'CI_MEMORY_ERROR injected non-privileged CI sample failure' "$artifact_dir/client.log")" == 1 ]] || {
+  printf 'The one-shot injection must produce exactly one sample failure.\n' >&2
+  exit 1
+}
 if printf '%s\n' "$memory_errors" | grep -Fvxq 'CI_MEMORY_ERROR injected non-privileged CI sample failure'; then
   printf 'Unexpected production memory sampling error:\n%s\n' "$memory_errors" >&2
   exit 1
 fi
+awk '
+  /^CI_SAMPLE_FAILURE_TRIGGER consumed=1 source=private-trigger-file$/ { injected = 1; next }
+  injected && /^CI_MEMORY source=\/proc\/meminfo / { exit 1 }
+  END { if (!injected) exit 2 }
+' "$artifact_dir/client.log" || {
+  printf 'A live sample ran after the injected failure instead of preserving the unavailable test state.\n' >&2
+  exit 1
+}
 grep -Fq 'CI_CLEAN_DISABLED action=none' "$artifact_dir/client.log"
 grep -Fq 'CI_CLEAN_REGION_DISABLED index=0 action=none' "$artifact_dir/client.log"
 if grep -Eiq 'drop_caches|pkexec|polkit|swapoff' "$artifact_dir/client.log"; then

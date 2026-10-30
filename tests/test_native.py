@@ -4,6 +4,7 @@ import os
 import pwd
 import pathlib
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -229,6 +230,53 @@ class TestGuiTestBridge(unittest.TestCase):
              '-o', str(cls.library_path)],
             check=True,
         )
+
+    def test_sample_failure_trigger_is_private_ci_only_and_one_shot(self):
+        token = pathlib.Path(self.temp.name) / 'trigger.token'
+        token.write_text('P2B_FAIL_SAMPLE_ONCE\n')
+        token.chmod(0o600)
+        malformed = pathlib.Path(self.temp.name) / 'malformed.token'
+        malformed.write_text('fail later\n')
+        malformed.chmod(0o600)
+        public = pathlib.Path(self.temp.name) / 'public.token'
+        public.write_text('P2B_FAIL_SAMPLE_ONCE\n')
+        public.chmod(0o644)
+        symlink = pathlib.Path(self.temp.name) / 'trigger-link.token'
+        symlink.symlink_to(token)
+        fifo = pathlib.Path(self.temp.name) / 'trigger.fifo'
+        os.mkfifo(fifo, 0o600)
+        missing = pathlib.Path(self.temp.name) / 'missing.token'
+        probe = (
+            'import ctypes,sys; '
+            'lib=ctypes.CDLL(sys.argv[1]); '
+            'lib.mr_gui_test_sample_failure_requested.restype=ctypes.c_longlong; '
+            'lib.mr_gui_test_consume_sample_failure_trigger.restype=ctypes.c_longlong; '
+            'print(lib.mr_gui_test_sample_failure_requested(), '
+            'lib.mr_gui_test_consume_sample_failure_trigger(), '
+            'lib.mr_gui_test_sample_failure_requested(), '
+            'lib.mr_gui_test_consume_sample_failure_trigger())'
+        )
+
+        def run_probe(path, enabled=True):
+            env = os.environ.copy()
+            env['MEMREDUCT_CI_SAMPLE_FAILURE_TRIGGER_FILE'] = str(path)
+            if enabled:
+                env['MEMREDUCT_CI'] = '1'
+            else:
+                env.pop('MEMREDUCT_CI', None)
+            result = subprocess.run(
+                [sys.executable, '-c', probe, str(self.library_path)],
+                check=True, capture_output=True, text=True, env=env,
+            )
+            return tuple(int(value) for value in result.stdout.split())
+
+        self.assertEqual(run_probe(token, enabled=False), (0, 0, 0, 0))
+        self.assertEqual(run_probe(missing), (0, 0, 0, 0))
+        self.assertEqual(run_probe(malformed), (0, 0, 0, 0))
+        self.assertEqual(run_probe(public), (0, 0, 0, 0))
+        self.assertEqual(run_probe(symlink), (0, 0, 0, 0))
+        self.assertEqual(run_probe(fifo), (0, 0, 0, 0))
+        self.assertEqual(run_probe(token), (1, 1, 0, 0))
 
     def test_widget_preview_environment_is_ci_gated_and_allowlisted(self):
         library = ctypes.CDLL(str(self.library_path))

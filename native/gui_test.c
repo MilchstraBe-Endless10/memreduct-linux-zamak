@@ -1,9 +1,11 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #define _POSIX_C_SOURCE 200809L
+#include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 /* Keep the test-only font probe header-free like the production GTK bridge. */
@@ -81,6 +83,8 @@ extern void g_object_unref(void *object);
 extern void g_free(void *memory);
 
 #define PANGO_SCALE 1024
+
+static int sample_failure_trigger_consumed;
 
 /* Test controls are inert unless the CI runner sets these exact variables. */
 long long mr_gui_test_mode(void)
@@ -246,21 +250,60 @@ long long mr_gui_test_schedule_capture(void)
     return g_timeout_add(1000, capture_application_windows, NULL) != 0 ? 1 : 0;
 }
 
-long long mr_gui_test_fail_sample_after(long long elapsed_ms)
+static int sample_failure_trigger_is_valid(void)
 {
-    const char *value = getenv("MEMREDUCT_CI_FAIL_SAMPLE_AFTER_MS");
-    char *end = NULL;
-    long long parsed;
+    static const char expected[] = "P2B_FAIL_SAMPLE_ONCE\n";
+    const char *path = getenv("MEMREDUCT_CI_SAMPLE_FAILURE_TRIGGER_FILE");
+    struct stat status;
+    char buffer[sizeof(expected)];
+    size_t used = 0;
+    int fd;
 
-    if (mr_gui_test_mode() == 0 || value == NULL || value[0] == '\0') {
+    if (path == NULL || path[0] == '\0') {
         return 0;
     }
-    errno = 0;
-    parsed = strtoll(value, &end, 10);
-    if (errno != 0 || end == value || *end != '\0' || parsed < 3000 || parsed > 120000) {
+    fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (fd < 0) {
         return 0;
     }
-    return elapsed_ms >= parsed ? 1 : 0;
+    if (fstat(fd, &status) != 0 || !S_ISREG(status.st_mode) ||
+        status.st_uid != geteuid() || status.st_nlink != 1 ||
+        (status.st_mode & 0777) != 0600) {
+        (void)close(fd);
+        return 0;
+    }
+    while (used < sizeof(buffer)) {
+        ssize_t count = read(fd, buffer + used, sizeof(buffer) - used);
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        if (count < 0) {
+            (void)close(fd);
+            return 0;
+        }
+        if (count == 0) {
+            break;
+        }
+        used += (size_t)count;
+    }
+    (void)close(fd);
+    return used == sizeof(expected) - 1 &&
+           memcmp(buffer, expected, sizeof(expected) - 1) == 0;
+}
+
+long long mr_gui_test_sample_failure_requested(void)
+{
+    return mr_gui_test_mode() != 0 && sample_failure_trigger_consumed == 0 &&
+           sample_failure_trigger_is_valid() != 0 ? 1 : 0;
+}
+
+long long mr_gui_test_consume_sample_failure_trigger(void)
+{
+    if (mr_gui_test_sample_failure_requested() == 0) {
+        return 0;
+    }
+    sample_failure_trigger_consumed = 1;
+    return 1;
 }
 
 long long mr_gui_test_start_settings(void)

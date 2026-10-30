@@ -8,7 +8,7 @@ app="${1:-$artifact_dir/memreduct-zamak-production}"
 font_candidate="${P2C_FONT_CANDIDATE:-default}"
 fontconfig_mode=system-default
 mkdir -p "$artifact_dir"
-for cmd in Xvfb openbox wmctrl xdotool xwininfo xprop import identify sha256sum xrdb; do
+for cmd in Xvfb openbox wmctrl xdotool xwininfo xprop import identify compare sha256sum xrdb; do
   command -v "$cmd" >/dev/null || { printf 'Missing X11 test command: %s\n' "$cmd" >&2; exit 2; }
 done
 [[ -x "$app" ]] || { printf 'Production executable missing.\n' >&2; exit 2; }
@@ -182,6 +182,19 @@ capture() {
   printf 'theme=%s locale=%s screenshot=%s size=%s sha256=%s\n' \
     "$theme" "$locale" "$name" "$expected" "$(sha256sum "$artifact_dir/$name" | awk '{print $1}')" \
     | tee -a "$artifact_dir/p2c-captures.log"
+}
+assert_changed() {
+  local first="$1" second="$2" report="$3" status pixels
+  set +e
+  compare -metric AE "$artifact_dir/$first" "$artifact_dir/$second" null: 2>"$artifact_dir/$report"
+  status="$?"
+  set -e
+  pixels="$(sed -E 's/^[[:space:]]*([0-9]+).*/\1/' "$artifact_dir/$report")"
+  [[ "$status" == 1 && "$pixels" =~ ^[0-9]+$ ]] && (( pixels > 0 )) || {
+    printf 'Expected visible pixel change between %s and %s.\n' "$first" "$second" >&2
+    return 1
+  }
+  printf 'changed_pixels=%s\n' "$pixels" | tee -a "$artifact_dir/$report"
 }
 wait_popup_fits() {
   local kind="$1" menu="$2" locale="$3"
@@ -672,7 +685,7 @@ app_pid="$!"
 for marker in \
   'CI_PRODUCTION_START' \
   'CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true' \
-  'CI_WIDGET_PREVIEW enabled=true resource=116 persistence=none side_effects=none'; do
+  'CI_WIDGET_PREVIEW enabled=true resource=116 page_idd=101 checked=false persistence=none side_effects=none'; do
   for _ in {1..100}; do
     grep -Fq -- "$marker" "$widget_log" && break
     kill -0 "$app_pid" 2>/dev/null || break
@@ -748,7 +761,7 @@ app_pid="$!"
 for marker in \
   'CI_PRODUCTION_START' \
   'CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true' \
-  'CI_WIDGET_PREVIEW enabled=true resource=136 persistence=none side_effects=none'; do
+  'CI_WIDGET_PREVIEW enabled=true resource=136 page_idd=103 checked=true persistence=none side_effects=none'; do
   for _ in {1..100}; do
     grep -Fq -- "$marker" "$appearance_log" && break
     kill -0 "$app_pid" 2>/dev/null || break
@@ -772,23 +785,91 @@ wait_appearance_marker() {
   cat "$appearance_log" >&2
   return 1
 }
+wait_appearance_new_marker() {
+  local marker="$1" count_before="$2" count
+  for _ in {1..100}; do
+    count="$(grep -Fc -- "$marker" "$appearance_log" || true)"
+    (( count > count_before )) && return 0
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  printf 'Missing new appearance preview event: %s\n' "$marker" >&2
+  cat "$appearance_log" >&2
+  return 1
+}
+crop_appearance_checkbox() {
+  local screenshot="$1" crop="$2"
+  # Resource 136 maps to x=168, y=82, w=366, h=15 in the verified
+  # 558x335 client at the pinned 96-DPI Windows/Linux comparison scale.
+  convert "$artifact_dir/$screenshot" -crop 366x15+168+82 +repage "$artifact_dir/$crop"
+}
 wait_appearance_marker 'CI_SETTINGS_PAGE idd=103 page=Appearance locale=en'
+wait_appearance_marker 'CI_WIDGET_PREVIEW_STATE resource=136 page_idd=103 checked=true enabled=true'
+if grep -Fq 'CI_SETTINGS_NAV ' "$appearance_log"; then
+  printf 'Appearance preview unexpectedly emitted navigation before the test acted.\n' >&2
+  exit 1
+fi
+printf 'initial_page=Appearance page_idd=103 resource=136 checked=true navigation_events=0\n' \
+  | tee "$artifact_dir/checkbox-136-state-machine.txt"
+# The preview starts on Appearance. Move away and return only for the distinct
+# navigation-event test, then confirm the page and checkbox default again.
+nav_marker='CI_SETTINGS_NAV resource=104 page_idd=101 page=General'
+nav_count="$(grep -Fc -- "$nav_marker" "$appearance_log" || true)"
+click "$appearance_window" 60 23
+wait_appearance_new_marker "$nav_marker" "$nav_count"
+wait_appearance_marker 'CI_SETTINGS_PAGE idd=101 page=General locale=en'
+nav_marker='CI_SETTINGS_NAV resource=104 page_idd=103 page=Appearance'
+nav_count="$(grep -Fc -- "$nav_marker" "$appearance_log" || true)"
+click "$appearance_window" 60 63
+wait_appearance_new_marker "$nav_marker" "$nav_count"
+wait_appearance_marker 'CI_SETTINGS_PAGE idd=103 page=Appearance locale=en'
+wait_appearance_marker 'CI_WIDGET_PREVIEW_STATE resource=136 page_idd=103 checked=true enabled=true'
 capture "$appearance_window" 'production-checkbox-136-checked-default-en.png' '558x335' light en
+crop_appearance_checkbox 'production-checkbox-136-checked-default-en.png' 'checkbox-136-checked-default-crop.png'
+hover_marker='CI_SETTINGS_MOUSE_MOVE target=136.0'
+hover_count="$(grep -Fc -- "$hover_marker" "$appearance_log" || true)"
 xdotool mousemove --sync --window "$appearance_window" 173 91
-sleep 0.15
+wait_appearance_new_marker "$hover_marker" "$hover_count"
 capture "$appearance_window" 'production-checkbox-136-hover-en.png' '558x335' light en
+crop_appearance_checkbox 'production-checkbox-136-hover-en.png' 'checkbox-136-hover-crop.png'
+assert_changed 'checkbox-136-checked-default-crop.png' 'checkbox-136-hover-crop.png' 'checkbox-136-hover-pixel-diff.txt'
+down_marker='CI_SETTINGS_MOUSE_DOWN target=136.0'
+down_count="$(grep -Fc -- "$down_marker" "$appearance_log" || true)"
 xdotool mousedown 1
-wait_appearance_marker 'CI_SETTINGS_MOUSE_DOWN target=136.0'
+wait_appearance_new_marker "$down_marker" "$down_count"
 capture "$appearance_window" 'production-checkbox-136-pressed-en.png' '558x335' light en
+crop_appearance_checkbox 'production-checkbox-136-pressed-en.png' 'checkbox-136-pressed-crop.png'
+assert_changed 'checkbox-136-hover-crop.png' 'checkbox-136-pressed-crop.png' 'checkbox-136-press-pixel-diff.txt'
+up_marker='CI_SETTINGS_MOUSE_UP target=136.0'
+up_count="$(grep -Fc -- "$up_marker" "$appearance_log" || true)"
 xdotool mouseup 1
+wait_appearance_new_marker "$up_marker" "$up_count"
 wait_appearance_marker 'CI_WIDGET_PREVIEW resource=136 checked=false source=mouse persistence=none side_effects=none'
 capture "$appearance_window" 'production-checkbox-136-unchecked-en.png' '558x335' light en
+crop_appearance_checkbox 'production-checkbox-136-unchecked-en.png' 'checkbox-136-unchecked-crop.png'
+assert_changed 'checkbox-136-pressed-crop.png' 'checkbox-136-unchecked-crop.png' 'checkbox-136-release-pixel-diff.txt'
+# Establish keyboard focus by entering from the page navigation, rather than
+# pressing Tab from the mouse-activated checkbox (which correctly advances).
+nav_marker='CI_SETTINGS_NAV resource=104 page_idd=101 page=General'
+nav_count="$(grep -Fc -- "$nav_marker" "$appearance_log" || true)"
+click "$appearance_window" 60 23
+wait_appearance_new_marker "$nav_marker" "$nav_count"
+wait_appearance_marker 'CI_SETTINGS_PAGE idd=101 page=General locale=en'
+nav_marker='CI_SETTINGS_NAV resource=104 page_idd=103 page=Appearance'
+nav_count="$(grep -Fc -- "$nav_marker" "$appearance_log" || true)"
+click "$appearance_window" 60 63
+wait_appearance_new_marker "$nav_marker" "$nav_count"
+wait_appearance_marker 'CI_SETTINGS_PAGE idd=103 page=Appearance locale=en'
 xdotool key --clearmodifiers Tab
 wait_appearance_marker 'CI_SETTINGS_KEY name=Tab page_idd=103 focus=136'
 capture "$appearance_window" 'production-checkbox-136-focus-en.png' '558x335' light en
+crop_appearance_checkbox 'production-checkbox-136-focus-en.png' 'checkbox-136-focus-crop.png'
+assert_changed 'checkbox-136-unchecked-crop.png' 'checkbox-136-focus-crop.png' 'checkbox-136-focus-pixel-diff.txt'
 xdotool key --clearmodifiers space
 wait_appearance_marker 'CI_WIDGET_PREVIEW resource=136 checked=true source=keyboard-space persistence=none side_effects=none'
 capture "$appearance_window" 'production-checkbox-136-keyboard-en.png' '558x335' light en
+crop_appearance_checkbox 'production-checkbox-136-keyboard-en.png' 'checkbox-136-keyboard-crop.png'
+assert_changed 'checkbox-136-focus-crop.png' 'checkbox-136-keyboard-crop.png' 'checkbox-136-space-pixel-diff.txt'
 xdotool key --clearmodifiers Alt+F4
 for _ in {1..100}; do
   kill -0 "$app_pid" 2>/dev/null || break
@@ -803,16 +884,22 @@ app_pid=""
 grep -Fq 'CI_APP_RETURNED' "$appearance_log"
 grep -Fq 'CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true' "$appearance_log"
 ! grep -Eiq 'drop_caches|pkexec|swapoff|zramctl|CI_CLEAN_EXEC' "$appearance_log"
-printf 'PASS checkbox resource 136 default-check/mouse hover-down-up/Tab/Space/Alt+F4; preview is non-persistent and cannot activate tray operations.\n' \
+[[ "$(grep -Fc 'CI_SETTINGS_MOUSE_DOWN target=136.0' "$appearance_log")" == 1 ]]
+[[ "$(grep -Fc 'CI_SETTINGS_MOUSE_UP target=136.0' "$appearance_log")" == 1 ]]
+grep -Fq 'CI_SETTINGS_MOUSE_MOVE target=136.0' "$appearance_log"
+grep -Fq 'CI_SETTINGS_NAV resource=104 page_idd=101 page=General' "$appearance_log"
+grep -Fq 'CI_SETTINGS_NAV resource=104 page_idd=103 page=Appearance' "$appearance_log"
+printf 'PASS checkbox resource 136 current-page/default-state verification, leave/return navigation, hover/down/up pixel transitions, Tab focus, Space toggle, Alt+F4, and no-side-effect checks.\n' \
   | tee "$artifact_dir/p2c-appearance-checkbox-preview-result.txt"
-sha256sum "$artifact_dir"/production-*.png | sed "s#$artifact_dir/##" | tee "$artifact_dir/p2c-screenshots-sha256.txt"
+sha256sum "$artifact_dir"/production-*.png "$artifact_dir"/checkbox-136-*-crop.png \
+  | sed "s#$artifact_dir/##" | tee "$artifact_dir/p2c-screenshots-sha256.txt"
 (
   cd "$root"
   sha256sum src/main.zm src/settings_ui.zm src/ui_geometry.zm native/gui_window.c native/gui_test.c \
     src/settings_resources.zm \
     scripts/ci/p2c-settings-xvfb.sh scripts/ci/compare_p2c_visuals.py \
     scripts/ci/compare_p2c_dark.py scripts/ci/compare_font_candidates.py \
-    scripts/ci/windows-native-baseline.ps1
+    scripts/ci/windows-native-baseline.ps1 scripts/ci/windows-mapdialogrect-probe.ps1
 ) | tee "$artifact_dir/p2c-source-sha256.txt"
 printf 'PASS: production XTEST captured File/View/Settings/Help in English and Simplified Chinese, the Language submenu in both selection states, and the safe clean dropdown; keyboard navigation skipped native menu separators and locale changed session-only; application dark palette toggled through View; 5 settings pages x 2 locales captured in light and dark states, plus Reset/Close focus screenshots in both locales; separately gated resource-116 and resource-136 checkbox previews passed mouse and keyboard states without persistence or system side effects; existing Windows region scroll, Reset, language, keyboard, Escape, Close, Alt+F4 and WM_DELETE_WINDOW tests passed; main remained available and both windows were released on exit.\n' \
   | tee "$artifact_dir/p2c-result.txt"

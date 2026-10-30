@@ -9,7 +9,8 @@ use settings_ui
 
 extern fn mr_gui_test_mode() -> i64
 extern fn mr_gui_test_timeout_ms() -> i64
-extern fn mr_gui_test_fail_sample_after(elapsed_ms: i64) -> i64
+extern fn mr_gui_test_sample_failure_requested() -> i64
+extern fn mr_gui_test_consume_sample_failure_trigger() -> i64
 extern fn mr_gui_test_log_canvas_font() -> i64
 extern fn mr_gui_test_start_settings() -> i64
 extern fn mr_gui_test_widget_preview_resource() -> i64
@@ -52,6 +53,7 @@ struct MainWindow:
     test_mode: bool
     test_timeout_ms: i64
     elapsed_ms: i64
+    ci_sample_failure_latched: bool
     sample_failure_draw_logged: bool
     settings_open: bool
     settings: settings_ui.State
@@ -412,7 +414,18 @@ fn test_value_matches_upstream_scale_and_unavailable_state():
     assert(value(512, true) == "512 KB")
     assert(value(512, false) == "—")
 
+fn test_ci_sample_failure_latch_is_test_only():
+    assert(suppress_ci_resample(true, true))
+    assert(not suppress_ci_resample(true, false))
+    assert(not suppress_ci_resample(false, true))
+
+fn suppress_ci_resample(test_mode: bool, failure_latched: bool) -> bool:
+    test_mode and failure_latched
+
 fn refresh(s: &mut MainWindow):
+    # Keep the test-only injected failure visible until the bounded CI process
+    # exits. Production sampling and recovery behavior are unchanged.
+    if suppress_ci_resample(s.test_mode, s.ci_sample_failure_latched): return
     let snapshot = sample_for_ui(s) catch e:
         s.sample_ok = false
         s.mem_total = 0
@@ -436,8 +449,10 @@ fn refresh(s: &mut MainWindow):
         println(f"CI_MEMORY source=/proc/meminfo MemTotal={snapshot.total} MemAvailable={snapshot.available} CachedPageCache={snapshot.page_cache} SReclaimableSlab={snapshot.reclaimable_slab} SwapTotal={snapshot.swap_total} SwapFree={snapshot.swap_free}")
     s.canvas.redraw()
 
-fn sample_for_ui(s: &MainWindow) -> memory.Snapshot!string:
-    if s.test_mode and mr_gui_test_fail_sample_after(s.elapsed_ms) != 0:
+fn sample_for_ui(s: &mut MainWindow) -> memory.Snapshot!string:
+    if s.test_mode and mr_gui_test_consume_sample_failure_trigger() != 0:
+        s.ci_sample_failure_latched = true
+        println("CI_SAMPLE_FAILURE_TRIGGER consumed=1 source=private-trigger-file")
         fail "injected non-privileged CI sample failure"
     memory.sample()?
 
@@ -472,7 +487,10 @@ fn tick(s: &mut MainWindow):
         if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST source=delete_event")
         set_settings_open(s, false)
         if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true")
-    if s.elapsed_ms % 3000 == 0: refresh(s)
+    if s.test_mode and mr_gui_test_sample_failure_requested() != 0:
+        refresh(s)
+    elif s.elapsed_ms % 3000 == 0:
+        refresh(s)
     if not s.test_mode or s.test_timeout_ms <= 0: return
     if s.elapsed_ms >= s.test_timeout_ms:
         println("CI_QUIT source=bounded_test_timer")
@@ -713,7 +731,9 @@ fn settings_mouse(s: &mut MainWindow, event: &ui.Mouse):
     else:
         let old_hover = s.settings.hover
         settings_ui.pointer(&mut s.settings, target, false)
-        if old_hover != target: s.settings_canvas.redraw()
+        if old_hover != target:
+            if s.test_mode: println(f"CI_SETTINGS_MOUSE_MOVE target={target}")
+            s.settings_canvas.redraw()
 
 fn settings_key(s: &mut MainWindow, event: &ui.Key):
     if event.released(): return
@@ -806,7 +826,7 @@ fn main():
         zh: false, dark: false, menu: 0, popup: 0, hover: 0.0, pressed: 0.0,
         focus: -1.0, menu_focus: 0.0, collapsed_groups: 0, selected_group: initial_selected_group, status: "", mem_total: 0, mem_available: 0, swap_total: 0,
         swap_free: 0, page_cache_estimate: 0, sample_ok: false, draw_logged: false,
-        test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, sample_failure_draw_logged: false,
+        test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, ci_sample_failure_latched: false, sample_failure_draw_logged: false,
         settings_open: false, settings: settings_ui.initial(test_mode)
     )
     if mr_gui_test_start_settings() != 0: set_settings_open(&mut state, true)

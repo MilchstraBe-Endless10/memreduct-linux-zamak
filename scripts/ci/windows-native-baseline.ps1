@@ -16,6 +16,9 @@ $darkExperimentTransitions = Join-Path $artifactDir 'windows-dark-state-transiti
 $darkExperimentPages = Join-Path $artifactDir 'windows-dark-state-pages.csv'
 $darkExperimentControls = Join-Path $artifactDir 'windows-dark-state-controls.csv'
 $darkExperimentColors = Join-Path $artifactDir 'windows-dark-state-colors.csv'
+$pageDluInputs = [System.Collections.Generic.List[object]]::new()
+$dluFailures = [System.Collections.Generic.List[string]]::new()
+$dluExternalProbeStatus = 'NOT_RUN'
 $appProcess = $null
 
 function Write-Status([string]$Line) {
@@ -34,6 +37,45 @@ function Invoke-Checked([string]$Exe, [string[]]$Arguments) {
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) { throw "$Exe failed with exit ${exitCode}: $($result -join ' ')" }
     return $result
+}
+
+function Invoke-IsolatedMapDialogRectProbe([string[]]$Arguments, [string]$EvidenceBase) {
+    $powershellExe = Join-Path $PSHOME 'pwsh.exe'
+    $probeScript = Join-Path $PSScriptRoot 'windows-mapdialogrect-probe.ps1'
+    if (-not (Test-Path -LiteralPath $powershellExe -PathType Leaf)) { throw "PowerShell host not found for isolated DLU probe: $powershellExe" }
+    if (-not (Test-Path -LiteralPath $probeScript -PathType Leaf)) { throw "DLU probe source is missing: $probeScript" }
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $powershellExe
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', $probeScript) + $Arguments) {
+        $startInfo.ArgumentList.Add([string]$argument)
+    }
+    $probe = [System.Diagnostics.Process]::new()
+    $probe.StartInfo = $startInfo
+    if (-not $probe.Start()) { throw 'Could not start isolated MapDialogRect probe process.' }
+    $stdoutTask = $probe.StandardOutput.ReadToEndAsync()
+    $stderrTask = $probe.StandardError.ReadToEndAsync()
+    $completed = $probe.WaitForExit(15000)
+    if (-not $completed) {
+        try { $probe.Kill() } catch { }
+        [void]$probe.WaitForExit(5000)
+    }
+    $stdout = $stdoutTask.GetAwaiter().GetResult()
+    $stderr = $stderrTask.GetAwaiter().GetResult()
+    $exitCode = if ($completed) { $probe.ExitCode } else { -1 }
+    $exitBytes = [BitConverter]::GetBytes([int]$exitCode)
+    $exitHex = '0x{0:X8}' -f [BitConverter]::ToUInt32($exitBytes, 0)
+    [System.IO.File]::WriteAllText("$EvidenceBase.stdout.txt", $stdout, [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText("$EvidenceBase.stderr.txt", $stderr, [System.Text.UTF8Encoding]::new($false))
+    if (-not $completed) { $outcome = 'TIMEOUT_KILLED' }
+    elseif ($exitHex -eq '0xC0000005') { $outcome = 'ACCESS_VIOLATION' }
+    elseif ($exitCode -eq 0) { $outcome = 'PASS' }
+    else { $outcome = 'FAILED' }
+    $probe.Dispose()
+    [pscustomobject]@{ ExitCode=$exitCode; ExitHex=$exitHex; Outcome=$outcome; Stdout=$stdout; Stderr=$stderr }
 }
 
 try {
@@ -174,9 +216,6 @@ public static class P2CWin32 {
     public int LogFontCharSet; public int TextMetricHeight; public int TextMetricAscent; public int TextMetricDescent; public int TextMetricWeight;
     public int AverageCharWidth; public int MeasuredTextWidth; public int MeasuredTextHeight; public string FontSource;
   }
-  public sealed class DialogUnitMeasurement {
-    public bool Success; public int WidthPx; public int HeightPx;
-  }
   public sealed class WindowInfo {
     public IntPtr Handle; public uint ProcessId; public string Title; public string ClassName;
     public bool Visible; public bool Enabled; public int Left; public int Top; public int Width; public int Height; public int ControlId;
@@ -184,12 +223,7 @@ public static class P2CWin32 {
   private delegate bool EnumWindowsCallback(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
-  [DllImport("user32.dll", SetLastError=true)] private static extern bool MapDialogRect(IntPtr hDlg, ref RECT rect);
-  public static DialogUnitMeasurement MapDialogRectUnits(IntPtr hDlg, int widthDlu, int heightDlu) {
-    var rect = new RECT { Right=widthDlu, Bottom=heightDlu };
-    bool success = MapDialogRect(hDlg, ref rect);
-    return new DialogUnitMeasurement { Success=success, WidthPx=rect.Right, HeightPx=rect.Bottom };
-  }
+  [DllImport("user32.dll", SetLastError=true)] public static extern bool IsWindow(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr GetMenu(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr GetSubMenu(IntPtr hMenu, int position);
@@ -222,7 +256,7 @@ public static class P2CWin32 {
   [DllImport("user32.dll", SetLastError=true)] private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] private static extern bool EnumChildWindows(IntPtr parent, EnumWindowsCallback callback, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] private static extern int GetDlgCtrlID(IntPtr hWnd);
-  [DllImport("user32.dll", SetLastError=true)] private static extern IntPtr GetParent(IntPtr hWnd);
+  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr GetParent(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool CloseDesktop(IntPtr desktop);
   [DllImport("user32.dll", SetLastError=true)] public static extern uint GetDpiForWindow(IntPtr hWnd);
@@ -253,7 +287,10 @@ public static class P2CWin32 {
     if (measurementFont == IntPtr.Zero)
       throw new InvalidOperationException("CreateFontIndirectW from the control LOGFONT failed; last-error=" + Marshal.GetLastWin32Error());
     fontSource += " (LOGFONT cloned for local GDI measurement)";
-    IntPtr hdc = GetDC(hwnd);
+    // WM_GETFONT is read from the original control, but font raster metrics are
+    // collected on this process's screen DC after cloning LOGFONT. This avoids
+    // retaining a device-context boundary to the foreign application HWND.
+    IntPtr hdc = GetDC(IntPtr.Zero);
     if (hdc == IntPtr.Zero) {
       DeleteGdiObject(measurementFont);
       throw new InvalidOperationException("GetDC failed; last-error=" + Marshal.GetLastWin32Error());
@@ -281,7 +318,7 @@ public static class P2CWin32 {
       };
     } finally {
       if (previous != IntPtr.Zero && previous.ToInt64() != -1) SelectObject(hdc, previous);
-      ReleaseDC(hwnd, hdc);
+      ReleaseDC(IntPtr.Zero, hdc);
       DeleteGdiObject(measurementFont);
     }
   }
@@ -303,10 +340,11 @@ public static class P2CWin32 {
   public static WindowInfo[] GetChildWindows(IntPtr parent) {
     var windows = new System.Collections.Generic.List<WindowInfo>();
     EnumChildWindows(parent, delegate(IntPtr hWnd, IntPtr state) {
+      uint owner; GetWindowThreadProcessId(hWnd, out owner);
       var rect = new RECT(); GetWindowRect(hWnd, out rect);
       var title = new System.Text.StringBuilder(512); GetWindowText(hWnd, title, title.Capacity);
       var className = new System.Text.StringBuilder(256); GetClassName(hWnd, className, className.Capacity);
-      windows.Add(new WindowInfo { Handle=hWnd, Title=title.ToString(), ClassName=className.ToString(), Visible=IsWindowVisible(hWnd), Enabled=IsWindowEnabled(hWnd),
+      windows.Add(new WindowInfo { Handle=hWnd, ProcessId=owner, Title=title.ToString(), ClassName=className.ToString(), Visible=IsWindowVisible(hWnd), Enabled=IsWindowEnabled(hWnd),
         Left=rect.Left, Top=rect.Top, Width=rect.Right-rect.Left, Height=rect.Bottom-rect.Top, ControlId=GetDlgCtrlID(hWnd) });
       return true;
     }, IntPtr.Zero);
@@ -784,7 +822,7 @@ public static class P2CWin32 {
 
                 'page_idd,locale,state,resource_id,part,x,y,width,height,class' |
                     Set-Content -LiteralPath $geometryFile -Encoding UTF8
-                'page_idd,locale,dpi,dlu_source,font_face,resolved_font_face,font_source,logfont_height_px,average_char_width_px,mapdialogrect_width_for_4_dlu_px,mapdialogrect_height_for_8_dlu_px,x_px_per_dlu,y_px_per_dlu' |
+                'page_idd,locale,dpi,controlled_dpi,dlu_source,external_page_hwnd,external_page_pid,external_page_class,external_parent_hwnd,external_valid,font_anchor_id,font_anchor_class,font_face,resolved_font_face,font_source,resource_font_pt,logfont_height_px,alphabet_text,alphabet_width_px,alphabet_average_char_width_px,gdi_base_unit_x_px,textmetric_height_px,mapdialogrect_width_for_4_dlu_px,mapdialogrect_height_for_8_dlu_px,x_px_per_dlu,y_px_per_dlu,mapped_page_width_px,mapped_page_height_px,observed_page_width_px,observed_page_height_px,width_error_px,height_error_px' |
                     Set-Content -LiteralPath $dluCalibrationFile -Encoding UTF8
                 'page_idd,locale,resource_id,class,sample_kind,sample_text,sample_text_source,logical_face_name,gdi_reported_face_name,font_substitution,font_source,logfont_height_px,point_size,logfont_weight,charset,textmetric_height_px,text_ascent_px,text_descent_px,textmetric_weight,average_char_width_px,text_width_px,text_height_px' |
                     Set-Content -LiteralPath $fontMetricsFile -Encoding UTF8
@@ -797,29 +835,23 @@ public static class P2CWin32 {
                     & $writeStatusClosure "Win32 geometry child enumeration complete page_idd=$pageId controls=$($current.Count)"
                     $activePage = $current | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 } | Select-Object -First 1
                     if (-not $activePage) { throw "Visible child page geometry is missing for page $pageId ($Locale)." }
-                    # All five child templates and the settings shell use the
-                    # same 8pt MS Shell Dlg font. The previous MapDialogRect
-                    # call on a page-child HWND faulted; probe the verified
-                    # top-level settings dialog and record that source explicitly.
-                    $dialogUnits = [P2CWin32]::MapDialogRectUnits([IntPtr]$settingsHwnd, 4, 8)
-                    if (-not $dialogUnits.Success) {
-                        throw "MapDialogRect failed for the settings shell while measuring page $pageId ($Locale)."
+                    $fontAnchor = $current | Where-Object { $_.Visible -and $_.ControlId -ne 0 -and $_.ClassName -eq 'Button' } | Select-Object -First 1
+                    if (-not $fontAnchor) { throw "No visible Button control could anchor the page font read for page $pageId ($Locale)." }
+                    $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+                    $dialogFont = [P2CWin32]::MeasureControlText([IntPtr]$fontAnchor.Handle, $alphabet)
+                    if ($dialogFont.FontSource -notlike 'WM_GETFONT*') {
+                        throw "Page $pageId ($Locale) did not expose its actual dialog font through WM_GETFONT; source=$($dialogFont.FontSource)."
                     }
-                    if ($dialogUnits.WidthPx -le 0 -or $dialogUnits.HeightPx -le 0) {
-                        throw "MapDialogRect returned invalid DLU base units for child page $pageId ($Locale)."
-                    }
-                    $dialogFont = [P2CWin32]::MeasureControlText([IntPtr]$activePage.Handle, 'Ag')
-                    [pscustomobject]@{
-                        page_idd=$pageId; locale=$Locale; dpi=$settingsDpi; dlu_source='IDD_SETTINGS shell; shared 8pt MS Shell Dlg'
-                        font_face=$dialogFont.FaceName; resolved_font_face=$dialogFont.ResolvedFaceName
-                        font_source=$dialogFont.FontSource; logfont_height_px=$dialogFont.LogFontHeight
-                        average_char_width_px=$dialogFont.AverageCharWidth
-                        mapdialogrect_width_for_4_dlu_px=$dialogUnits.WidthPx
-                        mapdialogrect_height_for_8_dlu_px=$dialogUnits.HeightPx
-                        x_px_per_dlu=[Math]::Round(($dialogUnits.WidthPx / 4.0), 4)
-                        y_px_per_dlu=[Math]::Round(($dialogUnits.HeightPx / 8.0), 4)
-                    } | Export-Csv -LiteralPath $dluCalibrationFile -NoTypeInformation -Append -Encoding UTF8
-                    & $writeStatusClosure "PASS MapDialogRect page_idd=$pageId source=IDD_SETTINGS locale=$Locale dpi=$settingsDpi base_units=$($dialogUnits.WidthPx)x$($dialogUnits.HeightPx) x_px_per_dlu=$([Math]::Round(($dialogUnits.WidthPx / 4.0), 4)) y_px_per_dlu=$([Math]::Round(($dialogUnits.HeightPx / 8.0), 4)) font=$($dialogFont.ResolvedFaceName)"
+                    $resourceFontPointSize = 8
+                    $estimatedLogFontPoints = [Math]::Round(([Math]::Abs($dialogFont.LogFontHeight) * 72.0 / $settingsDpi), 3)
+                    $pageParent = [P2CWin32]::GetParent([IntPtr]$activePage.Handle)
+                    $pageDluInputs.Add([pscustomobject]@{
+                        PageId=$pageId; Locale=$Locale; Dpi=$settingsDpi; Handle=[IntPtr]$activePage.Handle
+                        OwnerPid=[uint32]$activePage.ProcessId; ClassName=$activePage.ClassName; Parent=$pageParent
+                        Valid=[P2CWin32]::IsWindow([IntPtr]$activePage.Handle); Width=$activePage.Width; Height=$activePage.Height
+                        FontAnchorId=$fontAnchor.ControlId; FontAnchorClass=$fontAnchor.ClassName; Font=$dialogFont
+                        Alphabet=$alphabet; ResourcePointSize=$resourceFontPointSize; EstimatedLogFontPoints=$estimatedLogFontPoints
+                    })
                     $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state='default'; resource_id=$pageId; part='page'; x=$activePage.Left-$settingsClientOrigin.X; y=$activePage.Top-$settingsClientOrigin.Y; width=$activePage.Width; height=$activePage.Height; class=$activePage.ClassName })
                     foreach ($control in $current | Where-Object { $_.Visible -and $_.ControlId -ne 0 }) {
                         & $writeStatusClosure "Win32 geometry control begin page_idd=$pageId resource=$($control.ControlId) class=$($control.ClassName)"
@@ -881,6 +913,15 @@ public static class P2CWin32 {
                         }
                     }
                     $fontRows = [System.Collections.Generic.List[object]]::new()
+                    $fontRows.Add([pscustomobject]@{
+                        page_idd=$pageId; locale=$Locale; resource_id=$fontAnchor.ControlId; class=$fontAnchor.ClassName
+                        sample_kind='dialog-base-unit-alphabet'; sample_text=$alphabet; sample_text_source='Win32GetWindowText-independent ASCII calibration sample'
+                        logical_face_name=$dialogFont.FaceName; gdi_reported_face_name=$dialogFont.ResolvedFaceName; font_substitution=$fontSubstitution
+                        font_source=$dialogFont.FontSource; logfont_height_px=$dialogFont.LogFontHeight; point_size=$estimatedLogFontPoints
+                        logfont_weight=$dialogFont.LogFontWeight; charset=$dialogFont.LogFontCharSet; textmetric_height_px=$dialogFont.TextMetricHeight
+                        text_ascent_px=$dialogFont.TextMetricAscent; text_descent_px=$dialogFont.TextMetricDescent; textmetric_weight=$dialogFont.TextMetricWeight
+                        average_char_width_px=$dialogFont.AverageCharWidth; text_width_px=$dialogFont.MeasuredTextWidth; text_height_px=$dialogFont.MeasuredTextHeight
+                    })
                     foreach ($control in $current | Where-Object { $_.Visible -and $_.ControlId -ne 0 }) {
                         $samples = @()
                         if (-not [string]::IsNullOrWhiteSpace($control.Title)) {
@@ -1161,6 +1202,56 @@ public static class P2CWin32 {
     }
 
     if ($captureWindow -and $desktopAccessible -and $mainHwnd -ne [IntPtr]::Zero) {
+        # Reproduce the historically fatal foreign-HWND call in a sacrificial
+        # PowerShell process only after all light-state screenshots exist.
+        # A native access violation must not destroy the evidence or stop later
+        # dark-state trials in this parent process.
+        $liveSettings = @([P2CWin32]::GetProcessWindows([uint32]$appProcess.Id) |
+            Where-Object { $_.Handle.ToInt64() -ne $mainHandleValue -and $_.Width -gt 200 -and $_.Height -gt 100 } |
+            Select-Object -First 1)
+        if ($liveSettings.Count -eq 0 -and -not $appProcess.HasExited) {
+            if (-not [P2CWin32]::PostMessage([IntPtr]$mainHwnd, 0x0111, [IntPtr]155, [IntPtr]::Zero)) {
+                Write-Status 'FAIL MapDialogRect external HWND experiment could not request the safe Settings window command IDM_SETTINGS=155.'
+            } else {
+                for ($attempt = 0; $attempt -lt 24 -and $liveSettings.Count -eq 0; $attempt++) {
+                    Start-Sleep -Milliseconds 250
+                    $liveSettings = @([P2CWin32]::GetProcessWindows([uint32]$appProcess.Id) |
+                        Where-Object { $_.Handle.ToInt64() -ne $mainHandleValue -and $_.Width -gt 200 -and $_.Height -gt 100 } |
+                        Select-Object -First 1)
+                }
+            }
+        }
+        if ($liveSettings.Count -eq 1) { $settingsHwnd = [IntPtr]$liveSettings[0].Handle }
+        $externalPage = @([P2CWin32]::GetChildWindows([IntPtr]$settingsHwnd) |
+            Where-Object { $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 } |
+            Select-Object -First 1)
+        if ($externalPage.Count -ne 1 -or -not [P2CWin32]::IsWindow([IntPtr]$externalPage[0].Handle) -or
+            $externalPage[0].ProcessId -ne [uint32]$appProcess.Id) {
+            $dluExternalProbeStatus = 'INVALID_TARGET'
+            $dluFailures.Add('Could not establish a live foreign #32770 settings-page HWND for the isolated MapDialogRect reproduction.')
+            Write-Status "FAIL MapDialogRect external HWND experiment target_valid=false page_count=$($externalPage.Count) expected_pid=$($appProcess.Id)"
+        } else {
+            $externalProbeBase = Join-Path $artifactDir 'mapdialogrect-external-page-hwnd'
+            $externalProbe = Invoke-IsolatedMapDialogRectProbe -Arguments @(
+                '-Mode', 'External', '-Handle', $externalPage[0].Handle.ToInt64().ToString([Globalization.CultureInfo]::InvariantCulture)
+            ) -EvidenceBase $externalProbeBase
+            $dluExternalProbeStatus = $externalProbe.Outcome
+            $metadataMatches = $externalProbe.Stdout -match "EXTERNAL_PRECALL caller_pid=\d+ hwnd=0x[0-9A-F]+ hwnd_valid=True hwnd_pid=$($appProcess.Id) .*hwnd_class=#32770 .*rect_size=16 rect_right_offset=8 rect_bottom_offset=12"
+            if (-not $metadataMatches) {
+                $dluExternalProbeStatus = 'METADATA_MISMATCH'
+                $dluFailures.Add('The isolated external MapDialogRect probe did not report the expected valid foreign page HWND metadata.')
+            }
+            Write-Status "DIAGNOSTIC MapDialogRect external-page target_pid=$($appProcess.Id) class=$($externalPage[0].ClassName) valid=$([P2CWin32]::IsWindow([IntPtr]$externalPage[0].Handle)) isolated_process=true outcome=$($externalProbe.Outcome) exit=$($externalProbe.ExitHex) metadata_valid=$metadataMatches evidence=mapdialogrect-external-page-hwnd.stdout.txt"
+            if ($externalProbe.Outcome -eq 'ACCESS_VIOLATION' -and $metadataMatches) {
+                Write-Status 'CONFIRMED MapDialogRect foreign HWND call terminates the isolated caller with STATUS_ACCESS_VIOLATION; screenshot collector remains alive.'
+            } elseif ($externalProbe.Outcome -eq 'PASS' -and $metadataMatches) {
+                Write-Status 'UNRESOLVED historical MapDialogRect access violation: isolated foreign-HWND reproduction returned normally; no root cause is claimed.'
+                $dluFailures.Add('The historical external-HWND MapDialogRect access violation was not reproduced in the isolated C# probe.')
+            } elseif ($externalProbe.Outcome -ne 'ACCESS_VIOLATION') {
+                $dluFailures.Add("The isolated external-HWND MapDialogRect probe ended as $($externalProbe.Outcome) rather than reproducing the access violation.")
+            }
+        }
+
         # End the legacy capture process before starting isolated trials. Only
         # this workflow-created process is closed here.
         if ($appProcess -and -not $appProcess.HasExited) {
@@ -1598,6 +1689,88 @@ public static class P2CWin32 {
     else {
         Write-Status 'BLOCKED P2C-4R1 fresh-process experiments: no interactive Windows runner desktop or verified native main window.'
     }
+
+    # Run the non-destructive controlled DLU measurements only after the
+    # screenshot and isolated dark-state acquisition paths have completed.
+    # A failed child probe is recorded and all remaining page calibrations run.
+    if ($pageDluInputs.Count -ne 10) {
+        $dluFailures.Add("Expected ten page/locale font snapshots (five pages x English/zh-CN), captured $($pageDluInputs.Count).")
+        Write-Status "FAIL DLU input coverage expected=10 actual=$($pageDluInputs.Count)"
+    }
+    foreach ($pageCalibration in $pageDluInputs) {
+        try {
+            if (-not $pageCalibration.Valid -or $pageCalibration.ClassName -ne '#32770' -or $pageCalibration.OwnerPid -ne [uint32]$appProcess.Id) {
+                throw "Stored source page metadata is invalid: hwnd=$($pageCalibration.Handle) valid=$($pageCalibration.Valid) pid=$($pageCalibration.OwnerPid) class=$($pageCalibration.ClassName)."
+            }
+            $evidenceBase = Join-Path $artifactDir "mapdialogrect-controlled-page-$($pageCalibration.PageId)-$($pageCalibration.Locale)"
+            $probeResult = Invoke-IsolatedMapDialogRectProbe -Arguments @(
+                '-Mode', 'Controlled', '-FontFace', [string]$pageCalibration.Font.FaceName,
+                '-PointSize', [string]$pageCalibration.ResourcePointSize, '-WidthDlu', '260', '-HeightDlu', '168'
+            ) -EvidenceBase $evidenceBase
+            $controlledMetadata = [regex]::Match($probeResult.Stdout, 'CONTROLLED .*pid=\d+ dpi=(\d+) class=#32770 valid=true created_by=CreateDialogIndirectParamW rect_size=16 rect_right_offset=8 rect_bottom_offset=12')
+            $measurement = [regex]::Match($probeResult.Stdout, 'CONTROLLED .*base_4x8_px=(\d+)x(\d+) mapped_px=(\d+)x(\d+) created_px=(\d+)x(\d+)')
+            if ($probeResult.ExitCode -ne 0 -or -not $measurement.Success) {
+                throw "Controlled same-process dialog MapDialogRect probe failed: outcome=$($probeResult.Outcome), exit=$($probeResult.ExitHex), stdout=$($probeResult.Stdout.Trim()), stderr=$($probeResult.Stderr.Trim())."
+            }
+            if (-not $controlledMetadata.Success) {
+                throw "Controlled DLU probe did not prove the same-process #32770 HWND, DPI, RECT layout, and CreateDialogIndirectParamW origin: $($probeResult.Stdout.Trim())."
+            }
+            $controlledDpi = [int]$controlledMetadata.Groups[1].Value
+            if ($controlledDpi -ne [int]$pageCalibration.Dpi) {
+                throw "Controlled and original page DPI differ: controlled=$controlledDpi original=$($pageCalibration.Dpi)."
+            }
+            $mapBaseX = [int]$measurement.Groups[1].Value
+            $mapBaseY = [int]$measurement.Groups[2].Value
+            $mappedWidth = [int]$measurement.Groups[3].Value
+            $mappedHeight = [int]$measurement.Groups[4].Value
+            $createdWidth = [int]$measurement.Groups[5].Value
+            $createdHeight = [int]$measurement.Groups[6].Value
+            $gdiBaseX = [int][Math]::Round(($pageCalibration.Font.MeasuredTextWidth / 52.0), [MidpointRounding]::AwayFromZero)
+            $gdiBaseY = [int]$pageCalibration.Font.TextMetricHeight
+            $widthError = $mappedWidth - [int]$pageCalibration.Width
+            $heightError = $mappedHeight - [int]$pageCalibration.Height
+            $crosscheckXError = $mapBaseX - $gdiBaseX
+            $crosscheckYError = $mapBaseY - $gdiBaseY
+            if ($createdWidth -ne $mappedWidth -or $createdHeight -ne $mappedHeight) {
+                throw "Controlled dialog creation and MapDialogRect disagree: mapped=${mappedWidth}x${mappedHeight}, created=${createdWidth}x${createdHeight}."
+            }
+            if ([Math]::Abs($crosscheckXError) -gt 1 -or [Math]::Abs($crosscheckYError) -gt 1) {
+                throw "GDI 52-character DLU cross-check exceeded 1 px: MapDialogRect=${mapBaseX}x${mapBaseY}, GDI=${gdiBaseX}x${gdiBaseY}."
+            }
+            if ([Math]::Abs($widthError) -gt 1 -or [Math]::Abs($heightError) -gt 1) {
+                throw "Official child-page rectangle differs from the controlled DLU conversion by more than 1 px: mapped=${mappedWidth}x${mappedHeight}, observed=$($pageCalibration.Width)x$($pageCalibration.Height)."
+            }
+            [pscustomobject]@{
+                page_idd=$pageCalibration.PageId; locale=$pageCalibration.Locale; dpi=$pageCalibration.Dpi
+                controlled_dpi=$controlledDpi
+                dlu_source='isolated C# probe process CreateDialogIndirectParamW+DS_SETFONT; source-page LOGFONT face; upstream resource font=8pt; matched DPI'
+                external_page_hwnd=('0x{0:X}' -f $pageCalibration.Handle.ToInt64()); external_page_pid=$pageCalibration.OwnerPid
+                external_page_class=$pageCalibration.ClassName; external_parent_hwnd=('0x{0:X}' -f $pageCalibration.Parent.ToInt64()); external_valid=$pageCalibration.Valid
+                font_anchor_id=$pageCalibration.FontAnchorId; font_anchor_class=$pageCalibration.FontAnchorClass
+                font_face=$pageCalibration.Font.FaceName; resolved_font_face=$pageCalibration.Font.ResolvedFaceName; font_source=$pageCalibration.Font.FontSource
+                resource_font_pt=$pageCalibration.ResourcePointSize; logfont_height_px=$pageCalibration.Font.LogFontHeight
+                alphabet_text=$pageCalibration.Alphabet; alphabet_width_px=$pageCalibration.Font.MeasuredTextWidth
+                alphabet_average_char_width_px=[Math]::Round(($pageCalibration.Font.MeasuredTextWidth / 52.0), 4)
+                gdi_base_unit_x_px=$gdiBaseX; textmetric_height_px=$pageCalibration.Font.TextMetricHeight
+                mapdialogrect_width_for_4_dlu_px=$mapBaseX; mapdialogrect_height_for_8_dlu_px=$mapBaseY
+                x_px_per_dlu=[Math]::Round(($mapBaseX / 4.0), 4); y_px_per_dlu=[Math]::Round(($mapBaseY / 8.0), 4)
+                mapped_page_width_px=$mappedWidth; mapped_page_height_px=$mappedHeight
+                observed_page_width_px=$pageCalibration.Width; observed_page_height_px=$pageCalibration.Height
+                width_error_px=$widthError; height_error_px=$heightError
+            } | Export-Csv -LiteralPath $dluCalibrationFile -NoTypeInformation -Append -Encoding UTF8
+            Write-Status "PASS DLU page_idd=$($pageCalibration.PageId) locale=$($pageCalibration.Locale) font=$($pageCalibration.Font.FaceName)->$($pageCalibration.Font.ResolvedFaceName) dpi=$($pageCalibration.Dpi) resource_font_pt=$($pageCalibration.ResourcePointSize) base_4x8_map=${mapBaseX}x${mapBaseY} base_4x8_gdi=${gdiBaseX}x${gdiBaseY} expected_page=${mappedWidth}x${mappedHeight} observed_page=$($pageCalibration.Width)x$($pageCalibration.Height) error=${widthError}x${heightError}"
+        } catch {
+            $failure = "page_idd=$($pageCalibration.PageId) locale=$($pageCalibration.Locale): $($_.Exception.Message)"
+            $dluFailures.Add($failure)
+            Write-Status "FAIL DLU $failure"
+        }
+    }
+    if ($dluFailures.Count -gt 0) {
+        Write-Status "FAIL DLU calibration and external-HWND diagnosis failures=$($dluFailures.Count)"
+        foreach ($failure in $dluFailures) { Write-Status "DLU_FAILURE detail=$failure" }
+        throw 'Windows DLU acquisition or MapDialogRect fatal-error diagnosis did not meet the required evidence checks.'
+    }
+    Write-Status "PASS Windows DLU acquisition pages=$($pageDluInputs.Count) external_probe=$dluExternalProbeStatus source=controlled-MapDialogRect+GDI-52-character-crosscheck"
 } catch {
     Write-Status "FAIL Windows release verification/capture: $($_.Exception.Message)"
     throw

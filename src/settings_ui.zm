@@ -43,7 +43,7 @@ pub fn enable_widget_preview_checkbox(s: &mut State, id: i64):
     s.widget_preview_checked = resource.checked
     s.page = resource.page
     s.focus = 100 + resource.page
-    println(f"CI_WIDGET_PREVIEW enabled=true resource={id} persistence=none side_effects=none")
+    println(f"CI_WIDGET_PREVIEW enabled=true resource={id} page_idd={page_dialog_id(resource.page)} checked={s.widget_preview_checked} persistence=none side_effects=none")
 
 fn checkbox_enabled(s: &State, id: i64, resource_enabled: bool) -> bool:
     resource_enabled or (s.test_mode and s.widget_preview_id == id and preview_checkbox_on_page(s) == id)
@@ -524,6 +524,10 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
         let locale = text(zh, "en", "zh-CN")
         let theme_name = if dark: "dark" else: "light"
         println(f"CI_SETTINGS_PAGE idd={page_dialog_id(s.page)} page={page_title(s.page, zh)} locale={locale} controls={page_control_ids(s.page)} child_dlu=260x168 provisional_canvas={width}x{height} theme={theme_name}")
+        let preview_id = preview_checkbox_on_page(s)
+        if preview_id != 0:
+            let preview = settings_resources.lookup(s.page, preview_id)
+            println(f"CI_WIDGET_PREVIEW_STATE resource={preview_id} page_idd={page_dialog_id(s.page)} checked={checkbox_checked(s, preview_id, preview.checked)} enabled={checkbox_enabled(s, preview_id, preview.linux_enabled)}")
         let canvas_page = ui_geometry.settings_page_rect(width, height)
         println(f"CI_SETTINGS_GEOMETRY page_idd={page_dialog_id(s.page)} locale={locale} state=default resource={page_dialog_id(s.page)} part=page x={canvas_page.x} y={canvas_page.y} w={canvas_page.w} h={canvas_page.h} theme={theme_name}")
     # The Windows client surface outside the navigation tree uses the system
@@ -1250,6 +1254,10 @@ fn test_appearance_checkbox_preview_uses_resource_default_and_page_tab_order():
     assert s.page == 2 and s.focus == 102
     assert checkbox_enabled(&s, 136, settings_resources.lookup(2, 136).linux_enabled)
     assert checkbox_checked(&s, 136, false)
+    assert click(&mut s, 1040.0, false) == 0
+    assert s.page == 0
+    assert click(&mut s, 1042.0, false) == 0
+    assert s.page == 2 and checkbox_checked(&s, 136, false)
     assert key(&mut s, "Tab", false) == 0
     assert s.focus == 136
     assert key(&mut s, "Space", false) == 0
