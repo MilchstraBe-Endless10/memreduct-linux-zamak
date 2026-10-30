@@ -845,7 +845,7 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
         elif name == "Shift+Tab" or name == "ISO_Left_Tab":
             s.focus = if s.focus == 701: 702 else: 701
             if s.test_mode: println(f"CI_RESET_FOCUS choice={s.focus}")
-        elif name == "Enter" or name == "Return" or name == "\r" or name == "\n":
+        elif name == "Enter" or name == "Return" or name == "\r" or name == "\n" or name == "Space" or name == " " or name == "Spacebar":
             let choice = s.focus
             s.modal = 0
             s.focus = 106
@@ -938,6 +938,13 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
             s.page = s.focus - 100
         elif preview_checkbox_on_page(s) != 0 and s.focus == preview_checkbox_on_page(s):
             toggle_preview_checkbox(s, s.widget_preview_id, "keyboard-space", zh)
+        elif s.focus == 106:
+            s.focus = 701
+            s.modal = 1
+            if s.test_mode: println("CI_RESET_CONFIRMATION resource=105 resource_string=83 source=Space")
+        elif s.focus == 107:
+            if s.test_mode: println("CI_SETTINGS_CLOSE resource=106 action=return_to_main source=Space")
+            return 1
         elif s.focus == 105 and s.page == 0:
             s.language_open = true
             if zh: s.language_focus = 802
@@ -1130,6 +1137,33 @@ fn test_reset_modal_focus_cycles_and_keyboard_cancel_is_reachable():
     assert s.modal == 0 and s.focus == 106
     assert not reset_choice_focused(&s, 702)
     assert s.status == "Reset cancelled"
+
+fn test_space_activates_reset_close_and_modal_choices():
+    let mut s = initial(true)
+    s.focus = 106
+    assert key(&mut s, "Space", false) == 0
+    assert s.modal == 1 and s.focus == 701
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 702
+    assert key(&mut s, "Space", false) == 0
+    assert s.modal == 0 and s.focus == 106
+    assert s.status == "Reset cancelled"
+
+    assert key(&mut s, "Spacebar", false) == 0
+    assert s.modal == 1 and s.focus == 701
+    assert key(&mut s, " ", false) == 0
+    assert s.modal == 0 and s.focus == 106
+    assert s.status == "No settings changed; persistence is not implemented"
+
+    s.focus = 106
+    assert key(&mut s, "Enter", false) == 0
+    assert s.modal == 1 and s.focus == 701
+    assert key(&mut s, "Enter", false) == 0
+    assert s.modal == 0 and s.focus == 106
+    assert s.status == "No settings changed; persistence is not implemented"
+
+    s.focus = 107
+    assert key(&mut s, "Space", false) == 1
 
     assert click(&mut s, 105.0, false) == 0
     assert s.modal == 1 and s.focus == 701
