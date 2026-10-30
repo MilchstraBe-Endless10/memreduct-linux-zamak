@@ -228,9 +228,12 @@ pub fn lookup(page: i64, id: i64) -> ControlSpec:
         if id == 146: return item(page, id, "updown", "msctls_updown32", "IDC_TRAYLEVELDANGER", buddy_style, 0.0, 0.0, 0.0, 0.0, 0.0, false)
         if id == 114: return item(page, id, "groupbox", "Button", "IDC_TITLE_8", "BS_GROUPBOX", 0.0, 48.0, 260.0, 48.0, 0.0, false)
         if id == 147: return item(page, id, "static", "Static", "IDC_TRAYACTIONSC_HINT", "SS_CENTERIMAGE", 8.0, 60.0, 114.0, 12.0, 0.0, false)
-        if id == 148: return item(page, id, "combobox", "ComboBox", "IDC_TRAYACTIONSC", combo_style, 128.0, 60.0, 124.0, 12.0, 12.0, false)
+        # Keep the resource template's 12-DLU allocation separate from the
+        # 13-DLU closed HWND height measured for IDs 148/150 in
+        # visual-comparison/control-geometry-diff.csv (21 px on Windows).
+        if id == 148: return item(page, id, "combobox", "ComboBox", "IDC_TRAYACTIONSC", combo_style, 128.0, 60.0, 124.0, 12.0, 13.0, false)
         if id == 149: return item(page, id, "static", "Static", "IDC_TRAYACTIONMC_HINT", "SS_CENTERIMAGE", 8.0, 74.0, 114.0, 12.0, 0.0, false)
-        if id == 150: return item(page, id, "combobox", "ComboBox", "IDC_TRAYACTIONMC", combo_style, 128.0, 74.0, 124.0, 12.0, 12.0, false)
+        if id == 150: return item(page, id, "combobox", "ComboBox", "IDC_TRAYACTIONMC", combo_style, 128.0, 74.0, 124.0, 12.0, 13.0, false)
         if id == 115: return item(page, id, "groupbox", "Button", "IDC_TITLE_9", "BS_GROUPBOX", 0.0, 98.0, 260.0, 40.0, 0.0, false)
         if id == 152: return item(page, id, "checkbox", "Button", "IDC_SHOW_CLEAN_RESULT_CHK", "BS_AUTOCHECKBOX | BS_MULTILINE", 8.0, 110.0, 244.0, 12.0, 0.0, false)
         if id == 151: return item(page, id, "checkbox", "Button", "IDC_NOTIFICATIONSOUND_CHK", "BS_AUTOCHECKBOX | BS_MULTILINE", 8.0, 122.0, 244.0, 12.0, 0.0, false)
@@ -372,7 +375,7 @@ fn test_resource_classes_styles_rectangles_and_runtime_state_are_distinct():
     assert(combo.class_style == "CBS_DROPDOWNLIST | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP")
     assert(combo.style == "WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP")
     assert(combo.x == 128.0 and combo.y == 104.0 and combo.w == 124.0 and combo.h == 30.0 and combo.closed_h == 13.0)
-    assert(lookup(3, 148).closed_h == 12.0 and not lookup(3, 148).linux_enabled)
+    assert(lookup(3, 148).closed_h == 13.0 and not lookup(3, 148).linux_enabled)
     let edit = lookup(1, 126)
     assert(edit.class_name == "Edit" and edit.w == 44.0)
     assert(edit.style == "WS_CHILD | WS_VISIBLE | ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL | ES_NUMBER | ES_MULTILINE")
@@ -382,6 +385,13 @@ fn test_resource_classes_styles_rectangles_and_runtime_state_are_distinct():
     assert(lookup(2, 139).class_style == "BS_PUSHBUTTON")
     assert(lookup(2, 139).style == "WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON")
     assert(group.resource_style_enabled and group.exstyle == "")
+
+fn test_tray_combos_match_measured_windows_closed_height():
+    for id in [148,150]:
+        let spec = lookup(3, id)
+        let visible = visible_rect(&spec, f64(ui_geometry.settings_client_width_px()), f64(ui_geometry.settings_client_height_px()))
+        assert(spec.h == 12.0 and spec.closed_h == 13.0)
+        assert(visible.h == 21.125)
 
 fn test_settingsproc_check_states_and_non_elevated_disables_are_recorded():
     assert(lookup(0, 120).checked and lookup(0, 120).state_source == "SettingsProc: IsShowReductConfirmation default TRUE")
