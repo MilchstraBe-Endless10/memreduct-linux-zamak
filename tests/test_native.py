@@ -134,84 +134,145 @@ class TestNativeBackend(unittest.TestCase):
         self.assertIn('close=failed', result.stderr)
         self.assertEqual(target.read_bytes(), b'1\n')
 
-    def test_bridge_nonblocking_with_fake_pkexec(self):
-        # POSIX spawn / waitpid is exercised, but the program executed is our harmless fake.
+    def _write_fake_pkexec(self):
         fake = self.work / 'pkexec'
-        fake.write_text('#!/bin/sh\n[ "$1" = "/usr/libexec/memreduct-zamak-helper" ] || exit 88\n[ "$2" = "pagecache" ] || exit 89\nexit 0\n')
-        fake.chmod(0o755)
-        old_override = os.environ.get('MEMREDUCT_TEST_PKEXEC')
-        old_waitpid_fault = os.environ.get('MEMREDUCT_TEST_WAITPID_EINTR_ONCE')
-        try:
-            os.environ['MEMREDUCT_TEST_PKEXEC'] = str(fake)
-            os.environ['MEMREDUCT_TEST_WAITPID_EINTR_ONCE'] = '1'
-            library = ctypes.CDLL(str(self.bridge))
-            library.mr_start_reclaim.argtypes = [ctypes.c_int64]
-            library.mr_start_reclaim.restype = ctypes.c_int64
-            library.mr_poll_reclaim.restype = ctypes.c_int64
-            self.assertEqual(library.mr_start_reclaim(99), 22)
-            self.assertEqual(library.mr_start_reclaim(1), 22)
-            self.assertEqual(library.mr_start_reclaim(0), 0)
-            self.assertEqual(library.mr_poll_reclaim(), -1)
-            result = -1
-            for _ in range(100):
-                result = library.mr_poll_reclaim()
-                if result != -1:
-                    break
-                time.sleep(0.01)
-            self.assertEqual(result, 0)
-            self.assertEqual(library.mr_poll_reclaim(), -2)
-        finally:
-            if old_override is None:
-                os.environ.pop('MEMREDUCT_TEST_PKEXEC', None)
-            else:
-                os.environ['MEMREDUCT_TEST_PKEXEC'] = old_override
-            if old_waitpid_fault is None:
-                os.environ.pop('MEMREDUCT_TEST_WAITPID_EINTR_ONCE', None)
-            else:
-                os.environ['MEMREDUCT_TEST_WAITPID_EINTR_ONCE'] = old_waitpid_fault
-
-    def test_bridge_preserves_failure_and_uncertain_exit_status_without_retry(self):
-        fake = self.work / 'pkexec-status'
-        calls = self.work / 'pkexec-status-calls.log'
         fake.write_text(
             '#!/bin/sh\n'
             '[ "$1" = "/usr/libexec/memreduct-zamak-helper" ] || exit 88\n'
             '[ "$2" = "pagecache" ] || exit 89\n'
-            'printf "%s %s\\n" "$1" "$2" >> "$MEMREDUCT_TEST_PKEXEC_LOG"\n'
-            'exit "$MEMREDUCT_TEST_PKEXEC_EXIT"\n'
+            'if [ -n "${MEMREDUCT_TEST_PKEXEC_LOG:-}" ]; then echo called >> "$MEMREDUCT_TEST_PKEXEC_LOG"; fi\n'
+            'case "${MEMREDUCT_TEST_PKEXEC_BEHAVIOR:-helper}" in\n'
+            '  cancel) exit 126 ;;\n'
+            '  pkexec-fail) exit 127 ;;\n'
+            '  helper-unsupported) exit 2 ;;\n'
+            '  signal) kill -TERM "$$" ;;\n'
+            '  gated) while [ ! -e "$MEMREDUCT_TEST_PKEXEC_RELEASE" ]; do sleep 0.01; done ;;\n'
+            'esac\n'
+            'exec "$MEMREDUCT_TEST_HELPER" "$2"\n'
         )
         fake.chmod(0o755)
+        return fake
+
+    def _load_bridge(self):
+        library = ctypes.CDLL(str(self.bridge))
+        library.mr_start_reclaim.argtypes = [ctypes.c_int64]
+        library.mr_start_reclaim.restype = ctypes.c_int64
+        library.mr_poll_reclaim.restype = ctypes.c_int64
+        return library
+
+    def _bridge_environment(self, fake, behavior='helper', target=None, calls=None, release=None, fault=None):
+        return {
+            'MEMREDUCT_TEST_PKEXEC': str(fake),
+            'MEMREDUCT_TEST_HELPER': str(self.test_helper),
+            'MEMREDUCT_TEST_PKEXEC_BEHAVIOR': behavior,
+            'MEMREDUCT_TEST_PKEXEC_LOG': str(calls) if calls else '',
+            'MEMREDUCT_TEST_PKEXEC_RELEASE': str(release) if release else '',
+            'MEMREDUCT_TEST_DROP_CACHES_PATH': str(target) if target else '',
+            'MEMREDUCT_TEST_WRITE_FAULT': fault or '',
+        }
+
+    @staticmethod
+    def _restore_environment(previous):
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    def _poll_bridge(self, library):
+        for _ in range(300):
+            result = library.mr_poll_reclaim()
+            if result != -1:
+                return result
+            time.sleep(0.01)
+        self.fail('bridge child did not finish within 3 seconds')
+
+    def test_bridge_nonblocking_busy_and_invalid_action(self):
+        fake = self._write_fake_pkexec()
+        release = self.work / 'release-child'
+        calls = self.work / 'calls.log'
+        target = self.work / 'busy.target'
+        target.write_bytes(b'')
+        previous = {name: os.environ.get(name) for name in (
+            'MEMREDUCT_TEST_PKEXEC', 'MEMREDUCT_TEST_HELPER', 'MEMREDUCT_TEST_PKEXEC_BEHAVIOR',
+            'MEMREDUCT_TEST_PKEXEC_LOG', 'MEMREDUCT_TEST_PKEXEC_RELEASE',
+            'MEMREDUCT_TEST_DROP_CACHES_PATH', 'MEMREDUCT_TEST_WRITE_FAULT')}
+        try:
+            os.environ.update(self._bridge_environment(fake, 'gated', target=target, calls=calls, release=release))
+            library = self._load_bridge()
+            self.assertEqual(library.mr_poll_reclaim(), -2)
+            self.assertEqual(library.mr_start_reclaim(99), 2)
+            self.assertEqual(library.mr_start_reclaim(1), 2)
+            self.assertEqual(library.mr_start_reclaim(0), 0)
+            self.assertEqual(library.mr_start_reclaim(0), 1)
+            self.assertEqual(library.mr_poll_reclaim(), -1)
+            release.touch()
+            self.assertEqual(self._poll_bridge(library), 0)
+            self.assertEqual(library.mr_poll_reclaim(), -2)
+            self.assertEqual(len(calls.read_text().splitlines()), 1)
+        finally:
+            self._restore_environment(previous)
+
+    def test_bridge_runs_fake_helper_and_normalizes_complete_result_mapping(self):
+        fake = self._write_fake_pkexec()
+        calls = self.work / 'calls.log'
+        library = self._load_bridge()
         env_names = (
-            'MEMREDUCT_TEST_PKEXEC',
-            'MEMREDUCT_TEST_PKEXEC_LOG',
-            'MEMREDUCT_TEST_PKEXEC_EXIT',
+            'MEMREDUCT_TEST_PKEXEC', 'MEMREDUCT_TEST_HELPER', 'MEMREDUCT_TEST_PKEXEC_BEHAVIOR',
+            'MEMREDUCT_TEST_PKEXEC_LOG', 'MEMREDUCT_TEST_PKEXEC_RELEASE',
+            'MEMREDUCT_TEST_DROP_CACHES_PATH', 'MEMREDUCT_TEST_WRITE_FAULT',
+        )
+        previous = {name: os.environ.get(name) for name in env_names}
+        scenarios = (
+            ('success', 'helper', b'', None, 0, b'1\n'),
+            ('user canceled authorization', 'cancel', b'', None, 1, b''),
+            ('authorization or pkexec failure', 'pkexec-fail', b'', None, 2, b''),
+            ('helper failed', 'helper', b'unchanged', 'write-eio-once', 3, b'unchanged'),
+            ('helper reported uncertain result', 'helper', b'', 'short-once', 5, b'1'),
+            ('helper rejected action', 'helper-unsupported', b'', None, 4, b''),
+        )
+        try:
+            for index, (label, behavior, initial, fault, expected, final) in enumerate(scenarios):
+                with self.subTest(label=label):
+                    target = self.work / f'bridge-{index}.target'
+                    target.write_bytes(initial)
+                    os.environ.update(self._bridge_environment(fake, behavior, target, calls, fault=fault))
+                    self.assertEqual(library.mr_start_reclaim(0), 0)
+                    self.assertEqual(self._poll_bridge(library), expected)
+                    self.assertEqual(library.mr_poll_reclaim(), -2)
+                    self.assertEqual(target.read_bytes(), final)
+            self.assertEqual(len(calls.read_text().splitlines()), len(scenarios))
+        finally:
+            self._restore_environment(previous)
+
+    def test_bridge_reports_spawn_wait_and_abnormal_child_failures(self):
+        fake = self._write_fake_pkexec()
+        library = self._load_bridge()
+        target = self.work / 'wait-failure.target'
+        target.write_bytes(b'')
+        env_names = (
+            'MEMREDUCT_TEST_PKEXEC', 'MEMREDUCT_TEST_HELPER', 'MEMREDUCT_TEST_PKEXEC_BEHAVIOR',
+            'MEMREDUCT_TEST_PKEXEC_LOG', 'MEMREDUCT_TEST_PKEXEC_RELEASE',
+            'MEMREDUCT_TEST_DROP_CACHES_PATH', 'MEMREDUCT_TEST_WRITE_FAULT',
+            'MEMREDUCT_TEST_WAITPID_FAIL_ONCE',
         )
         previous = {name: os.environ.get(name) for name in env_names}
         try:
+            os.environ.update(self._bridge_environment(fake, 'signal', target=target))
+            os.environ['MEMREDUCT_TEST_PKEXEC'] = str(self.work / 'does-not-exist')
+            self.assertEqual(library.mr_start_reclaim(0), 3)
+
             os.environ['MEMREDUCT_TEST_PKEXEC'] = str(fake)
-            os.environ['MEMREDUCT_TEST_PKEXEC_LOG'] = str(calls)
-            library = ctypes.CDLL(str(self.bridge))
-            library.mr_start_reclaim.argtypes = [ctypes.c_int64]
-            library.mr_start_reclaim.restype = ctypes.c_int64
-            library.mr_poll_reclaim.restype = ctypes.c_int64
-            for expected in (1, 3, 126):
-                os.environ['MEMREDUCT_TEST_PKEXEC_EXIT'] = str(expected)
-                self.assertEqual(library.mr_start_reclaim(0), 0)
-                result = -1
-                for _ in range(100):
-                    result = library.mr_poll_reclaim()
-                    if result != -1:
-                        break
-                    time.sleep(0.01)
-                self.assertEqual(result, expected)
-                self.assertEqual(library.mr_poll_reclaim(), -2)
-            self.assertEqual(len(calls.read_text().splitlines()), 3)
+            os.environ['MEMREDUCT_TEST_PKEXEC_BEHAVIOR'] = 'signal'
+            self.assertEqual(library.mr_start_reclaim(0), 0)
+            self.assertEqual(self._poll_bridge(library), 6)
+
+            os.environ['MEMREDUCT_TEST_PKEXEC_BEHAVIOR'] = 'helper'
+            os.environ['MEMREDUCT_TEST_WAITPID_FAIL_ONCE'] = '1'
+            self.assertEqual(library.mr_start_reclaim(0), 0)
+            self.assertEqual(self._poll_bridge(library), 7)
         finally:
-            for name, value in previous.items():
-                if value is None:
-                    os.environ.pop(name, None)
-                else:
-                    os.environ[name] = value
+            self._restore_environment(previous)
 
 
 class TestGuiTestBridge(unittest.TestCase):

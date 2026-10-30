@@ -1,0 +1,35 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#ifndef MEMREDUCT_ASYNC_PRIVILEGED_H
+#define MEMREDUCT_ASYNC_PRIVILEGED_H
+
+#include <stdint.h>
+
+/* Start results: 0 started, 1 busy, 2 unsupported action, 3 launch failed. */
+enum mr_reclaim_start_result {
+    MR_RECLAIM_STARTED = 0,
+    MR_RECLAIM_BUSY = 1,
+    MR_RECLAIM_UNSUPPORTED_ACTION = 2,
+    MR_RECLAIM_LAUNCH_FAILED = 3
+};
+
+/* Poll results: negative values are nonterminal; nonnegative values are terminal.
+ * ACCEPTED means the helper reports kernel acceptance, never bytes reclaimed.
+ * WAIT_FAILED and CHILD_ABNORMAL leave the operation outcome unknown: do not retry. */
+enum mr_reclaim_poll_result {
+    MR_RECLAIM_WAIT_FAILED = 7,
+    MR_RECLAIM_CHILD_ABNORMAL = 6,
+    MR_RECLAIM_OUTCOME_UNCERTAIN = 5,
+    MR_RECLAIM_HELPER_UNSUPPORTED_ACTION = 4,
+    MR_RECLAIM_HELPER_FAILED = 3,
+    MR_RECLAIM_AUTH_OR_PKEXEC_FAILED = 2,
+    MR_RECLAIM_AUTH_CANCELLED = 1,
+    MR_RECLAIM_ACCEPTED = 0,
+    MR_RECLAIM_RUNNING = -1,
+    MR_RECLAIM_IDLE = -2
+};
+
+/* mode 0 is the sole supported fixed action: pagecache. */
+int64_t mr_start_reclaim(int64_t mode);
+int64_t mr_poll_reclaim(void);
+
+#endif
