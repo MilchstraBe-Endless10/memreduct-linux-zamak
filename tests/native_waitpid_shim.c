@@ -9,6 +9,13 @@ pid_t __real_waitpid(pid_t pid, int *status, int options);
 
 pid_t __wrap_waitpid(pid_t pid, int *status, int options) {
     static int injected = 0;
+    const char *failed = getenv("MEMREDUCT_TEST_WAITPID_FAIL_ONCE");
+    if (failed != NULL && failed[0] == '1' && !injected) {
+        injected = 1;
+        (void)__real_waitpid(pid, status, 0);
+        errno = ECHILD;
+        return -1;
+    }
     const char *fault = getenv("MEMREDUCT_TEST_WAITPID_EINTR_ONCE");
     if (fault != NULL && fault[0] == '1' && !injected) {
         injected = 1;
