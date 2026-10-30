@@ -845,7 +845,7 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
         elif name == "Shift+Tab" or name == "ISO_Left_Tab":
             s.focus = if s.focus == 701: 702 else: 701
             if s.test_mode: println(f"CI_RESET_FOCUS choice={s.focus}")
-        elif name == "Enter" or name == "Return" or name == "\r" or name == "\n" or name == "Space" or name == " " or name == "Spacebar":
+        elif name == "Enter" or name == "Return" or name == "\r" or name == "\n" or name == "Space" or name == "space" or name == " " or name == "Spacebar":
             let choice = s.focus
             s.modal = 0
             s.focus = 106
@@ -881,7 +881,7 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
         elif name == "End" or name == "PageDown":
             s.language_focus = 802
             if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_KEY name={name} focus={s.language_focus}")
-        elif name == "Enter" or name == "Return" or name == "\r" or name == "\n" or name == "Space" or name == " ":
+        elif name == "Enter" or name == "Return" or name == "\r" or name == "\n" or name == "Space" or name == "space" or name == " ":
             let selected = s.language_focus
             s.language_open = false
             if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_KEY name={name} selected={selected}")
@@ -895,7 +895,7 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
         next_focus(s, 1)
     elif name == "Shift+Tab":
         next_focus(s, -1)
-    elif (name == "Up" or name == "Down" or name == "Space" or name == " " or name == "F4" or name == "Alt+Down") and s.focus == 105 and s.page == 0:
+    elif (name == "Up" or name == "Down" or name == "Space" or name == "space" or name == " " or name == "F4" or name == "Alt+Down") and s.focus == 105 and s.page == 0:
         s.language_open = true
         if zh: s.language_focus = 802
         else: s.language_focus = 801
@@ -933,7 +933,7 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
             if zh: s.language_focus = 802
             else: s.language_focus = 801
             if s.test_mode: println("CI_SETTINGS_LANGUAGE resource=123 popup_open=true source=keyboard")
-    elif name == "Space" or name == " " or name == "Spacebar":
+    elif name == "Space" or name == "space" or name == " " or name == "Spacebar":
         if s.focus >= 100 and s.focus <= 104:
             s.page = s.focus - 100
         elif preview_checkbox_on_page(s) != 0 and s.focus == preview_checkbox_on_page(s):
@@ -1170,6 +1170,37 @@ fn test_space_activates_reset_close_and_modal_choices():
     assert click(&mut s, 702.0, false) == 0
     assert s.modal == 0 and s.focus == 106
     assert s.status == "Reset cancelled"
+
+fn test_lowercase_gdk_space_activates_settings_controls():
+    let mut s = initial(true)
+    s.focus = 106
+    assert key(&mut s, "space", false) == 0
+    assert s.modal == 1 and s.focus == 701
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 702
+    assert key(&mut s, "space", false) == 0
+    assert s.modal == 0 and s.focus == 106
+    assert s.status == "Reset cancelled"
+
+    s.focus = 106
+    assert key(&mut s, "Enter", false) == 0
+    assert s.modal == 1 and s.focus == 701
+    assert key(&mut s, "space", false) == 0
+    assert s.modal == 0 and s.focus == 106
+    assert s.status == "No settings changed; persistence is not implemented"
+
+    s.focus = 107
+    assert key(&mut s, "space", false) == 1
+
+    s = initial(true)
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 105
+    assert key(&mut s, "space", false) == 0
+    assert s.language_open and s.language_focus == 801
+    assert key(&mut s, "Down", false) == 0
+    assert s.language_focus == 802
+    assert key(&mut s, "space", false) == 2
+    assert not s.language_open
 
 fn test_combo_pointer_keyboard_focus_and_cancel_paths():
     let mut s = initial(true)
