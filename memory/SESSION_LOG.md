@@ -289,3 +289,9 @@
 - Native 并行复核对固定 pagecache 请求、`/usr/bin/pkexec`/固定 helper 路径、状态映射、临时文件 fake helper 和失败不自动重试通过；专测 13/13、GCC `-fanalyzer` PASS。备注：`MEMREDUCT_TESTING` 下 helper 测试目标用绝对环境变量指定，现有 E2E 一律指向 `TemporaryDirectory` 普通文件；生产构建不含该重定向。
 - 视觉复核确认 Tray 13 DLU 几何计算位于页界内且互不重叠；既有量测误差 +0.125 px，未生成当前 exact-head 新截图，整页 1:1 仍 NOT PASS。CI 审查未发现可安全复现的脚本根因；治理 34、CI Shell 12、diff check PASS。
 - 真实 GUI/XTEST、Weston、Windows DLU/截图/比较未运行：本机缺 Xvfb、Openbox、Weston、PowerShell、Wine/Winelib 工具。没有使用活动 Hyprland 输入，也没有新 GitHub CI。远端 PR #7 仍 OPEN/Draft、Base `main@83dbf58fb039645f08e08bc89170adcdaa7997be`、HEAD `db05ecd8ca2d49130f21a86cb5f233d378e914ad`；未推送、改 Base、Ready 或合并。
+
+## 2026-10-31 — 当前代码的真实 Wayland 有界启动
+
+- 只读会话变量确认当前会话为 Wayland；以普通用户、`GDK_BACKEND=wayland` 和 `MEMREDUCT_CI_EXIT_MS=7000` 启动本地候选二进制两次。第一轮主窗口启动与 `/proc/meminfo` 采样正常，GTK3 3.24.52、scale factor 1、Adwaita Sans 11 pt label style / Canvas 8 pt；主窗 GTK client `337×369`、frame extent `337×369`，capture 成功，定时退出 exit 0。日志显示 `CI_CLEAN_SIM enabled=false production_bridge_connected=false`。
+- 第二轮使用 CI-only `MEMREDUCT_CI_START_SETTINGS=1` 与 `MEMREDUCT_CI_WIDGET_PREVIEW=checkbox-136` 打开 Settings Appearance (resource 103)，`136 checked=true enabled=true persistence=none side_effects=none`。Settings 顶层 `558×335`，主窗和设置窗 app-owned capture 均成功；定时退出 exit 0，日志未发现 Gtk-WARNING/CRITICAL/ERROR。没有鼠标/键盘输入，没有清理操作，也没有写用户配置。
+- 证据在 AI 输出目录 `报告与研究/MemReduct-Parallel-Delivery-2026-10-31/integrator-final-1ba589b/real-wayland/`。Main SHA-256 `7b170ecd3b5e861be171253e5da2d8e481595ce410915e1ae207c250e90700e9`；Appearance SHA-256 `0dde7b2ee89174316ee9b61259abf45829623248cd4d6045cc3965e2d3005783`。此项只验收主窗/Appearance 启动、采样、绘制和定时关闭；五页真实键鼠、中文/深色状态和 Windows 配对仍 NOT RUN，整页 1:1 NOT PASS。
