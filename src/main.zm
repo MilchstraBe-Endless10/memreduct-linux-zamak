@@ -16,6 +16,8 @@ extern fn mr_gui_test_start_settings() -> i64
 extern fn mr_gui_test_widget_preview_resource() -> i64
 extern fn mr_gui_test_schedule_capture() -> i64
 extern fn mr_gui_test_selected_group() -> i64
+extern fn mr_gui_test_clean_simulation_enabled() -> i64
+extern fn mr_gui_test_clean_simulation_result() -> i64
 extern fn mr_gui_window_mode(settings: i64) -> i64
 extern fn mr_gui_take_settings_close_request() -> i64
 extern fn mr_gui_settings_window_exists() -> i64
@@ -55,6 +57,10 @@ struct MainWindow:
     elapsed_ms: i64
     ci_sample_failure_latched: bool
     sample_failure_draw_logged: bool
+    clean_simulation: bool
+    clean_state: i64
+    clean_confirm_focus: i64
+    clean_before_available: i64
     settings_open: bool
     settings: settings_ui.State
 
@@ -128,6 +134,35 @@ fn clean_popup_rect(s: &MainWindow) -> ui.Rect:
     let b = button_rect(s)
     ui_geometry.clean_popup_rect(s.width, s.height, &b)
 
+fn clean_confirm_panel(s: &MainWindow) -> ui.Rect:
+    ui.rect((s.width - 249.0) / 2.0, (s.height - 84.0) / 2.0, 249.0, 84.0)
+
+fn clean_confirm_button(confirm: bool) -> ui.Rect:
+    if confirm: return ui.rect(112.0, 190.0, 78.0, 24.0)
+    ui.rect(197.0, 190.0, 70.0, 24.0)
+
+fn clean_operation_busy(state: i64) -> bool:
+    state == 2 or state == 3
+
+fn clean_result_state(result: i64) -> i64:
+    if result == 0: return 4
+    if result == 1: return 5
+    if result == 2: return 6
+    if result == 3: return 7
+    if result == 4: return 8
+    6
+
+fn clean_result_status(zh: bool, state: i64) -> string:
+    if state == 4: return label(zh, "Simulation complete; no system changes", "模拟完成；未更改系统")
+    if state == 5: return label(zh, "Authorization cancelled", "已取消授权")
+    if state == 6: return label(zh, "Authorization or helper launch failed", "授权失败或 helper 无法启动")
+    if state == 7: return label(zh, "The helper reported failure", "helper 执行失败")
+    if state == 8: return label(zh, "Result is uncertain; do not retry automatically", "结果不确定；不会自动重试")
+    label(zh, "Operation is in progress", "操作正在进行")
+
+fn clean_simulation_can_start(state: i64) -> bool:
+    state != 1 and not clean_operation_busy(state)
+
 fn log_popup(s: &MainWindow, kind: string, r: &ui.Rect):
     if not s.test_mode: return
     let fits = r.x >= 2.0 and r.y >= 2.0 and r.right() <= s.width - 2.0 and r.bottom() <= s.height - 2.0
@@ -153,6 +188,10 @@ fn menu_item_at(s: &MainWindow, x: f64, y: f64) -> f64:
     return 0.0
 
 fn hit(s: &MainWindow, x: f64, y: f64) -> f64:
+    if s.clean_state == 1:
+        if clean_confirm_button(true).contains(x, y): return 710.0
+        if clean_confirm_button(false).contains(x, y): return 711.0
+        return 0.0
     if y >= 0.0 and y < 24.0:
         for index in 1..5:
             if ui_geometry.menu_bar_item_rect(index).contains(x, y): return f64(index)
@@ -302,6 +341,23 @@ fn draw_clean_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, disabled: &ui.
         if s.zh: name = names_zh[i]
         draw_menu_item(s, p, &row, target, name, false, fg, disabled, hot)
 
+fn draw_clean_confirmation(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Color, border: &ui.Color, surface: &ui.Color, hot: &ui.Color):
+    let panel = clean_confirm_panel(s)
+    p.fill_rect(&panel, surface)
+    draw_outline(p, &panel, border)
+    p.text(panel.x + 10.0, panel.y + 9.0, label(s.zh, "Simulated operation", "清理模拟"), fg, size=8.0)
+    p.text(panel.x + 10.0, panel.y + 27.0, label(s.zh, "No memory or kernel state will change", "不会更改内存或内核状态"), secondary, size=8.0)
+    let confirm = clean_confirm_button(true)
+    let cancel = clean_confirm_button(false)
+    if s.clean_confirm_focus == 0: p.fill_rect(&confirm, hot)
+    else: p.fill_rect(&confirm, surface)
+    draw_outline(p, &confirm, border)
+    p.text(confirm.x + 17.0, confirm.y + 6.0, label(s.zh, "Run", "确认"), fg, size=8.0)
+    if s.clean_confirm_focus == 1: p.fill_rect(&cancel, hot)
+    else: p.fill_rect(&cancel, surface)
+    draw_outline(p, &cancel, border)
+    p.text(cancel.x + 15.0, cancel.y + 6.0, label(s.zh, "Cancel", "取消"), fg, size=8.0)
+
 fn draw(s: &mut MainWindow, p: &ui.Painter):
     let old_w = s.width
     let old_h = s.height
@@ -366,7 +422,10 @@ fn draw(s: &mut MainWindow, p: &ui.Painter):
     draw_outline(p, &b, border)
     let clean_label = label(s.zh, "Clean memory", "清理内存")
     let clean_label_width = ui.text_width(clean_label, size=8.0)
-    p.text(ui_geometry.clean_button_label_x(s.width, s.height, clean_label_width), b.y + 5.0, clean_label, &disabled, size=8.0)
+    if s.clean_simulation:
+        p.text(ui_geometry.clean_button_label_x(s.width, s.height, clean_label_width), b.y + 5.0, clean_label, &fg, size=8.0)
+    else:
+        p.text(ui_geometry.clean_button_label_x(s.width, s.height, clean_label_width), b.y + 5.0, clean_label, &disabled, size=8.0)
     p.line(b.right() - ui_geometry.clean_arrow_width_px(), b.y, b.right() - ui_geometry.clean_arrow_width_px(), b.bottom(), &border)
     p.line(b.right() - 22.0, b.y + 7.0, b.right() - 17.0, b.y + 12.0, &disabled)
     p.line(b.right() - 17.0, b.y + 12.0, b.right() - 12.0, b.y + 7.0, &disabled)
@@ -380,6 +439,7 @@ fn draw(s: &mut MainWindow, p: &ui.Painter):
     elif s.popup == 3:
         draw_root_menu(s, p, &fg, &disabled, &border, &surface, &hot)
         draw_language_menu(s, p, &fg, &border, &surface, &hot)
+    if s.clean_state == 1: draw_clean_confirmation(s, p, &fg, &secondary, &border, &surface, &hot)
 
 fn value(kib: i64, available: bool) -> string:
     if not available: return "—"
@@ -419,6 +479,26 @@ fn test_ci_sample_failure_latch_is_test_only():
     assert(not suppress_ci_resample(true, false))
     assert(not suppress_ci_resample(false, true))
 
+fn test_clean_operation_results_preserve_distinct_feedback():
+    assert(clean_operation_busy(2))
+    assert(clean_operation_busy(3))
+    assert(not clean_operation_busy(0))
+    assert(clean_result_state(0) == 4)
+    assert(clean_result_state(1) == 5)
+    assert(clean_result_state(2) == 6)
+    assert(clean_result_state(3) == 7)
+    assert(clean_result_state(4) == 8)
+    assert(clean_simulation_can_start(0))
+    assert(not clean_simulation_can_start(1))
+    assert(not clean_simulation_can_start(2))
+    assert(not clean_simulation_can_start(3))
+
+fn test_clean_operation_result_labels_are_explicit_and_localized():
+    assert(clean_result_status(false, 4) == "Simulation complete; no system changes")
+    assert(clean_result_status(true, 4) == "模拟完成；未更改系统")
+    assert(clean_result_status(false, 8) == "Result is uncertain; do not retry automatically")
+    assert(clean_result_status(true, 8) == "结果不确定；不会自动重试")
+
 fn suppress_ci_resample(test_mode: bool, failure_latched: bool) -> bool:
     test_mode and failure_latched
 
@@ -447,6 +527,22 @@ fn refresh(s: &mut MainWindow):
     s.sample_failure_draw_logged = false
     if s.test_mode:
         println(f"CI_MEMORY source=/proc/meminfo MemTotal={snapshot.total} MemAvailable={snapshot.available} CachedPageCache={snapshot.page_cache} SReclaimableSlab={snapshot.reclaimable_slab} SwapTotal={snapshot.swap_total} SwapFree={snapshot.swap_free}")
+    s.canvas.redraw()
+
+fn finish_clean_simulation(s: &mut MainWindow):
+    if s.test_mode: println("CI_CLEAN_SIM stage=running helper=mock no_system_write=true")
+    let state = clean_result_state(mr_gui_test_clean_simulation_result())
+    s.clean_state = state
+    s.status = clean_result_status(s.zh, state)
+    if state == 4:
+        let after = memory.sample() catch e:
+            if s.test_mode: println(f"CI_CLEAN_SIM result=success source=mock-helper after_sample=unavailable error={e} no_system_write=true")
+            s.canvas.redraw()
+            return
+        let delta = after.available - s.clean_before_available
+        if s.test_mode: println(f"CI_CLEAN_SIM result=success source=mock-helper observed_memavailable_before_kib={s.clean_before_available} observed_memavailable_after_kib={after.available} observed_delta_kib={delta} causal_attribution=none no_system_write=true")
+    elif s.test_mode:
+        println(f"CI_CLEAN_SIM result_state={state} message={s.status} automatic_retry=false no_system_write=true")
     s.canvas.redraw()
 
 fn sample_for_ui(s: &mut MainWindow) -> memory.Snapshot!string:
@@ -487,6 +583,12 @@ fn tick(s: &mut MainWindow):
         if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST source=delete_event")
         set_settings_open(s, false)
         if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true")
+    if s.clean_state == 2:
+        s.clean_state = 3
+        if s.test_mode: println("CI_CLEAN_SIM stage=authorizing backend=mock no_privileged_helper=true")
+        s.canvas.redraw()
+    elif s.clean_state == 3:
+        finish_clean_simulation(s)
     if s.test_mode and mr_gui_test_sample_failure_requested() != 0:
         refresh(s)
     elif s.elapsed_ms % 3000 == 0:
@@ -528,8 +630,22 @@ fn activate(s: &mut MainWindow, target: f64):
         if s.test_mode: println("CI_CLEAN_MENU open=true")
         log_popup(s, "clean", &clean_popup_rect(s))
     elif target == 19.0:
-        s.status = label(s.zh, "Cleaning is disabled pending safety review", "安全验收完成前，清理操作保持禁用")
-        if s.test_mode: println("CI_CLEAN_DISABLED action=none")
+        if s.clean_simulation and clean_simulation_can_start(s.clean_state):
+            s.clean_state = 1
+            s.clean_confirm_focus = 0
+            s.status = ""
+            if s.test_mode: println("CI_CLEAN_CONFIRM open=true mode=simulation only=true")
+        else:
+            s.status = if clean_operation_busy(s.clean_state): clean_result_status(s.zh, s.clean_state) else: label(s.zh, "Cleaning is disabled pending safety review", "安全验收完成前，清理操作保持禁用")
+            if s.test_mode: println("CI_CLEAN_DISABLED action=none")
+    elif target == 710.0 and s.clean_state == 1:
+        s.clean_state = 2
+        s.clean_before_available = if s.sample_ok: s.mem_available else: 0
+        if s.test_mode: println(f"CI_CLEAN_SIM stage=confirmed observed_memavailable_before_kib={s.clean_before_available} source=/proc/meminfo no_system_write=true")
+    elif target == 711.0 and s.clean_state == 1:
+        s.clean_state = 5
+        s.status = clean_result_status(s.zh, 5)
+        if s.test_mode: println("CI_CLEAN_SIM result=cancelled stage=confirmation mock_helper_called=false no_system_write=true")
     elif target >= 30.0 and target < 33.0:
         let group = i64(target - 30.0)
         s.collapsed_groups = ui_geometry.toggle_group_collapse(s.collapsed_groups, group)
@@ -646,7 +762,19 @@ fn key(s: &mut MainWindow, event: &ui.Key):
     if event.released(): return
     let name = event.name()
     if s.test_mode: println(f"CI_KEY name={name}")
-    if name == "Escape" or name == "Esc" or name == "\x1b":
+    if s.clean_state == 1:
+        if name == "Escape" or name == "Esc" or name == "\x1b":
+            activate(s, 711.0)
+        elif name == "Tab" or name == "\t":
+            s.clean_confirm_focus = 1 - s.clean_confirm_focus
+            if s.test_mode:
+                let choice = if s.clean_confirm_focus == 0: "confirm" else: "cancel"
+                println(f"CI_CLEAN_CONFIRM_FOCUS choice={choice}")
+        elif name == "Enter" or name == "Return" or name == "\r" or name == "\n":
+            activate(s, if s.clean_confirm_focus == 0: 710.0 else: 711.0)
+        s.canvas.redraw()
+        return
+    elif name == "Escape" or name == "Esc" or name == "\x1b":
         s.popup = 0
         s.menu = 0
         s.pressed = 0.0
@@ -796,6 +924,7 @@ fn main():
     let fixed_size_policy = mr_gui_lock_window_sizes(width, height, settings_width, settings_height)
     let main_background_ready = mr_gui_set_main_background(0)
     let test_mode = mr_gui_test_mode() != 0
+    let clean_simulation = test_mode and mr_gui_test_clean_simulation_enabled() != 0
     let test_timeout = mr_gui_test_timeout_ms()
     let capture_scheduled = mr_gui_test_schedule_capture()
     let initial_selected_group = mr_gui_test_selected_group()
@@ -806,6 +935,7 @@ fn main():
         println(f"CI_WINDOW_SIZE_POLICY fixed={fixed_size_policy}")
         println(f"CI_FONT_POLICY result={font_policy} family={font_family} size_pt=8")
         println(f"CI_MAIN_BACKGROUND initialized={main_background_ready}")
+        println(f"CI_CLEAN_SIM enabled={clean_simulation} production_bridge_connected=false")
         if initial_selected_group >= 0: println(f"CI_GROUP_SELECT group={initial_selected_group} selected=true source=test-fixture")
         println(f"CI_GEOMETRY resource=IDD_MAIN:224x214_dlu provisional_window={width}x{height}")
         println(f"CI_SETTINGS_GEOMETRY resource=IDD_SETTINGS_*:260x168_dlu provisional_shell={settings_width}x{settings_height} canvas={ui_geometry.settings_client_width_px()}x{ui_geometry.settings_client_height_px()}")
@@ -827,6 +957,7 @@ fn main():
         focus: -1.0, menu_focus: 0.0, collapsed_groups: 0, selected_group: initial_selected_group, status: "", mem_total: 0, mem_available: 0, swap_total: 0,
         swap_free: 0, page_cache_estimate: 0, sample_ok: false, draw_logged: false,
         test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, ci_sample_failure_latched: false, sample_failure_draw_logged: false,
+        clean_simulation: clean_simulation, clean_state: 0, clean_confirm_focus: 0, clean_before_available: 0,
         settings_open: false, settings: settings_ui.initial(test_mode)
     )
     if mr_gui_test_start_settings() != 0: set_settings_open(&mut state, true)

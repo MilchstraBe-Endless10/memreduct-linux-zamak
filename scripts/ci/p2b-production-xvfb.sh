@@ -423,6 +423,90 @@ else
   exit 1
 fi
 
+# Run a second, explicit CI-only flow through the confirmation and mock
+# authorization/helper states. The production bridge is not connected here.
+simulation_log="$artifact_dir/clean-simulation.log"
+MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=30000 MEMREDUCT_CI_CLEAN_SIMULATION=1 MEMREDUCT_CI_CLEAN_RESULT=success \
+  stdbuf -oL "$app" >"$simulation_log" 2>&1 &
+app_pid="$!"
+window_id=""
+for _ in {1..100}; do
+  window_id="$(xdotool search --onlyvisible --name '^Mem Reduct$' 2>/dev/null | head -n 1 || true)"
+  [[ -n "$window_id" ]] && break
+  kill -0 "$app_pid" 2>/dev/null || break
+  sleep 0.1
+done
+[[ -n "$window_id" ]] || { cat "$simulation_log" >&2; exit 1; }
+wait_for_sim_marker() {
+  local marker="$1"
+  for _ in {1..100}; do
+    grep -Fq -- "$marker" "$simulation_log" && return 0
+    kill -0 "$app_pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  printf 'Missing clean simulation event marker: %s\n' "$marker" >&2
+  cat "$simulation_log" >&2
+  return 1
+}
+wait_for_sim_marker 'CI_CLEAN_SIM enabled=true production_bridge_connected=false'
+wait_for_sim_marker 'CI_MEMORY source=/proc/meminfo '
+# Body portion of the split button, distinct from its disabled Windows region menu.
+xdotool mousemove --sync --window "$window_id" 255 345 click 1
+wait_for_sim_marker 'CI_CLEAN_CONFIRM open=true mode=simulation only=true'
+capture 'production-clean-simulation-confirm.png'
+xdotool key --clearmodifiers Tab
+wait_for_sim_marker 'CI_CLEAN_CONFIRM_FOCUS choice=cancel'
+xdotool key --clearmodifiers Return
+wait_for_sim_marker 'CI_CLEAN_SIM result=cancelled stage=confirmation mock_helper_called=false no_system_write=true'
+if grep -Fq 'CI_CLEAN_SIM stage=authorizing' "$simulation_log"; then
+  printf 'Confirmation cancellation must not enter mock authorization.\n' >&2
+  exit 1
+fi
+marker='CI_CLEAN_CONFIRM open=true mode=simulation only=true'
+previous_count="$(grep -Fc -- "$marker" "$simulation_log" || true)"
+xdotool mousemove --sync --window "$window_id" 255 345 click 1
+wait_for_sim_marker "$marker"
+[[ "$(grep -Fc -- "$marker" "$simulation_log")" -gt "$previous_count" ]]
+xdotool key --clearmodifiers Return
+wait_for_sim_marker 'CI_CLEAN_SIM stage=confirmed '
+xdotool mousemove --sync --window "$window_id" 255 345 click 1
+wait_for_sim_marker 'CI_CLEAN_DISABLED action=none'
+wait_for_sim_marker 'CI_CLEAN_SIM stage=authorizing backend=mock no_privileged_helper=true'
+wait_for_sim_marker 'CI_CLEAN_SIM stage=running helper=mock no_system_write=true'
+wait_for_sim_marker 'CI_CLEAN_SIM result=success source=mock-helper '
+[[ "$(grep -Fc 'CI_CLEAN_SIM stage=authorizing backend=mock no_privileged_helper=true' "$simulation_log")" == 1 ]]
+[[ "$(grep -Fc 'CI_CLEAN_SIM stage=running helper=mock no_system_write=true' "$simulation_log")" == 1 ]]
+grep -Eq 'observed_memavailable_before_kib=[0-9]+ observed_memavailable_after_kib=[0-9]+ observed_delta_kib=-?[0-9]+ causal_attribution=none no_system_write=true' "$simulation_log"
+if grep -Eiq 'drop_caches|pkexec|polkit|swapoff|mr_start_reclaim|memreduct-zamak-helper' "$simulation_log"; then
+  printf 'The CI simulation unexpectedly invoked a privileged operation.\n' >&2
+  exit 1
+fi
+xdotool windowfocus --sync "$window_id"
+xdotool key --clearmodifiers Alt+F4
+wait_for_sim_marker 'CI_WINDOW_CLOSE'
+wait_for_sim_marker 'CI_APP_RETURNED'
+sim_finished=false
+for _ in {1..50}; do
+  if ! kill -0 "$app_pid" 2>/dev/null; then sim_finished=true; break; fi
+  sleep 0.1
+done
+[[ "$sim_finished" == true ]] || { printf 'Clean simulation GUI did not exit after WM close.\n' >&2; exit 1; }
+set +e
+wait "$app_pid"
+sim_status="$?"
+set -e
+app_pid=""
+printf 'CI-only simulated clean flow WM-close exit status: %s\n' "$sim_status" | tee "$artifact_dir/clean-simulation-exit.txt"
+[[ "$sim_status" == 0 ]] || exit "$sim_status"
+if xdotool getwindowname "$window_id" >"$artifact_dir/simulation-window-after-close.txt" 2>&1; then
+  printf 'CI simulation window still exists after process exit.\n' >&2
+  exit 1
+elif ! grep -Fq 'BadWindow' "$artifact_dir/simulation-window-after-close.txt"; then
+  printf 'Could not verify clean simulation window destruction.\n' >&2
+  cat "$artifact_dir/simulation-window-after-close.txt" >&2
+  exit 1
+fi
+
 sha256sum "$artifact_dir"/*.png | sed "s#$artifact_dir/##" >"$artifact_dir/screenshots-sha256.txt"
-printf 'PASS: production Zamak window, live proc sampling, EN/zh-CN menu switching, compact geometry, disabled clean actions, XTEST keyboard/mouse and WM close. No privileged action invoked.\n' \
+printf 'PASS: production Zamak window, live proc sampling, EN/zh-CN menu switching, compact geometry, disabled production clean actions, CI-only confirmation/mock-auth/mock-helper success and cancellation, XTEST keyboard/mouse and WM close. No privileged action invoked.\n' \
   | tee "$artifact_dir/result.txt"

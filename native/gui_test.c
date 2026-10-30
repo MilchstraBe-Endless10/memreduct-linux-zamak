@@ -110,6 +110,27 @@ long long mr_gui_test_selected_group(void)
     return parsed;
 }
 
+long long mr_gui_test_clean_simulation_enabled(void)
+{
+    const char *value = getenv("MEMREDUCT_CI_CLEAN_SIMULATION");
+    return mr_gui_test_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
+}
+
+/* Test-only mock outcomes: success, cancelled, auth-failed, helper-failed, uncertain. */
+long long mr_gui_test_clean_simulation_result(void)
+{
+    const char *value = getenv("MEMREDUCT_CI_CLEAN_RESULT");
+    if (mr_gui_test_clean_simulation_enabled() == 0 || value == NULL) {
+        return -1;
+    }
+    if (strcmp(value, "success") == 0) return 0;
+    if (strcmp(value, "cancelled") == 0) return 1;
+    if (strcmp(value, "auth-failed") == 0) return 2;
+    if (strcmp(value, "helper-failed") == 0) return 3;
+    if (strcmp(value, "uncertain") == 0) return 4;
+    return -1;
+}
+
 long long mr_gui_test_timeout_ms(void)
 {
     const char *value = getenv("MEMREDUCT_CI_EXIT_MS");
