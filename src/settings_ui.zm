@@ -235,6 +235,9 @@ fn checkbox_focus_rect(r: &ui.Rect, label_width: f64) -> ui.Rect:
     let width = min(label_width, max(0.0, r.right() - label_x))
     ui.rect(label_x - 2.0, r.y + 1.0, width + 4.0, max(0.0, r.h - 2.0))
 
+fn reset_choice_focused(s: &State, target: i64) -> bool:
+    s.modal == 1 and s.focus == target
+
 fn checkbox(s: &State, p: &ui.Painter, w: f64, h: f64, id: i64, title: string, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, focus: &ui.Color):
     let resource = settings_resources.lookup(s.page, id)
     let r = settings_resources.visible_rect(&resource, w, h)
@@ -607,6 +610,8 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
         outline(p, &no, &border)
         canvas_text(s, p, 105, "confirm-reset", yes.x + 19.0, yes.y + 5.0, text(zh, "Reset", "重置"), fg, 8.0, false)
         canvas_text(s, p, 0, "cancel-reset", no.x + 19.0, no.y + 5.0, text(zh, "Cancel", "取消"), fg, 8.0, false)
+        if reset_choice_focused(s, 701): outline(p, &yes, &fg)
+        if reset_choice_focused(s, 702): outline(p, &no, &fg)
 
     if s.language_open and s.page == 0:
         let combo = resource_rect(s, 123, width, height)
@@ -725,10 +730,12 @@ pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
     if s.modal == 1:
         if target == 701.0:
             s.modal = 0
+            s.focus = 106
             s.status = text(zh, "No settings changed; persistence is not implemented", "没有更改设置；设置持久化尚未实现")
             if s.test_mode: println("CI_RESET_CONFIRMED no_system_change=true")
         elif target == 702.0 or target == 700.0:
             s.modal = 0
+            s.focus = 106
             s.status = text(zh, "Reset cancelled", "已取消重置")
             if s.test_mode: println("CI_RESET_CANCELLED no_system_change=true")
         return 0
@@ -741,7 +748,7 @@ pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
         s.status = ""
         if s.test_mode: println(f"CI_SETTINGS_NAV resource=104 page_idd={page_dialog_id(s.page)} page={page_title(s.page, zh)}")
     elif target == 105.0:
-        s.focus = 106
+        s.focus = 701
         s.modal = 1
         s.status = ""
         if s.test_mode: println("CI_RESET_CONFIRMATION resource=105 resource_string=83")
@@ -829,12 +836,25 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
     if s.modal == 1:
         if name == "Escape" or name == "Esc" or name == "\x1b":
             s.modal = 0
+            s.focus = 106
             s.status = text(zh, "Reset cancelled", "已取消重置")
             if s.test_mode: println("CI_RESET_CANCELLED no_system_change=true")
+        elif name == "Tab" or name == "\t":
+            s.focus = if s.focus == 701: 702 else: 701
+            if s.test_mode: println(f"CI_RESET_FOCUS choice={s.focus}")
+        elif name == "Shift+Tab" or name == "ISO_Left_Tab":
+            s.focus = if s.focus == 701: 702 else: 701
+            if s.test_mode: println(f"CI_RESET_FOCUS choice={s.focus}")
         elif name == "Enter" or name == "Return" or name == "\r" or name == "\n":
+            let choice = s.focus
             s.modal = 0
-            s.status = text(zh, "No settings changed; persistence is not implemented", "没有更改设置；设置持久化尚未实现")
-            if s.test_mode: println("CI_RESET_CONFIRMED no_system_change=true")
+            s.focus = 106
+            if choice == 702:
+                s.status = text(zh, "Reset cancelled", "已取消重置")
+                if s.test_mode: println("CI_RESET_CANCELLED no_system_change=true source=keyboard")
+            else:
+                s.status = text(zh, "No settings changed; persistence is not implemented", "没有更改设置；设置持久化尚未实现")
+                if s.test_mode: println("CI_RESET_CONFIRMED no_system_change=true source=keyboard")
         return 0
     if s.language_open:
         if name == "Escape" or name == "Esc" or name == "\x1b":
@@ -905,6 +925,7 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
             if s.test_mode: println("CI_SETTINGS_CLOSE resource=106 action=return_to_main source=keyboard")
             return 1
         elif s.focus == 106:
+            s.focus = 701
             s.modal = 1
             if s.test_mode: println("CI_RESET_CONFIRMATION resource=105 resource_string=83")
         elif s.focus == 105 and s.page == 0:
@@ -1081,11 +1102,40 @@ fn test_keyboard_focus_activates_language_reset_and_close_controls():
     s.focus = 106
     assert key(&mut s, "Enter", true) == 0
     assert s.modal == 1
+    assert s.focus == 701
     assert key(&mut s, "Escape", true) == 0
-    assert s.modal == 0
+    assert s.modal == 0 and s.focus == 106
 
     s.focus = 107
     assert key(&mut s, "Enter", true) == 1
+
+fn test_reset_modal_focus_cycles_and_keyboard_cancel_is_reachable():
+    let mut s = initial(true)
+    assert key(&mut s, "Tab", false) == 0
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 106
+    assert key(&mut s, "Enter", false) == 0
+    assert s.modal == 1 and s.focus == 701
+    assert reset_choice_focused(&s, 701)
+    assert not reset_choice_focused(&s, 702)
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 702
+    assert not reset_choice_focused(&s, 701)
+    assert reset_choice_focused(&s, 702)
+    assert key(&mut s, "Tab", false) == 0
+    assert s.focus == 701
+    assert key(&mut s, "Shift+Tab", false) == 0
+    assert s.focus == 702
+    assert key(&mut s, "Enter", false) == 0
+    assert s.modal == 0 and s.focus == 106
+    assert not reset_choice_focused(&s, 702)
+    assert s.status == "Reset cancelled"
+
+    assert click(&mut s, 105.0, false) == 0
+    assert s.modal == 1 and s.focus == 701
+    assert click(&mut s, 702.0, false) == 0
+    assert s.modal == 0 and s.focus == 106
+    assert s.status == "Reset cancelled"
 
 fn test_combo_pointer_keyboard_focus_and_cancel_paths():
     let mut s = initial(true)
