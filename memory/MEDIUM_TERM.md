@@ -1,7 +1,13 @@
 # 中期记忆 / Roadmap State
 更新时间：2026-10-30；当前真实状态以本节为准，后续各节均为有日期的历史快照。
 
-## 2026-10-30 当前补充：P2C-R8 控件源码候选
+## 2026-10-30 当前补充：R8 指定提交 CI 修复状态
+
+- PR #7 远端 OPEN / Draft、Base main，HEAD faa3426a6b17f50b088c86ab56e7d7cae689af5e，main 83dbf58fb039645f08e08bc89170adcdaa7997be，未合并。指定 R8 提交已推送，main-base Build / P2A PASS，P2B Xvfb 与 P2C Linux/Windows 图形验证失败，详见 SHORT_TERM 和对应 Actions。
+- 失败在 CI harness/Win32 采集胶水：P2B 旧日志正则未包含新 collapsed=false 字段；P2C xdotool 键名 Space 无效；PowerShell 传递 [ref] RECT 给 MapDialogRect 引发访问冲突。修复已本地提交 9b5895026ae1c48a301aaf285e3cffab8f17a446（父 FAA），未推送。远端仍 FAA，不能称修复后 CI 通过。
+- 所有本地治理、安全、Shell、Zamak 68/68 与生产 GUI/helper 构建 PASS；本机无 Xvfb 和 PowerShell，故新 XTEST/Windows 采集仍待新 HEAD hosted runs。比较 Job skipped；整页像素 1:1 仍 NOT PASS；活动 Hyprland 输入、真实清理、Polkit、Swap/ZRAM 均未执行。
+
+## 历史快照（2026-10-30；P2C-R8 指定提交推送前）— 控件源码候选
 
 - R8 代码已形成未推送本地提交 `3c41879d7589472fd64b7f8563268d60bc0b99bb`（Tree `c0cdd138aa1633dc46893e11e13edb60a64338e7`，父 `307cd889d9878ec01cf72937f84f67ee8252f50f`）。PR #7 远端仍 OPEN / Draft、Base `main`、HEAD `019a7f1e0755570c2c3a0b1202a6c764540f14e2`；main `83dbf58fb039645f08e08bc89170adcdaa7997be`；没有远端写入或新 CI。
 - `src/settings_resources.zm` 把固定 v3.5.2 `resource.rc` / `resource.h` / `main.c` / Manifest 的 ID、类、样式、DLU、只读初值和可用状态映射到生产设置 Canvas；GroupBox/AutoCheckbox/ComboBox 的绘制状态和输入逻辑在 `src/settings_ui.zm`，GTK 3 scroll bridge 在 `native/gui_window.c`。功能限制仍 fail-closed：语言为会话内切换，其余未实现设置 disabled；无持久化或真实清理。
