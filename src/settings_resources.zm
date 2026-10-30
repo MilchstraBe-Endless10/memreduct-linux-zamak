@@ -1,0 +1,442 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Resource map transcribed from the pinned Mem Reduct v3.5.2 resources.
+# Source: src/resource.rc, src/resource.h, src/res/manifest.xml, and
+# SettingsProc::RM_INITIALIZE in src/main.c at
+# 2f5c55d15f69a2c88859e036b16c6f4c971e1968.
+# `resource_style_enabled` describes WS_DISABLED in the template; Win32's
+# non-elevated runtime enablement and this Linux build's capability stay separate.
+use std/ui
+use ui_geometry
+
+pub struct ControlSpec:
+    page: i64
+    dialog_id: i64
+    id: i64
+    symbol: string
+    kind: string
+    class_name: string
+    class_style: string
+    style: string
+    exstyle: string
+    x: f64
+    y: f64
+    w: f64
+    h: f64
+    closed_h: f64
+    resource_style_enabled: bool
+    win32_non_elevated_enabled: bool
+    linux_enabled: bool
+    checked: bool
+    state_source: string
+
+pub struct DialogSpec:
+    id: i64
+    symbol: string
+    style: string
+    exstyle: string
+    x: f64
+    y: f64
+    w: f64
+    h: f64
+    font_points: f64
+    font_face: string
+
+pub struct ManifestSpec:
+    common_controls_type: string
+    common_controls_name: string
+    common_controls_version: string
+    common_controls_processor_architecture: string
+    common_controls_language: string
+    common_controls_public_key_token: string
+    requested_execution_level: string
+    ui_access: bool
+    dpi_aware: bool
+    dpi_awareness: string
+    disable_window_filtering: bool
+    printer_driver_isolation: bool
+    long_path_aware: bool
+    active_code_page: string
+    heap_type: string
+    max_version_tested: string
+    supported_os_ids: string
+    supported_os_count: i64
+
+pub fn manifest() -> ManifestSpec:
+    ManifestSpec(
+        common_controls_type: "win32",
+        common_controls_name: "Microsoft.Windows.Common-Controls",
+        common_controls_version: "6.0.0.0",
+        common_controls_processor_architecture: "*",
+        common_controls_language: "*",
+        common_controls_public_key_token: "6595b64144ccf1df",
+        requested_execution_level: "asInvoker",
+        ui_access: false,
+        dpi_aware: true,
+        dpi_awareness: "PerMonitorV2, PerMonitor",
+        disable_window_filtering: true,
+        printer_driver_isolation: true,
+        long_path_aware: true,
+        active_code_page: "UTF-8",
+        heap_type: "SegmentHeap",
+        max_version_tested: "10.0.19045.0",
+        supported_os_ids: "35138b9a-5d96-4fbd-8e2d-a2440225f93a;4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38;1f676c76-80e1-4239-95bb-83d0f6d0da78;8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a",
+        supported_os_count: 4
+    )
+
+pub fn dialog(page: i64) -> DialogSpec:
+    let id = 101 + page
+    let symbol = if page == 0: "IDD_SETTINGS_GENERAL" elif page == 1: "IDD_SETTINGS_MEMORY" elif page == 2: "IDD_SETTINGS_APPEARANCE" elif page == 3: "IDD_SETTINGS_TRAY" else: "IDD_SETTINGS_ADVANCED"
+    DialogSpec(
+        id: id,
+        symbol: symbol,
+        style: "WS_CHILD | WS_SYSMENU | WS_TABSTOP | WS_GROUP | DS_SHELLFONT | DS_CONTROL",
+        exstyle: "WS_EX_CONTROLPARENT",
+        x: 0.0,
+        y: 0.0,
+        w: 260.0,
+        h: 168.0,
+        font_points: 8.0,
+        font_face: "Ms Shell Dlg"
+    )
+
+fn initial_check_state(page: i64, id: i64) -> bool:
+    # Clean-profile preview values from the pinned Windows baseline. Some
+    # upstream values are user/configuration-derived; state_source() records
+    # that they are not encoded in the .rc template.
+    if id == 120 or id == 121 or id == 136 or id == 151 or id == 152: return true
+    false
+
+fn check_state_source(page: i64, id: i64, is_checkbox: bool) -> string:
+    if not is_checkbox: return "not-applicable"
+    if page == 0:
+        if id == 116: return "SettingsProc: AlwaysOnTop default FALSE"
+        if id == 117: return "SettingsProc: _r_autorun_isenabled runtime state"
+        if id == 118: return "SettingsProc: IsStartMinimized default FALSE"
+        if id == 119: return "SettingsProc: _r_skipuac_isenabled; disabled when not elevated"
+        if id == 120: return "SettingsProc: IsShowReductConfirmation default TRUE"
+        if id == 121: return "SettingsProc: _r_update_isenabled runtime state"
+    elif page == 1:
+        if id == 125: return "SettingsProc: AutoreductEnable default FALSE"
+        if id == 128: return "SettingsProc: AutoreductIntervalEnable default FALSE"
+        if id == 131: return "SettingsProc: HotkeyCleanEnable default FALSE"
+    elif page == 2:
+        if id == 133: return "SettingsProc: TrayUseTransparency default FALSE"
+        if id == 134: return "SettingsProc: TrayShowBorder default FALSE"
+        if id == 135: return "SettingsProc: TrayRoundCorners default FALSE"
+        if id == 136: return "SettingsProc: TrayChangeBg default TRUE"
+        if id == 137: return "SettingsProc: TrayUseAntialiasing default FALSE"
+    elif page == 3:
+        if id == 151: return "SettingsProc: IsNotificationsSound default TRUE"
+        if id == 152: return "SettingsProc: BalloonCleanResults default TRUE"
+    elif page == 4:
+        if id == 153: return "SettingsProc: IsAllowStandbyListCleanup default FALSE"
+        if id == 154: return "SettingsProc: LogCleanResults default FALSE"
+    "resource.rc does not encode checked state"
+
+fn win32_non_elevated_enabled(page: i64, id: i64) -> bool:
+    # main.c checks the actual token elevation at runtime. The manifest's
+    # asInvoker request alone does not prove that the process is unelevated.
+    # UAC and cleanup/automation controls are disabled in the non-elevated state;
+    # buddy inputs follow their disabled parent.
+    if id == 119: return false
+    if page == 1 and (id == 125 or id == 126 or id == 127 or id == 128 or id == 129 or id == 130 or id == 131 or id == 132): return false
+    true
+
+fn effective_style(kind: &string, class_style: &string) -> string:
+    let mut style = "WS_CHILD | WS_VISIBLE"
+    if kind == "checkbox" or kind == "button":
+        style = "WS_CHILD | WS_VISIBLE | WS_TABSTOP"
+    elif kind == "edit":
+        style = "WS_CHILD | WS_VISIBLE | ES_LEFT | WS_BORDER | WS_TABSTOP"
+    f"{style} | {class_style}"
+
+fn item(page: i64, id: i64, kind: string, class_name: string, symbol: string, style: string,
+        x: f64, y: f64, w: f64, h: f64, closed_h: f64, linux_enabled: bool) -> ControlSpec:
+    let is_checkbox = kind == "checkbox"
+    let source = check_state_source(page, id, is_checkbox)
+    let effective = effective_style(&kind, &style)
+    ControlSpec(
+        page: page,
+        dialog_id: 101 + page,
+        id: id,
+        symbol: symbol,
+        kind: kind,
+        class_name: class_name,
+        class_style: style,
+        style: effective,
+        exstyle: "",
+        x: x,
+        y: y,
+        w: w,
+        h: h,
+        closed_h: closed_h,
+        resource_style_enabled: true,
+        win32_non_elevated_enabled: win32_non_elevated_enabled(page, id),
+        linux_enabled: linux_enabled,
+        checked: initial_check_state(page, id),
+        state_source: source
+    )
+
+pub fn lookup(page: i64, id: i64) -> ControlSpec:
+    if page == 0:
+        if id == 107: return item(page, id, "groupbox", "Button", "IDC_TITLE_1", "BS_GROUPBOX", 0.0, 0.0, 260.0, 90.0, 0.0, false)
+        if id == 116: return item(page, id, "checkbox", "Button", "IDC_ALWAYSONTOP_CHK", "BS_AUTOCHECKBOX", 8.0, 12.0, 244.0, 10.0, 0.0, false)
+        if id == 117: return item(page, id, "checkbox", "Button", "IDC_LOADONSTARTUP_CHK", "BS_AUTOCHECKBOX", 8.0, 24.0, 244.0, 10.0, 0.0, false)
+        if id == 118: return item(page, id, "checkbox", "Button", "IDC_STARTMINIMIZED_CHK", "BS_AUTOCHECKBOX", 8.0, 36.0, 244.0, 10.0, 0.0, false)
+        if id == 120: return item(page, id, "checkbox", "Button", "IDC_REDUCTCONFIRMATION_CHK", "BS_AUTOCHECKBOX", 8.0, 48.0, 244.0, 10.0, 0.0, false)
+        if id == 119: return item(page, id, "checkbox", "Button", "IDC_SKIPUACWARNING_CHK", "BS_AUTOCHECKBOX", 8.0, 60.0, 244.0, 10.0, 0.0, false)
+        if id == 121: return item(page, id, "checkbox", "Button", "IDC_CHECKUPDATES_CHK", "BS_AUTOCHECKBOX", 8.0, 72.0, 244.0, 10.0, 0.0, false)
+        if id == 108: return item(page, id, "groupbox", "Button", "IDC_TITLE_2", "BS_GROUPBOX", 0.0, 92.0, 260.0, 32.0, 0.0, false)
+        if id == 122: return item(page, id, "static", "Static", "IDC_LANGUAGE_HINT", "SS_CENTERIMAGE", 8.0, 104.0, 112.0, 12.0, 0.0, false)
+        if id == 123: return item(page, id, "combobox", "ComboBox", "IDC_LANGUAGE", "CBS_DROPDOWNLIST | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP", 128.0, 104.0, 124.0, 30.0, 13.0, true)
+    elif page == 1:
+        let list_style = "LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SHAREIMAGELISTS | WS_BORDER | WS_TABSTOP | WS_VSCROLL"
+        let buddy_style = "UDS_ALIGNRIGHT | UDS_ARROWKEYS | UDS_AUTOBUDDY | UDS_HOTTRACK | UDS_SETBUDDYINT | UDS_WRAP"
+        if id == 109: return item(page, id, "groupbox", "Button", "IDC_TITLE_3", "BS_GROUPBOX", 0.0, 0.0, 260.0, 90.0, 0.0, false)
+        if id == 124: return item(page, id, "listview", "SysListView32", "IDC_REGIONS", list_style, 8.0, 12.0, 244.0, 70.0, 0.0, false)
+        if id == 110: return item(page, id, "groupbox", "Button", "IDC_TITLE_4", "BS_GROUPBOX", 0.0, 90.0, 260.0, 46.0, 0.0, false)
+        if id == 125: return item(page, id, "checkbox", "Button", "IDC_AUTOREDUCTENABLE_CHK", "BS_AUTOCHECKBOX | BS_MULTILINE", 8.0, 102.0, 194.0, 12.0, 0.0, false)
+        if id == 126: return item(page, id, "edit", "Edit", "IDC_AUTOREDUCTVALUE_CTRL", "ES_AUTOHSCROLL | ES_NUMBER | ES_MULTILINE", 208.0, 102.0, 44.0, 12.0, 0.0, false)
+        if id == 127: return item(page, id, "updown", "msctls_updown32", "IDC_AUTOREDUCTVALUE", buddy_style, 0.0, 0.0, 0.0, 0.0, 0.0, false)
+        if id == 128: return item(page, id, "checkbox", "Button", "IDC_AUTOREDUCTINTERVALENABLE_CHK", "BS_AUTOCHECKBOX | BS_MULTILINE", 8.0, 116.0, 194.0, 12.0, 0.0, false)
+        if id == 129: return item(page, id, "edit", "Edit", "IDC_AUTOREDUCTINTERVALVALUE_CTRL", "ES_AUTOHSCROLL | ES_NUMBER | ES_MULTILINE", 208.0, 116.0, 44.0, 12.0, 0.0, false)
+        if id == 130: return item(page, id, "updown", "msctls_updown32", "IDC_AUTOREDUCTINTERVALVALUE", buddy_style, 0.0, 0.0, 0.0, 0.0, 0.0, false)
+        if id == 111: return item(page, id, "groupbox", "Button", "IDC_TITLE_5", "BS_GROUPBOX", 0.0, 136.0, 260.0, 32.0, 0.0, false)
+        if id == 131: return item(page, id, "checkbox", "Button", "IDC_HOTKEY_CLEAN_CHK", "BS_AUTOCHECKBOX | BS_MULTILINE", 8.0, 150.0, 144.0, 12.0, 0.0, false)
+        if id == 132: return item(page, id, "hotkey", "msctls_hotkey32", "IDC_HOTKEY_CLEAN", "WS_TABSTOP", 158.0, 148.0, 94.0, 12.0, 0.0, false)
+    elif page == 2:
+        let list_style = "LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SHAREIMAGELISTS | WS_BORDER | WS_TABSTOP | WS_VSCROLL"
+        if id == 107: return item(page, id, "groupbox", "Button", "IDC_TITLE_1", "BS_GROUPBOX", 0.0, 0.0, 260.0, 78.0, 0.0, false)
+        if id == 133: return item(page, id, "checkbox", "Button", "IDC_TRAYUSETRANSPARENCY_CHK", "BS_AUTOCHECKBOX", 8.0, 12.0, 244.0, 10.0, 0.0, false)
+        if id == 134: return item(page, id, "checkbox", "Button", "IDC_TRAYSHOWBORDER_CHK", "BS_AUTOCHECKBOX", 8.0, 24.0, 244.0, 10.0, 0.0, false)
+        if id == 135: return item(page, id, "checkbox", "Button", "IDC_TRAYROUNDCORNERS_CHK", "BS_AUTOCHECKBOX", 8.0, 36.0, 244.0, 10.0, 0.0, false)
+        if id == 136: return item(page, id, "checkbox", "Button", "IDC_TRAYCHANGEBG_CHK", "BS_AUTOCHECKBOX", 8.0, 48.0, 244.0, 10.0, 0.0, false)
+        if id == 137: return item(page, id, "checkbox", "Button", "IDC_TRAYUSEANTIALIASING_CHK", "BS_AUTOCHECKBOX", 8.0, 60.0, 244.0, 10.0, 0.0, false)
+        if id == 112: return item(page, id, "groupbox", "Button", "IDC_TITLE_6", "BS_GROUPBOX", 0.0, 80.0, 260.0, 88.0, 0.0, false)
+        if id == 138: return item(page, id, "static", "Static", "IDC_FONT_HINT", "SS_CENTERIMAGE", 8.0, 92.0, 112.0, 12.0, 0.0, false)
+        if id == 139: return item(page, id, "button", "Button", "IDC_FONT", "BS_PUSHBUTTON", 128.0, 92.0, 124.0, 12.0, 0.0, false)
+        if id == 140: return item(page, id, "listview", "SysListView32", "IDC_COLORS", list_style, 8.0, 110.0, 244.0, 50.0, 0.0, false)
+    elif page == 3:
+        let buddy_style = "UDS_ALIGNRIGHT | UDS_ARROWKEYS | UDS_AUTOBUDDY | UDS_HOTTRACK | UDS_SETBUDDYINT | UDS_WRAP"
+        let combo_style = "CBS_DROPDOWNLIST | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP"
+        if id == 113: return item(page, id, "groupbox", "Button", "IDC_TITLE_7", "BS_GROUPBOX", 0.0, 0.0, 260.0, 46.0, 0.0, false)
+        if id == 141: return item(page, id, "static", "Static", "IDC_TRAYLEVELWARNING_HINT", "SS_CENTERIMAGE", 8.0, 12.0, 194.0, 12.0, 0.0, false)
+        if id == 142: return item(page, id, "edit", "Edit", "IDC_TRAYLEVELWARNING_CTRL", "ES_AUTOHSCROLL | ES_NUMBER | ES_MULTILINE", 208.0, 12.0, 44.0, 12.0, 0.0, false)
+        if id == 143: return item(page, id, "updown", "msctls_updown32", "IDC_TRAYLEVELWARNING", buddy_style, 0.0, 0.0, 0.0, 0.0, 0.0, false)
+        if id == 144: return item(page, id, "static", "Static", "IDC_TRAYLEVELDANGER_HINT", "SS_CENTERIMAGE", 8.0, 26.0, 194.0, 12.0, 0.0, false)
+        if id == 145: return item(page, id, "edit", "Edit", "IDC_TRAYLEVELDANGER_CTRL", "ES_AUTOHSCROLL | ES_NUMBER | ES_MULTILINE", 208.0, 26.0, 44.0, 12.0, 0.0, false)
+        if id == 146: return item(page, id, "updown", "msctls_updown32", "IDC_TRAYLEVELDANGER", buddy_style, 0.0, 0.0, 0.0, 0.0, 0.0, false)
+        if id == 114: return item(page, id, "groupbox", "Button", "IDC_TITLE_8", "BS_GROUPBOX", 0.0, 48.0, 260.0, 48.0, 0.0, false)
+        if id == 147: return item(page, id, "static", "Static", "IDC_TRAYACTIONSC_HINT", "SS_CENTERIMAGE", 8.0, 60.0, 114.0, 12.0, 0.0, false)
+        if id == 148: return item(page, id, "combobox", "ComboBox", "IDC_TRAYACTIONSC", combo_style, 128.0, 60.0, 124.0, 12.0, 12.0, false)
+        if id == 149: return item(page, id, "static", "Static", "IDC_TRAYACTIONMC_HINT", "SS_CENTERIMAGE", 8.0, 74.0, 114.0, 12.0, 0.0, false)
+        if id == 150: return item(page, id, "combobox", "ComboBox", "IDC_TRAYACTIONMC", combo_style, 128.0, 74.0, 124.0, 12.0, 12.0, false)
+        if id == 115: return item(page, id, "groupbox", "Button", "IDC_TITLE_9", "BS_GROUPBOX", 0.0, 98.0, 260.0, 40.0, 0.0, false)
+        if id == 152: return item(page, id, "checkbox", "Button", "IDC_SHOW_CLEAN_RESULT_CHK", "BS_AUTOCHECKBOX | BS_MULTILINE", 8.0, 110.0, 244.0, 12.0, 0.0, false)
+        if id == 151: return item(page, id, "checkbox", "Button", "IDC_NOTIFICATIONSOUND_CHK", "BS_AUTOCHECKBOX | BS_MULTILINE", 8.0, 122.0, 244.0, 12.0, 0.0, false)
+    elif page == 4:
+        if id == 107: return item(page, id, "groupbox", "Button", "IDC_TITLE_1", "BS_GROUPBOX", 0.0, 0.0, 260.0, 46.0, 0.0, false)
+        if id == 153: return item(page, id, "checkbox", "Button", "IDC_ALLOWSTANDBYLISTCLEANUP_CHK", "BS_AUTOCHECKBOX", 8.0, 12.0, 244.0, 10.0, 0.0, false)
+        if id == 154: return item(page, id, "checkbox", "Button", "IDC_LOGRESULTS_CHK", "BS_AUTOCHECKBOX", 8.0, 24.0, 244.0, 10.0, 0.0, false)
+    ControlSpec(page: page, dialog_id: 101 + page, id: id, symbol: "", kind: "unknown", class_name: "", class_style: "", style: "", exstyle: "", x: 0.0, y: 0.0, w: 0.0, h: 0.0, closed_h: 0.0, resource_style_enabled: false, win32_non_elevated_enabled: false, linux_enabled: false, checked: false, state_source: "unknown")
+
+pub fn visible_rect(spec: &ControlSpec, canvas_width: f64, canvas_height: f64) -> ui.Rect:
+    let height = if spec.closed_h > 0.0: spec.closed_h else: spec.h
+    ui_geometry.settings_child_rect(canvas_width, canvas_height, spec.x, spec.y, spec.w, height)
+
+pub fn checkbox_visual_state(enabled: bool, checked: bool, focused: bool, hovered: bool, pressed: bool) -> i64:
+    if not enabled:
+        if checked: return 3
+        return 1
+    if pressed and hovered:
+        if checked: return 9
+        return 8
+    if hovered:
+        if checked: return 7
+        return 6
+    if focused:
+        if checked: return 5
+        return 4
+    if checked: return 2
+    0
+
+pub fn checkbox_result(enabled: bool, checked: bool) -> bool:
+    if enabled: return not checked
+    checked
+
+pub fn combo_visual_state(enabled: bool, focused: bool, hovered: bool, pressed: bool, open: bool) -> i64:
+    if not enabled: return 1
+    if open: return 5
+    if pressed and hovered: return 4
+    if hovered: return 3
+    if focused: return 2
+    0
+
+pub fn combo_item_visual_state(focused: bool, hovered: bool, pressed: bool) -> i64:
+    if pressed and hovered: return 3
+    if hovered: return 2
+    if focused: return 1
+    0
+
+pub fn combo_arrow_pixel_rgb(row: i64, col: i64, dark: bool) -> i64:
+    # 10x6 raster sampled from the enabled Windows 3.5.2 language combo.
+    # The dark capture uses the same silhouette with its native dark palette.
+    if row == 0 and (col == 1 or col == 8): return if dark: 0x5a5a5a else: 0xb3b3b3
+    if row == 1:
+        if col == 0 or col == 9: return if dark: 0x474747 else: 0xd5d5d5
+        if col == 1 or col == 8: return if dark: 0x8f8f8f else: 0x565656
+        if col == 2 or col == 7: return if dark: 0x676767 else: 0x9b9b9b
+    if row == 2:
+        if col == 1 or col == 8: return if dark: 0x474747 else: 0xd5d5d5
+        if col == 2 or col == 7: return if dark: 0x8f8f8f else: 0x565656
+        if col == 3 or col == 6: return if dark: 0x676767 else: 0x9b9b9b
+    if row == 3:
+        if col == 2 or col == 7: return if dark: 0x474747 else: 0xd5d5d5
+        if col == 3 or col == 6: return if dark: 0x8f8f8f else: 0x565656
+        if col == 4 or col == 5: return if dark: 0x676767 else: 0x9b9b9b
+    if row == 4:
+        if col == 3 or col == 6: return if dark: 0x474747 else: 0xd5d5d5
+        if col == 4 or col == 5: return if dark: 0x8f8f8f else: 0x565656
+    if row == 5 and (col == 4 or col == 5): return if dark: 0x474747 else: 0xd5d5d5
+    0
+
+fn test_manifest_and_dialog_templates_match_pinned_sources():
+    let app_manifest = manifest()
+    assert(app_manifest.common_controls_type == "win32")
+    assert(app_manifest.common_controls_name == "Microsoft.Windows.Common-Controls")
+    assert(app_manifest.common_controls_version == "6.0.0.0")
+    assert(app_manifest.common_controls_processor_architecture == "*" and app_manifest.common_controls_language == "*")
+    assert(app_manifest.common_controls_public_key_token == "6595b64144ccf1df")
+    assert(app_manifest.requested_execution_level == "asInvoker" and not app_manifest.ui_access)
+    assert(app_manifest.dpi_aware and app_manifest.dpi_awareness == "PerMonitorV2, PerMonitor")
+    assert(app_manifest.disable_window_filtering and app_manifest.printer_driver_isolation)
+    assert(app_manifest.long_path_aware and app_manifest.active_code_page == "UTF-8")
+    assert(app_manifest.heap_type == "SegmentHeap")
+    assert(app_manifest.max_version_tested == "10.0.19045.0" and app_manifest.supported_os_count == 4)
+    assert(app_manifest.supported_os_ids == "35138b9a-5d96-4fbd-8e2d-a2440225f93a;4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38;1f676c76-80e1-4239-95bb-83d0f6d0da78;8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a")
+    for page in 0..5:
+        let spec = dialog(page)
+        assert(spec.id == 101 + page)
+        assert(spec.w == 260.0 and spec.h == 168.0)
+        assert(spec.style == "WS_CHILD | WS_SYSMENU | WS_TABSTOP | WS_GROUP | DS_SHELLFONT | DS_CONTROL")
+        assert(spec.exstyle == "WS_EX_CONTROLPARENT")
+        assert(spec.font_points == 8.0 and spec.font_face == "Ms Shell Dlg")
+
+fn test_every_control_in_each_settings_resource_has_a_fixture():
+    let general = [107,116,117,118,120,119,121,108,122,123]
+    let memory = [109,124,110,125,126,127,128,129,130,111,131,132]
+    let appearance = [107,133,134,135,136,137,112,138,139,140]
+    let tray = [113,141,142,143,144,145,146,114,147,148,149,150,115,152,151]
+    let advanced = [107,153,154]
+    for id in general:
+        let spec = lookup(0, id)
+        assert(spec.kind != "unknown" and spec.dialog_id == 101 and spec.state_source != "unknown")
+        assert(spec.style != "" and spec.class_style != "")
+        assert(spec.x >= 0.0 and spec.y >= 0.0 and spec.w >= 0.0 and spec.h >= 0.0)
+    for id in memory:
+        let spec = lookup(1, id)
+        assert(spec.kind != "unknown" and spec.dialog_id == 102 and spec.state_source != "unknown")
+        assert(spec.style != "" and spec.class_style != "")
+        assert(spec.x >= 0.0 and spec.y >= 0.0 and spec.w >= 0.0 and spec.h >= 0.0)
+    for id in appearance:
+        let spec = lookup(2, id)
+        assert(spec.kind != "unknown" and spec.dialog_id == 103 and spec.state_source != "unknown")
+        assert(spec.style != "" and spec.class_style != "")
+        assert(spec.x >= 0.0 and spec.y >= 0.0 and spec.w >= 0.0 and spec.h >= 0.0)
+    for id in tray:
+        let spec = lookup(3, id)
+        assert(spec.kind != "unknown" and spec.dialog_id == 104 and spec.state_source != "unknown")
+        assert(spec.style != "" and spec.class_style != "")
+        assert(spec.x >= 0.0 and spec.y >= 0.0 and spec.w >= 0.0 and spec.h >= 0.0)
+    for id in advanced:
+        let spec = lookup(4, id)
+        assert(spec.kind != "unknown" and spec.dialog_id == 105 and spec.state_source != "unknown")
+        assert(spec.style != "" and spec.class_style != "")
+        assert(spec.x >= 0.0 and spec.y >= 0.0 and spec.w >= 0.0 and spec.h >= 0.0)
+    assert(lookup(0, 1000).kind == "unknown")
+
+fn test_resource_classes_styles_rectangles_and_runtime_state_are_distinct():
+    let group = lookup(0, 107)
+    assert(group.kind == "groupbox" and group.class_name == "Button")
+    assert(group.class_style == "BS_GROUPBOX" and group.style == "WS_CHILD | WS_VISIBLE | BS_GROUPBOX")
+    assert(group.x == 0.0 and group.y == 0.0 and group.w == 260.0 and group.h == 90.0)
+    let checkbox = lookup(1, 125)
+    assert(checkbox.class_style == "BS_AUTOCHECKBOX | BS_MULTILINE")
+    assert(checkbox.style == "WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_MULTILINE")
+    assert(checkbox.x == 8.0 and checkbox.y == 102.0 and checkbox.w == 194.0 and checkbox.h == 12.0)
+    let hint = lookup(0, 122)
+    assert(hint.class_name == "Static" and hint.class_style == "SS_CENTERIMAGE")
+    assert(hint.style == "WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE" and hint.x == 8.0 and hint.y == 104.0)
+    let combo = lookup(0, 123)
+    assert(combo.kind == "combobox" and combo.class_name == "ComboBox")
+    assert(combo.class_style == "CBS_DROPDOWNLIST | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP")
+    assert(combo.style == "WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP")
+    assert(combo.x == 128.0 and combo.y == 104.0 and combo.w == 124.0 and combo.h == 30.0 and combo.closed_h == 13.0)
+    assert(lookup(3, 148).closed_h == 12.0 and not lookup(3, 148).linux_enabled)
+    let edit = lookup(1, 126)
+    assert(edit.class_name == "Edit" and edit.w == 44.0)
+    assert(edit.style == "WS_CHILD | WS_VISIBLE | ES_LEFT | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL | ES_NUMBER | ES_MULTILINE")
+    assert(lookup(1, 127).class_name == "msctls_updown32" and lookup(1, 127).w == 0.0)
+    assert(lookup(1, 132).class_name == "msctls_hotkey32")
+    assert(lookup(1, 124).class_name == "SysListView32")
+    assert(lookup(2, 139).class_style == "BS_PUSHBUTTON")
+    assert(lookup(2, 139).style == "WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON")
+    assert(group.resource_style_enabled and group.exstyle == "")
+
+fn test_settingsproc_check_states_and_non_elevated_disables_are_recorded():
+    assert(lookup(0, 120).checked and lookup(0, 120).state_source == "SettingsProc: IsShowReductConfirmation default TRUE")
+    assert(lookup(2, 136).checked and lookup(3, 151).checked and lookup(3, 152).checked)
+    assert(not lookup(0, 116).checked and not lookup(1, 125).checked and not lookup(4, 153).checked)
+    assert(not lookup(0, 119).win32_non_elevated_enabled)
+    for id in [125,126,127,128,129,130,131,132]:
+        assert(not lookup(1, id).win32_non_elevated_enabled)
+    assert(lookup(0, 116).resource_style_enabled and lookup(0, 116).win32_non_elevated_enabled and not lookup(0, 116).linux_enabled)
+    assert(lookup(0, 123).resource_style_enabled and lookup(0, 123).win32_non_elevated_enabled and lookup(0, 123).linux_enabled)
+    assert(lookup(1, 125).resource_style_enabled and not lookup(1, 125).win32_non_elevated_enabled and not lookup(1, 125).linux_enabled)
+
+fn test_checkbox_visual_states_and_disabled_activation():
+    assert(checkbox_visual_state(true, false, false, false, false) == 0)
+    assert(checkbox_visual_state(false, false, false, true, true) == 1)
+    assert(checkbox_visual_state(false, true, false, true, true) == 3)
+    assert(checkbox_visual_state(true, false, true, false, false) == 4)
+    assert(checkbox_visual_state(true, true, true, false, false) == 5)
+    assert(checkbox_visual_state(true, false, false, true, false) == 6)
+    assert(checkbox_visual_state(true, true, false, true, false) == 7)
+    assert(checkbox_visual_state(true, false, false, true, true) == 8)
+    assert(checkbox_visual_state(true, true, false, true, true) == 9)
+    assert(checkbox_visual_state(true, false, false, false, true) == 0)
+    assert(checkbox_result(false, true) and not checkbox_result(false, false))
+    assert(checkbox_result(true, false) and not checkbox_result(true, true))
+
+fn test_combo_visual_states_respect_press_hover_focus_and_disabled_semantics():
+    assert(combo_visual_state(true, false, false, false, false) == 0)
+    assert(combo_visual_state(false, true, true, true, true) == 1)
+    assert(combo_visual_state(true, true, false, false, false) == 2)
+    assert(combo_visual_state(true, false, true, false, false) == 3)
+    assert(combo_visual_state(true, false, true, true, false) == 4)
+    assert(combo_visual_state(true, false, false, true, false) == 0)
+    assert(combo_visual_state(true, true, true, true, true) == 5)
+    assert(combo_item_visual_state(false, false, false) == 0)
+    assert(combo_item_visual_state(true, false, false) == 1)
+    assert(combo_item_visual_state(false, true, false) == 2)
+    assert(combo_item_visual_state(false, true, true) == 3)
+    assert(combo_item_visual_state(false, false, true) == 0)
+
+fn test_combo_arrow_raster_matches_pinned_light_and_dark_captures():
+    let mut light_pixels = 0
+    let mut dark_pixels = 0
+    for row in 0..6:
+        for col in 0..10:
+            if combo_arrow_pixel_rgb(row, col, false) != 0: light_pixels += 1
+            if combo_arrow_pixel_rgb(row, col, true) != 0: dark_pixels += 1
+    assert(light_pixels == 26 and dark_pixels == 26)
+    assert(combo_arrow_pixel_rgb(0, 1, false) == 0xb3b3b3)
+    assert(combo_arrow_pixel_rgb(1, 1, false) == 0x565656)
+    assert(combo_arrow_pixel_rgb(3, 4, false) == 0x9b9b9b)
+    assert(combo_arrow_pixel_rgb(5, 5, false) == 0xd5d5d5)
+    assert(combo_arrow_pixel_rgb(0, 1, true) == 0x5a5a5a)
+    assert(combo_arrow_pixel_rgb(1, 1, true) == 0x8f8f8f)
+    assert(combo_arrow_pixel_rgb(3, 4, true) == 0x676767)
+    assert(combo_arrow_pixel_rgb(5, 5, true) == 0x474747)
+    assert(combo_arrow_pixel_rgb(-1, 0, false) == 0)
+    assert(combo_arrow_pixel_rgb(6, 9, true) == 0)

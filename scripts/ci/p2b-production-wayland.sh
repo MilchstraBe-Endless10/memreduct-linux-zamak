@@ -94,8 +94,15 @@ printf 'Production Wayland client exit status=%s\n' "$app_status" | tee "$artifa
 [[ "$app_status" == 0 ]] || { cat "$artifact_dir/client.log" >&2; exit "$app_status"; }
 
 grep -Fq 'CI_PRODUCTION_START' "$artifact_dir/client.log"
+grep -Fq 'CI_WINDOW_SIZE_POLICY fixed=1' "$artifact_dir/client.log"
+grep -Fq 'CI_MAIN_CONTENT_INSET old=12 new=0 margins=start:12,end:0,top:0,bottom:12 verified=true' "$artifact_dir/client.log"
+grep -Fq 'CI_WINDOW_SIZE_POLICY main_found=1 main_resizable=0 settings_found=1 settings_resizable=0' "$artifact_dir/client.log"
 grep -Fq 'CI_DRAW width=' "$artifact_dir/client.log"
+grep -Fq 'CI_DRAW width=325.0 height=357.0' "$artifact_dir/client.log"
 grep -Fq 'CI_MEMORY source=/proc/meminfo' "$artifact_dir/client.log"
+grep -Eq 'CI_LAYOUT_GROUP index=0 locale=en .*title_y=36\.[0-9]+ rule_x=[0-9.]+ rule_y=44\.[0-9]+ row0=58\.[0-9]+ row1=76\.[0-9]+ row2=94\.[0-9]+' "$artifact_dir/client.log"
+grep -Eq 'CI_LAYOUT_GROUP index=1 locale=en .*title_y=117\.[0-9]+ rule_x=[0-9.]+ rule_y=122\.[0-9]+ row0=136\.[0-9]+ row1=153\.[0-9]+ row2=171\.[0-9]+' "$artifact_dir/client.log"
+grep -Eq 'CI_LAYOUT_GROUP index=2 locale=en .*title_y=192\.[0-9]+ rule_x=[0-9.]+ rule_y=200\.[0-9]+ row0=210\.[0-9]+ row1=228\.[0-9]+ row2=246\.[0-9]+' "$artifact_dir/client.log"
 grep -Fq 'CI_QUIT source=bounded_test_timer' "$artifact_dir/client.log"
 grep -Fq 'CI_APP_RETURNED' "$artifact_dir/client.log"
 grep -Fq 'xdg_toplevel' "$artifact_dir/client.log"
@@ -110,5 +117,38 @@ if grep -Fq "interface: 'wl_seat'" "$artifact_dir/wayland-info.log"; then seat="
   printf 'The diagnostic is retained without claiming the absent input seat caused it. The production GUI drew, read meminfo, returned from app.run and exited 0.\n'
   printf 'Pointer/keyboard input is NOT RUN in this headless lane; Xvfb/XTEST is reported separately.\n'
 } | tee "$artifact_dir/gtk-seat-diagnostics.txt"
-printf 'PASS: production Wayland client connected to private Weston socket, drew, read live meminfo, returned from app.run and exited 0.\n' \
+
+# Start the same production binary directly in the settings shell. Headless Weston
+# has no input seat, so this verifies surface creation and lifecycle only.
+env -u DISPLAY -u WAYLAND_SOCKET XDG_RUNTIME_DIR="$runtime_dir" WAYLAND_DISPLAY="$socket" \
+  GDK_BACKEND=wayland GTK_THEME=Adwaita:light GDK_SCALE=1 GDK_DPI_SCALE=1 \
+  MEMREDUCT_CI=1 MEMREDUCT_CI_START_SETTINGS=1 MEMREDUCT_CI_EXIT_MS=6000 WAYLAND_DEBUG=1 stdbuf -oL "$app" \
+  >"$artifact_dir/settings-client.log" 2>&1 &
+app_pid="$!"
+settings_finished=false
+for _ in {1..150}; do
+  if ! kill -0 "$app_pid" 2>/dev/null; then settings_finished=true; break; fi
+  sleep 0.1
+done
+[[ "$settings_finished" == true ]] || { printf 'Production Wayland settings surface exceeded its 15-second lifecycle bound.\n' >&2; exit 124; }
+set +e
+wait "$app_pid"
+settings_status="$?"
+set -e
+app_pid=""
+printf 'Production Wayland settings client exit status=%s\n' "$settings_status" | tee "$artifact_dir/settings-client-exit.txt"
+[[ "$settings_status" == 0 ]] || { cat "$artifact_dir/settings-client.log" >&2; exit "$settings_status"; }
+grep -Fq 'CI_SETTINGS_WINDOW mode=settings' "$artifact_dir/settings-client.log"
+grep -Fq 'CI_WINDOW_SIZE_POLICY fixed=1' "$artifact_dir/settings-client.log"
+grep -Fq 'CI_MAIN_CONTENT_INSET old=12 new=0 margins=start:12,end:0,top:0,bottom:12 verified=true' "$artifact_dir/settings-client.log"
+grep -Fq 'CI_WINDOW_SIZE_POLICY main_found=1 main_resizable=0 settings_found=1 settings_resizable=0' "$artifact_dir/settings-client.log"
+grep -Fq 'CI_SETTINGS_PAGE idd=101 page=General locale=en controls=116,117,118,120,119,121,122,123 child_dlu=260x168 provisional_canvas=558.0x335.0' "$artifact_dir/settings-client.log"
+grep -Fq 'CI_APP_RETURNED' "$artifact_dir/settings-client.log"
+grep -Fq 'xdg_toplevel' "$artifact_dir/settings-client.log"
+grep -Fq 'wl_surface' "$artifact_dir/settings-client.log"
+if grep -Eiq 'protocol error|wl_display@[^ ]+\.error|drop_caches|pkexec|swapoff|zramctl' "$artifact_dir/settings-client.log"; then
+  printf 'Wayland settings lifecycle encountered a protocol or forbidden-operation marker.\n' >&2; exit 1;
+fi
+
+printf 'PASS: production Wayland main and settings surfaces connected to private Weston, drew and exited 0. No pointer/keyboard input is claimed.\n' \
   | tee "$artifact_dir/result.txt"

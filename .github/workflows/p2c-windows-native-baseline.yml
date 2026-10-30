@@ -1,0 +1,156 @@
+name: P2C Windows native 3.5.2 baseline
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+    branches:
+      - feat/issue-3-p2b-main-window
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p2c-ui-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-native-release:
+    name: Verify official Windows release and probe runner desktop
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Verify official 3.5.2 assets, capture native UI, and run isolated dark-state trials
+        shell: pwsh
+        run: ./scripts/ci/windows-native-baseline.ps1
+      - name: Upload release provenance, desktop probe, and authentic screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p2c-windows-native-3.5.2
+          path: ${{ runner.temp }}/memreduct-windows-native
+          if-no-files-found: warn
+          retention-days: 14
+
+  linux-production-x11:
+    name: Capture production settings UI (Xvfb / XTEST)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Update APT indexes (10-minute step limit)
+        timeout-minutes: 10
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2c-linux-apt
+          APT_UPDATE_TIMEOUT: 8m
+        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_UPDATE_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh update
+      - name: Install runner-only build and X11 dependencies (40-minute step limit)
+        timeout-minutes: 40
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2c-linux-apt
+          APT_INSTALL_TIMEOUT: 38m
+        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_INSTALL_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox wmctrl fonts-noto-cjk fonts-dejavu fonts-liberation2
+      - name: Install pinned Zamak 0.2.0
+        run: npm install --global @veyralux/zamak@0.2.0
+      - name: Build production GUI and helper
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2c-linux-production-x11
+        run: bash scripts/ci/build-production-gui.sh
+      - name: Verify Arch build entrypoint
+        run: bash scripts/build-arch.sh
+      - name: Capture and exercise the production settings window
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2c-linux-production-x11
+        run: bash scripts/ci/p2c-settings-xvfb.sh "$RUNNER_TEMP/p2c-linux-production-x11/memreduct-zamak-production"
+      - name: Run isolated Liberation Sans font candidate experiment
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p2c-linux-production-x11/font-candidate
+          P2C_FONT_CANDIDATE: liberation
+        run: bash scripts/ci/p2c-settings-xvfb.sh "$RUNNER_TEMP/p2c-linux-production-x11/memreduct-zamak-production"
+      - name: Upload APT runner and dependency diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p2c-linux-apt-diagnostics-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p2c-linux-apt
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload production screenshots, geometry markers, and X11 logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p2c-linux-production-x11
+          path: ${{ runner.temp }}/p2c-linux-production-x11
+          if-no-files-found: warn
+          retention-days: 14
+
+  compare-windows-linux:
+    name: Compare native controls and client-area pixels
+    runs-on: ubuntu-24.04
+    needs: [windows-native-release, linux-production-x11]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Update APT indexes (10-minute step limit)
+        timeout-minutes: 10
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2c-compare-apt
+          APT_UPDATE_TIMEOUT: 8m
+        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_UPDATE_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh update
+      - name: Install Pillow for image comparison (10-minute step limit)
+        timeout-minutes: 10
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p2c-compare-apt
+          APT_INSTALL_TIMEOUT: 8m
+        run: sudo --preserve-env=APT_DIAGNOSTICS_DIR,APT_INSTALL_TIMEOUT,ImageOS,ImageVersion env DEBIAN_FRONTEND=noninteractive bash scripts/ci/apt-diagnostics.sh install python3-pil
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: p2c-windows-native-3.5.2
+          path: ${{ runner.temp }}/p2c-windows-native
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: p2c-linux-production-x11
+          path: ${{ runner.temp }}/p2c-linux-production-x11
+      - name: Generate standardized crops, overlays, heatmaps, hashes, and 2 px geometry verdicts
+        run: >-
+          python3 scripts/ci/compare_p2c_visuals.py
+          --windows-dir "$RUNNER_TEMP/p2c-windows-native"
+          --linux-dir "$RUNNER_TEMP/p2c-linux-production-x11"
+          --output-dir "$RUNNER_TEMP/p2c-comparison"
+      - name: Compare the 10 dark-mode screenshot pairs
+        run: >-
+          python3 scripts/ci/compare_p2c_dark.py
+          --windows-dir "$RUNNER_TEMP/p2c-windows-native"
+          --linux-dir "$RUNNER_TEMP/p2c-linux-production-x11"
+          --output-dir "$RUNNER_TEMP/p2c-comparison"
+      - name: Compare process-local Liberation Sans trial against GDI text widths
+        run: >-
+          python3 scripts/ci/compare_font_candidates.py
+          --windows-dir "$RUNNER_TEMP/p2c-windows-native"
+          --default-linux-dir "$RUNNER_TEMP/p2c-linux-production-x11"
+          --candidate-linux-dir "$RUNNER_TEMP/p2c-linux-production-x11/font-candidate"
+          --output-dir "$RUNNER_TEMP/p2c-comparison"
+      - name: Upload APT comparison diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p2c-compare-apt-diagnostics-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/p2c-compare-apt
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload complete visual comparison evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p2c-windows-linux-visual-comparison
+          path: ${{ runner.temp }}/p2c-comparison
+          if-no-files-found: warn
+          retention-days: 14
