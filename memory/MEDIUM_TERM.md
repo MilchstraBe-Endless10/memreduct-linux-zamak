@@ -1,7 +1,24 @@
 # 中期记忆 / Roadmap State
-更新时间：2026-10-30；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+更新时间：2026-10-31；当前真实状态以本节为准，后续各节均为有日期的历史快照。
 
-## 2026-10-30 当前补充：R8 指定提交 CI 修复状态
+## 2026-10-31 当前补充：P2C-R8 三项 CI 阻塞本地修复
+
+- PR #7 远端仍 OPEN / Draft、Base `main@83dbf58fb039645f08e08bc89170adcdaa7997be`、Head `db05ecd8ca2d49130f21a86cb5f233d378e914ad`；没有推送或新 HEAD Actions。隔离工作树本地代码提交 `bbe588ccd24bef7828dda34066f0743b24caf350`、Tree `61dea19a945f59f9a207bf568c731ce2877b76c5`、父 `b2827621a1045ba1ebcd81e84cd81f7fc41c7c2a`。
+- P2B 将基于秒数的故障注入改为仅 CI 可用的 0600 一次性私有触发文件；在故障前验证真实采样与渲染后截图，再触发并验证错误、旧值失效、不可用重绘、前后像素变化和无成功重采样。测试状态在受控故障后锁存至进程退出。
+- P2C resource 136 修正为验证 Appearance 初始状态和资源 ID；导航事件测试先离开再返回，并断言原勾选状态保留。Checkbox 136 增加 hover/down/up、Tab/Space 状态截图、控件局部差异和无副作用断言。
+- Windows `MapDialogRect` 现使用独立 C# helper 复现外部 HWND 调用；另在受控 `CreateDialogIndirectParamW` 对话框上按实际页字体脸名、8pt 资源字号验证 RECT/PID/类/DPI/映射，并与 52 字母 GDI 宽度及原版页面实测像素矩形交叉核对。PowerShell/Windows API 未在本机执行，外部 HWND 的 `0xC0000005` 根因仍等待 Windows Runner 证据；DLU 错误未降为 SKIP。
+- 本机 PASS：治理 34 项、安全 14 项、Shell 12 项、Zamak 0.2.0 check/test/build（69/69）、production GUI/helper build、Arch build、工作流 YAML 解析及 `git diff --check`。Xvfb、Weston、PowerShell 不可用，实际 XTEST、Windows DLU 和新截图比较未运行。
+- 活动 PR #6 审计工作树未触碰。原有未跟踪 `artifacts/` 保留（21 个文件清单摘要 SHA-256 `d906a5f4606cb83a1cb3eb6f4b1ab79adfaed6ceab78805610fba5d65984e6b5`）。像素 1:1 仍 NOT PASS；无特权清理、Polkit、Swap/ZRAM、活动 Hyprland 输入均未执行。
+
+## 历史快照（2026-10-30；PR #7 db05ecd 新 HEAD 的 CI 状态）
+
+- PR #7 OPEN / Draft、Base `main@83dbf58fb039645f08e08bc89170adcdaa7997be`、Head `db05ecd8ca2d49130f21a86cb5f233d378e914ad`；新 HEAD `mergeable=true`，未合并、未改 Base/main。
+- Build [41029656984](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/41029656984) PASS；P2A [41029657044](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/41029657044) Xvfb/Weston PASS、探针 12/12；P2B [41029656992](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/41029656992) Weston PASS、Xvfb FAIL；P2C [41029656981](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/actions/runs/41029656981) Windows/Linux capture FAIL、visual compare SKIPPED。
+- P2B 失败为过早的 15 秒采样注入与截图时序冲突；P2C Linux 的 resource 136 预览页面已在启动时选中，脚本错误等待重复导航事件；Windows Win32 校准调用 `MapDialogRect` 时访问冲突。当前本地候选 `b2827621a1045ba1ebcd81e84cd81f7fc41c7c2a`（父 db05、Tree `f404eb9aa74e6fc9d056d8a635836066d35c2fec`）仅修改三份 CI 脚本，尚未推送；Windows 假设需 hosted run 验证。
+- 本地治理 34 项、安全测试 13/13、Zamak 68/68 与 build、两个修改 Shell 的语法、diff check 均 PASS。主机缺 Xvfb/Weston/PowerShell，故本地未执行实际 GUI/Windows 修复复验；无新 HEAD Actions。
+- 视觉 1:1 仍 NOT PASS；Hyprland 键鼠、内存清理、Polkit、Swap/ZRAM 仍未验收。候选脚本提交需要独立复审与新的推送授权。
+
+## 历史快照（2026-10-30；PR #7 Head faa3426）— R8 指定提交 CI 修复状态
 
 - PR #7 远端 OPEN / Draft、Base main，HEAD faa3426a6b17f50b088c86ab56e7d7cae689af5e，main 83dbf58fb039645f08e08bc89170adcdaa7997be，未合并。指定 R8 提交已推送，main-base Build / P2A PASS，P2B Xvfb 与 P2C Linux/Windows 图形验证失败，详见 SHORT_TERM 和对应 Actions。
 - 失败在 CI harness/Win32 采集胶水：P2B 旧日志正则未包含新 collapsed=false 字段；P2C xdotool 键名 Space 无效；PowerShell 传递 [ref] RECT 给 MapDialogRect 引发访问冲突。修复已本地提交 9b5895026ae1c48a301aaf285e3cffab8f17a446（父 FAA），未推送。远端仍 FAA，不能称修复后 CI 通过。
