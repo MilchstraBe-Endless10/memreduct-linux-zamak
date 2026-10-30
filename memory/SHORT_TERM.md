@@ -1,6 +1,18 @@
 # 短期记忆 / Latest Handoff
 
-## 2026-10-31 — P2C-R8 三项 CI 阻塞修复候选
+## 2026-10-31 — P2C 并行产品代码集成候选
+
+- **远端：**只读核实 `main=83dbf58fb039645f08e08bc89170adcdaa7997be`、PR #7 OPEN / Draft、Base `main`、Head `db05ecd8ca2d49130f21a86cb5f233d378e914ad`。没有 push、Ready、merge 或新 Actions；PR #6 审计 worktree 与原 `p2c-main-integration-r1` worktree 均未改。
+- **本地最终代码候选：**`1ba589b86d53fa0909febcce4871fb939d23c715`，Tree `afa501db8b91f98908209ebeb33274afc627ac6c`，父 `4e826f3619a1caef41775bafea8a62cb08f44946`；其祖先包含集成代码 `1d74922437558c96b76b069aae4afe27ce333316`。文档仍有本地未提交修订，源代码无未提交改动。
+- **并行线：**UI `10b3c21e3bb120f185958e37f5de4b77968d637e` 增加 Reset 确认框 Tab/Shift+Tab/Enter 与可见焦点；核心 `bc3ce482dd2192e4fb2c780816678e03718ed9aa` 新增固定 pagecache bridge 归一化状态码及 fake-pkexec → 测试 helper 临时文件 E2E；视觉 `6f8147f7f101e14a56cfbaae3a53252d2af1e888` 将两个 Tray ComboBox 闭合高度由 12 调到 13 DLU，历史量测误差由 1.5 px 降至 0.125 px。三条代理线在 Integrator 主窗/CI 集成期间独立并行。该轮 CI/test 由 Integrator 负责，没有第四名 Agent D 同时开发；当前复审另开 CI/test 审查，不回写成上一轮四路并行。
+- **GUI 清理闭环：**生产 Clean 按钮仍禁用，`mr_start_reclaim` / `mr_poll_reclaim` 尚未接入生产 UI，ADR-0005 仍 PROPOSED。增加仅 `MEMREDUCT_CI=1` 且明确打开 mock 标志的模拟确认→取消/授权→mock helper→状态反馈；成功路径采样 `MemAvailable` 前后观察值并显式标成无因果归属。新增 XTEST 流程覆盖确认取消、键盘确认、忙碌防重复、成功状态和 WM 关闭；本机缺 Xvfb/Openbox，故该实际事件流尚未运行。
+- **集成候选：**从 `db50fd15bc8254240f70c476c0aa5a3cab954a68` 的三条代理线合入本地 `codex/memred-parallel-integrator`，集成 merge 点 `90a3acf348b1bfe13a4aa04ac15959d9ecb3044a`；Integrator 主窗/CI 代码提交 `d6394996828189c6cb30a896070cb64b8974da52`、状态反馈 `1d74922437558c96b76b069aae4afe27ce333316`。UI 复核发现 Reset/Close/确认按钮未处理 Space，且未识别 GTK 小写 `space`；修复提交 `4e826f3619a1caef41775bafea8a62cb08f44946`、`1ba589b86d53fa0909febcce4871fb939d23c715` 已快进集成。三条代理实际并行；CI/test 由 Integrator 负责。没有改远端分支或生产清理行为。
+- **CI Agent D 后续审查：**以 `1d74922437558c96b76b069aae4afe27ce333316` 为基线在隔离 worktree 审查 P2B 故障门槛、P2C 136 状态机/XTEST、Windows DLU 实验；未发现可由本机安全复现的脚本根因，未改代码或提交。治理 34、Shell 12 个脚本、diff check PASS；Xvfb/Openbox/Weston/PowerShell 缺失，相关 GUI/Windows 实测仍 NOT RUN。
+- **本机回归：**最终代码 HEAD 治理 34 PASS；Python/C 安全 15/15；Zamak 0.2.0 check PASS、test 75/75、build PASS；production GUI/helper build PASS；全部 shell syntax 曾在集成树通过，Agent D 对 12 个 CI shell 脚本再次检查 PASS；Canvas probe 12/12 的源码未变，已有 exact-source artifact PASS；`git diff --check` PASS。
+- **未运行：**当前机器没有 Xvfb、Openbox、Weston、PowerShell，故生产 XTEST（含 Reset/Clean 模拟）、Weston GUI 生命周期、Windows DLU/截图、exact-head 像素比较均 NOT RUN；无新 GitHub CI 或截图。真实 Hyprland 输入 NOT RUN。全页 1:1 NOT PASS；同源字体差异、Windows 控件栅格和 12 项简中资源 `DECISION_REQUIRED` 仍未解决。
+- **产物：**前一候选证据位于 `报告与研究/MemReduct-Parallel-Delivery-2026-10-31/integrator-checks/`；最终 `1ba589b` GUI/helper、构建日志和源码/二进制 SHA 位于 `报告与研究/MemReduct-Parallel-Delivery-2026-10-31/integrator-final-1ba589b/`。未触碰真实 `/proc/sys/vm/drop_caches`、Polkit、Swap/ZRAM、root GUI 或活动桌面。
+
+## 历史快照（2026-10-31 — P2C-R8 三项 CI 阻塞修复候选）
 
 - **远端状态：**PR #7 远端仍 OPEN / Draft、Base `main@83dbf58fb039645f08e08bc89170adcdaa7997be`、Head `db05ecd8ca2d49130f21a86cb5f233d378e914ad`；main 未改，无推送、Ready、Merge 或新 Actions。远端引用核验仍精确匹配以上 SHA。
 - **本地代码提交：**`bbe588ccd24bef7828dda34066f0743b24caf350`，Tree `61dea19a945f59f9a207bf568c731ce2877b76c5`，父 `b2827621a1045ba1ebcd81e84cd81f7fc41c7c2a`；修改 9 个工作流、C/Zamak、CI 脚本和测试文件。之后的记忆更新单独提交。

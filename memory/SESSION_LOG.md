@@ -270,3 +270,22 @@
 - 完整本地回归：Zamak 68/68、治理34、C/Python13/13、全 Shell12/12、生产 GUI/helper build、Arch/native build、独立 Canvas probe12/12、`git diff --check` PASS。当前 UI 执行脚本未获得运行环境：Xvfb script exit2（`Xvfb` 缺失）、Weston lifecycle script exit2（`weston` 缺失）；`wine`、`winegcc`、`wrc` 缺失，故 Winelib A/B NOT RUN。没有新 GitHub Actions。
 - General English/Light 的历史截图在 GroupBox 修正前/后全页差异 9.3388%/7.6649%；这是早于最终 ComboBox 箭头改动的截图，不标为 exact-head。最终箭头栅格有 source test，无新截图。95/120 文本度量仍超 2 px；全页 1:1 NOT PASS。现有 184/184 等视觉计数不冒用为当前源码重验。
 - PR #7 仍远端 OPEN / Draft、Base `main`、HEAD `019a7f1e0755570c2c3a0b1202a6c764540f14e2`，main `83dbf58fb039645f08e08bc89170adcdaa7997be`；未推送或修改 PR。Hyprland 活动桌面未操作；未运行清理、Polkit、Swap/ZRAM 或 root GUI。R8 exact tests/logs/source hashes 在 AI 产出目录 `报告与研究/Mem Reduct P2C-R8-2026-10-30/r8-closeout-20261030-v3/`。
+
+## 2026-10-31 — P2C 并行产品代码与模拟清理流程
+
+- 从 R7/R8 候选 `db50fd15bc8254240f70c476c0aa5a3cab954a68` 创建隔离 Integrator worktree；未触碰 `p2c-main-integration-r1` 中已有记忆/artifacts，也未修改 PR #6 审计树。只读确认远端 main `83dbf58fb039645f08e08bc89170adcdaa7997be` 与 PR #7 `db05ecd8ca2d49130f21a86cb5f233d378e914ad`，未推送远端。
+- UI、清理核心、视觉三条代理实际并行完成并提交，Integrator 独占 `src/main.zm` 和 Xvfb flow：UI commit `10b3c21e…` 使 Reset 模态支持键盘循环/可见焦点；core commit `bc3ce482…` 实现 pagecache bridge 明确状态码与临时文件 fake-pkexec 测试；visual commit `6f8147f…` 基于既有 Windows 控件测量把两个 Tray ComboBox 闭合高度误差从 1.5 px 降至 0.125 px。Integrator source/CI commit `d6394996828189c6cb30a896070cb64b8974da52` 实现仅 CI 开启的确认→mock authorization→mock helper流程并为 XTEST 增加成功/取消/忙碌/关闭断言；follow-up `1d74922437558c96b76b069aae4afe27ce333316` 将授权与 helper 运行状态显示在主窗口中。实际并行代理为三条，CI/test 由 Integrator 负责；没有第四名 Agent D 同时开发。以上提交以本地 merge commits 并入 `codex/memred-parallel-integrator`，merge 点为 `90a3acf348b1bfe13a4aa04ac15959d9ecb3044a`。
+- **生产边界不变：**Clean 按钮仍在生产模式禁用；生产 `main.zm` 不调用异步权限桥；mock 流程不可执行 `pkexec`、helper 或内核写入。bridge 单元/E2E 使用 fake pkexec 和临时常规文件，不运行真实授权或 `drop_caches`。ADR-0005 仍 PROPOSED。
+- 回归：治理 34；Python/C safety 15/15；Zamak 0.2.0 check/test/build、73/73；全部脚本 Shell 语法；生产 GUI/helper build；`scripts/build-arch.sh`；Canvas probe 12/12；`git diff --check` 全 PASS。测试 artifacts 位于用户指定 AI 输出目录 `报告与研究/MemReduct-Parallel-Delivery-2026-10-31/integrator-checks/`。
+- 当前主机缺 Xvfb、Openbox、Weston、PowerShell；因此 Reset/Clean 实际 XTEST、Weston lifecycle、Windows MapDialogRect/DLU、exact-head 截图和 Windows/Linux 像素比较均 NOT RUN。没有真实 Hyprland 输入、新 GitHub CI、新截图或真实像素指标。整页 1:1 NOT PASS，95/120 同源字体度量超 2 px；12 项简中资源差异继续 DECISION_REQUIRED。
+- 留待新推送授权后：四条 PR workflows 对新 HEAD 重跑，重点核查 mock Clean 的事件实际命中、Windows DLU 和比较 Job；不得把本机模拟单测或旧 Actions 冒充为 exact-head CI/实机验收。
+- 集成后 CI/测试工具审查以 `1d74922437558c96b76b069aae4afe27ce333316` 为基线，在独立 worktree 检查 P2B trigger 时序、P2C 136 导航/XTEST 与 Windows DLU 隔离流程。未发现可安全复现的脚本根因，未改代码；治理 34、Shell 12、diff check PASS。由于缺少 Xvfb/Openbox/Weston/PowerShell，相关 GUI/Windows 实测仍 NOT RUN。
+
+## 2026-10-31 — P2C 并行集成键盘修复与最终本地候选
+
+- UI 独立复核在前一集成 HEAD `1d74922437558c96b76b069aae4afe27ce333316` 复现两个键盘缺陷：Settings Reset/Close 和 Reset 模态选项不响应 Space；小写 GDK 键名 `space` 未进入快捷键分支。先提交 `4e826f3619a1caef41775bafea8a62cb08f44946`，再补 lowercase 映射与精确回归提交 `1ba589b86d53fa0909febcce4871fb939d23c715`。最终 code Tree `afa501db8b91f98908209ebeb33274afc627ac6c`，父 `4e826f3619a1caef41775bafea8a62cb08f44946`；该 parent 的父为 `1d74922437558c96b76b069aae4afe27ce333316`。仅 `src/settings_ui.zm` 改动。
+- 修复回归断言覆盖 Reset→Space、取消/确认两个选择、Close Space、小写 `space` 的语言 ComboBox选择与返回状态。治理 34、Python/C safety 15/15、全部 Shell syntax、Zamak check、Zamak test 75/75、Zamak build、production GUI/helper build、diff check PASS。
+- 最终 GUI 产物和源码/二进制 SHA 清单外置至 AI 输出目录 `报告与研究/MemReduct-Parallel-Delivery-2026-10-31/integrator-final-1ba589b/`。GUI SHA-256 `6a8c42745de6dbe081f445b74f1219c89443df0cce143a5b650fbb55e7e91886`；helper SHA-256 `b0652c8ac3ae70576e39b71fbdcd047a7c57f23873fec2e45b1b691b34c45a5e`。
+- Native 并行复核对固定 pagecache 请求、`/usr/bin/pkexec`/固定 helper 路径、状态映射、临时文件 fake helper 和失败不自动重试通过；专测 13/13、GCC `-fanalyzer` PASS。备注：`MEMREDUCT_TESTING` 下 helper 测试目标用绝对环境变量指定，现有 E2E 一律指向 `TemporaryDirectory` 普通文件；生产构建不含该重定向。
+- 视觉复核确认 Tray 13 DLU 几何计算位于页界内且互不重叠；既有量测误差 +0.125 px，未生成当前 exact-head 新截图，整页 1:1 仍 NOT PASS。CI 审查未发现可安全复现的脚本根因；治理 34、CI Shell 12、diff check PASS。
+- 真实 GUI/XTEST、Weston、Windows DLU/截图/比较未运行：本机缺 Xvfb、Openbox、Weston、PowerShell、Wine/Winelib 工具。没有使用活动 Hyprland 输入，也没有新 GitHub CI。远端 PR #7 仍 OPEN/Draft、Base `main@83dbf58fb039645f08e08bc89170adcdaa7997be`、HEAD `db05ecd8ca2d49130f21a86cb5f233d378e914ad`；未推送、改 Base、Ready 或合并。

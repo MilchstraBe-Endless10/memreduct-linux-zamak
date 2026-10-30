@@ -1,7 +1,18 @@
 # 中期记忆 / Roadmap State
 更新时间：2026-10-31；当前真实状态以本节为准，后续各节均为有日期的历史快照。
 
-## 2026-10-31 当前补充：P2C-R8 三项 CI 阻塞本地修复
+## 2026-10-31 当前补充：并行 P2C 产品代码候选
+
+- 本地隔离集成树从 `db50fd15bc8254240f70c476c0aa5a3cab954a68` 并入 UI、清理核心、视觉三条代理工作线；Integrator 另负责 `src/main.zm` 与 CI/test 集成，代码合入点 `90a3acf348b1bfe13a4aa04ac15959d9ecb3044a`。代理提交分别为 UI `10b3c21e3bb120f185958e37f5de4b77968d637e`、核心 `bc3ce482dd2192e4fb2c780816678e03718ed9aa`、视觉 `6f8147f7f101e14a56cfbaae3a53252d2af1e888`，Integrator 代码提交 `d6394996828189c6cb30a896070cb64b8974da52`；随后 `1d74922437558c96b76b069aae4afe27ce333316` 增加可见的 mock 授权/helper 中间态反馈。实际并行代理为三条，没有第四名 CI Agent 同时开发；各合并和 follow-up 只作用于本地 `codex/memred-parallel-integrator`。
+- UI 工作线修复 Reset 确认对话框键盘焦点；视觉线将 Tray ComboBox 关闭高度差从 1.5 px 降到 0.125 px（依据既有 Windows screenshot-backed 几何 artifact，未生成当前截图，也未声明整页 1:1）。
+- 核心线增加固定 pagecache 异步桥状态枚举及 fake-pkexec 测试，只在临时普通文件上模拟 helper。Integrator 在主窗加入 CI 专用确认→mock 授权→mock helper 状态机、取消/忙碌/结果反馈和无因果归属的 MemAvailable 前后观察断言；仅测试环境打开，生产 Clean 按钮保持禁用且不调用桥。ADR-0005 仍 `PROPOSED`。
+- UI 复核发现 Reset、Close 和确认框选项缺少 Space 激活，并且 GTK 小写 `space` 事件未处理；提交 `4e826f3619a1caef41775bafea8a62cb08f44946` 与 `1ba589b86d53fa0909febcce4871fb939d23c715` 补齐并新增回归测试。当前代码 HEAD `1ba589b86d53fa0909febcce4871fb939d23c715`，Tree `afa501db8b91f98908209ebeb33274afc627ac6c`。
+- 最终代码验证 PASS：治理 34；C/Python 安全 15/15；Zamak 0.2.0 75/75、check/build；生产 GUI/helper build；Shell 语法；Canvas 探针源码未变且既有 12/12 artifact 可核对；`git diff --check`。最终 GUI SHA-256 `6a8c42745de6dbe081f445b74f1219c89443df0cce143a5b650fbb55e7e91886`，构建日志和二进制位于 AI 输出目录 `报告与研究/MemReduct-Parallel-Delivery-2026-10-31/integrator-final-1ba589b/`。
+- 未运行：缺少 Xvfb/Openbox/Weston/PowerShell，故本地 GUI XTEST、Weston 生命周期、Windows DLU/截图/新比较未运行；本次没有 exact-head 图像、Hyprland 实际输入或 GitHub CI。PR #7 远端仍 HEAD `db05ecd8ca2d49130f21a86cb5f233d378e914ad`、Base main、OPEN/Draft；main `83dbf58fb039645f08e08bc89170adcdaa7997be`，没有 push/Ready/Merge。像素 1:1 NOT PASS，95/120 同源文字仍超 2 px，12 项中文来源差异 `DECISION_REQUIRED`。
+- 集成后的 CI/测试工具单独审查未发现可安全复现的根因，未改代码；治理 34、Shell 12、diff check PASS。Xvfb/Openbox/Weston/PowerShell 缺失，GUI 与 Windows 自动实验仍 NOT RUN。
+- 下一门槛：获得推送授权后以新 HEAD 运行全部 GitHub workflows；Xvfb 流程必须验证真实 Reset 与 CI mock Clean 事件，Windows runner 必须复验 MapDialogRect/DLU 与比较链路。生产清理还需独立产品/安全审批、安装/卸载方案、真实 Polkit 生命周期审查和单独授权的目标主机验收。
+
+## 历史快照（2026-10-31 — P2C-R8 三项 CI 阻塞本地修复）
 
 - PR #7 远端仍 OPEN / Draft、Base `main@83dbf58fb039645f08e08bc89170adcdaa7997be`、Head `db05ecd8ca2d49130f21a86cb5f233d378e914ad`；没有推送或新 HEAD Actions。隔离工作树本地代码提交 `bbe588ccd24bef7828dda34066f0743b24caf350`、Tree `61dea19a945f59f9a207bf568c731ce2877b76c5`、父 `b2827621a1045ba1ebcd81e84cd81f7fc41c7c2a`。
 - P2B 将基于秒数的故障注入改为仅 CI 可用的 0600 一次性私有触发文件；在故障前验证真实采样与渲染后截图，再触发并验证错误、旧值失效、不可用重绘、前后像素变化和无成功重采样。测试状态在受控故障后锁存至进程退出。
