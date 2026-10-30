@@ -761,7 +761,6 @@ for marker in \
   }
 done
 appearance_window="$(window_by_title 'Settings - Mem Reduct')"
-click "$appearance_window" 60 63
 wait_appearance_marker() {
   local marker="$1"
   for _ in {1..100}; do
@@ -773,7 +772,7 @@ wait_appearance_marker() {
   cat "$appearance_log" >&2
   return 1
 }
-wait_appearance_marker 'CI_SETTINGS_NAV resource=104 page_idd=103 page=Appearance'
+wait_appearance_marker 'CI_SETTINGS_PAGE idd=103 page=Appearance locale=en'
 capture "$appearance_window" 'production-checkbox-136-checked-default-en.png' '558x335' light en
 xdotool mousemove --sync --window "$appearance_window" 173 91
 sleep 0.15

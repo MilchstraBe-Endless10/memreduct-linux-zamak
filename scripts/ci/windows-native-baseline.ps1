@@ -784,7 +784,7 @@ public static class P2CWin32 {
 
                 'page_idd,locale,state,resource_id,part,x,y,width,height,class' |
                     Set-Content -LiteralPath $geometryFile -Encoding UTF8
-                'page_idd,locale,dpi,font_face,resolved_font_face,font_source,logfont_height_px,average_char_width_px,mapdialogrect_width_for_4_dlu_px,mapdialogrect_height_for_8_dlu_px,x_px_per_dlu,y_px_per_dlu' |
+                'page_idd,locale,dpi,dlu_source,font_face,resolved_font_face,font_source,logfont_height_px,average_char_width_px,mapdialogrect_width_for_4_dlu_px,mapdialogrect_height_for_8_dlu_px,x_px_per_dlu,y_px_per_dlu' |
                     Set-Content -LiteralPath $dluCalibrationFile -Encoding UTF8
                 'page_idd,locale,resource_id,class,sample_kind,sample_text,sample_text_source,logical_face_name,gdi_reported_face_name,font_substitution,font_source,logfont_height_px,point_size,logfont_weight,charset,textmetric_height_px,text_ascent_px,text_descent_px,textmetric_weight,average_char_width_px,text_width_px,text_height_px' |
                     Set-Content -LiteralPath $fontMetricsFile -Encoding UTF8
@@ -797,16 +797,20 @@ public static class P2CWin32 {
                     & $writeStatusClosure "Win32 geometry child enumeration complete page_idd=$pageId controls=$($current.Count)"
                     $activePage = $current | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 } | Select-Object -First 1
                     if (-not $activePage) { throw "Visible child page geometry is missing for page $pageId ($Locale)." }
-                    $dialogUnits = [P2CWin32]::MapDialogRectUnits([IntPtr]$activePage.Handle, 4, 8)
+                    # All five child templates and the settings shell use the
+                    # same 8pt MS Shell Dlg font. The previous MapDialogRect
+                    # call on a page-child HWND faulted; probe the verified
+                    # top-level settings dialog and record that source explicitly.
+                    $dialogUnits = [P2CWin32]::MapDialogRectUnits([IntPtr]$settingsHwnd, 4, 8)
                     if (-not $dialogUnits.Success) {
-                        throw "MapDialogRect failed for child page $pageId ($Locale)."
+                        throw "MapDialogRect failed for the settings shell while measuring page $pageId ($Locale)."
                     }
                     if ($dialogUnits.WidthPx -le 0 -or $dialogUnits.HeightPx -le 0) {
                         throw "MapDialogRect returned invalid DLU base units for child page $pageId ($Locale)."
                     }
                     $dialogFont = [P2CWin32]::MeasureControlText([IntPtr]$activePage.Handle, 'Ag')
                     [pscustomobject]@{
-                        page_idd=$pageId; locale=$Locale; dpi=$settingsDpi
+                        page_idd=$pageId; locale=$Locale; dpi=$settingsDpi; dlu_source='IDD_SETTINGS shell; shared 8pt MS Shell Dlg'
                         font_face=$dialogFont.FaceName; resolved_font_face=$dialogFont.ResolvedFaceName
                         font_source=$dialogFont.FontSource; logfont_height_px=$dialogFont.LogFontHeight
                         average_char_width_px=$dialogFont.AverageCharWidth
@@ -815,7 +819,7 @@ public static class P2CWin32 {
                         x_px_per_dlu=[Math]::Round(($dialogUnits.WidthPx / 4.0), 4)
                         y_px_per_dlu=[Math]::Round(($dialogUnits.HeightPx / 8.0), 4)
                     } | Export-Csv -LiteralPath $dluCalibrationFile -NoTypeInformation -Append -Encoding UTF8
-                    & $writeStatusClosure "PASS MapDialogRect page_idd=$pageId locale=$Locale dpi=$settingsDpi base_units=$($dialogUnits.WidthPx)x$($dialogUnits.HeightPx) x_px_per_dlu=$([Math]::Round(($dialogUnits.WidthPx / 4.0), 4)) y_px_per_dlu=$([Math]::Round(($dialogUnits.HeightPx / 8.0), 4)) font=$($dialogFont.ResolvedFaceName)"
+                    & $writeStatusClosure "PASS MapDialogRect page_idd=$pageId source=IDD_SETTINGS locale=$Locale dpi=$settingsDpi base_units=$($dialogUnits.WidthPx)x$($dialogUnits.HeightPx) x_px_per_dlu=$([Math]::Round(($dialogUnits.WidthPx / 4.0), 4)) y_px_per_dlu=$([Math]::Round(($dialogUnits.HeightPx / 8.0), 4)) font=$($dialogFont.ResolvedFaceName)"
                     $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state='default'; resource_id=$pageId; part='page'; x=$activePage.Left-$settingsClientOrigin.X; y=$activePage.Top-$settingsClientOrigin.Y; width=$activePage.Width; height=$activePage.Height; class=$activePage.ClassName })
                     foreach ($control in $current | Where-Object { $_.Visible -and $_.ControlId -ne 0 }) {
                         & $writeStatusClosure "Win32 geometry control begin page_idd=$pageId resource=$($control.ControlId) class=$($control.ClassName)"

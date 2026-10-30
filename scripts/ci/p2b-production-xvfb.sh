@@ -76,7 +76,7 @@ for _ in {1..50}; do
 done
 [[ "$wm_ready" == true ]] || { cat "$artifact_dir/openbox.log" >&2; exit 1; }
 
-MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 MEMREDUCT_CI_FAIL_SAMPLE_AFTER_MS=15000 MEMREDUCT_CI_CAPTURE=1 stdbuf -oL "$app" \
+MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 MEMREDUCT_CI_FAIL_SAMPLE_AFTER_MS=35000 MEMREDUCT_CI_CAPTURE=1 stdbuf -oL "$app" \
   >"$artifact_dir/client.log" 2>&1 &
 app_pid="$!"
 window_id=""
@@ -316,6 +316,10 @@ escape_and_expect_focus 1
 # The CI-only fixture fails a later sample after earlier live samples succeeded.
 # The production failure path must clear data and request a redraw immediately.
 capture 'production-memory-before-failure-zh.png'
+if grep -Fq 'CI_MEMORY_INVALIDATED redraw_requested=true' "$artifact_dir/client.log"; then
+  printf 'Injected sample failure occurred before the pre-failure screenshot.\n' >&2
+  exit 1
+fi
 wait_for_marker_long 'CI_MEMORY_INVALIDATED redraw_requested=true'
 wait_for_marker_long 'CI_DRAW_SAMPLE state=unavailable values=em-dash'
 capture 'production-sample-failure-zh.png'
