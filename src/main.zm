@@ -142,7 +142,12 @@ fn clean_confirm_button(confirm: bool) -> ui.Rect:
     ui.rect(197.0, 190.0, 70.0, 24.0)
 
 fn clean_operation_busy(state: i64) -> bool:
-    state == 2 or state == 3
+    state == 2 or state == 3 or state == 9
+
+fn clean_progress_status(zh: bool, state: i64) -> string:
+    if state == 2: return label(zh, "Waiting for simulated authorization", "正在等待模拟授权")
+    if state == 3: return label(zh, "Mock authorization accepted", "模拟授权已接受")
+    label(zh, "Mock helper running", "模拟 helper 正在运行")
 
 fn clean_result_state(result: i64) -> i64:
     if result == 0: return 4
@@ -482,6 +487,7 @@ fn test_ci_sample_failure_latch_is_test_only():
 fn test_clean_operation_results_preserve_distinct_feedback():
     assert(clean_operation_busy(2))
     assert(clean_operation_busy(3))
+    assert(clean_operation_busy(9))
     assert(not clean_operation_busy(0))
     assert(clean_result_state(0) == 4)
     assert(clean_result_state(1) == 5)
@@ -498,6 +504,10 @@ fn test_clean_operation_result_labels_are_explicit_and_localized():
     assert(clean_result_status(true, 4) == "模拟完成；未更改系统")
     assert(clean_result_status(false, 8) == "Result is uncertain; do not retry automatically")
     assert(clean_result_status(true, 8) == "结果不确定；不会自动重试")
+    assert(clean_progress_status(false, 2) == "Waiting for simulated authorization")
+    assert(clean_progress_status(true, 2) == "正在等待模拟授权")
+    assert(clean_progress_status(false, 9) == "Mock helper running")
+    assert(clean_progress_status(true, 9) == "模拟 helper 正在运行")
 
 fn suppress_ci_resample(test_mode: bool, failure_latched: bool) -> bool:
     test_mode and failure_latched
@@ -530,7 +540,6 @@ fn refresh(s: &mut MainWindow):
     s.canvas.redraw()
 
 fn finish_clean_simulation(s: &mut MainWindow):
-    if s.test_mode: println("CI_CLEAN_SIM stage=running helper=mock no_system_write=true")
     let state = clean_result_state(mr_gui_test_clean_simulation_result())
     s.clean_state = state
     s.status = clean_result_status(s.zh, state)
@@ -585,9 +594,15 @@ fn tick(s: &mut MainWindow):
         if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true")
     if s.clean_state == 2:
         s.clean_state = 3
+        s.status = clean_progress_status(s.zh, 3)
         if s.test_mode: println("CI_CLEAN_SIM stage=authorizing backend=mock no_privileged_helper=true")
         s.canvas.redraw()
     elif s.clean_state == 3:
+        s.clean_state = 9
+        s.status = clean_progress_status(s.zh, 9)
+        if s.test_mode: println("CI_CLEAN_SIM stage=running helper=mock no_system_write=true")
+        s.canvas.redraw()
+    elif s.clean_state == 9:
         finish_clean_simulation(s)
     if s.test_mode and mr_gui_test_sample_failure_requested() != 0:
         refresh(s)
@@ -641,6 +656,7 @@ fn activate(s: &mut MainWindow, target: f64):
     elif target == 710.0 and s.clean_state == 1:
         s.clean_state = 2
         s.clean_before_available = if s.sample_ok: s.mem_available else: 0
+        s.status = clean_progress_status(s.zh, 2)
         if s.test_mode: println(f"CI_CLEAN_SIM stage=confirmed observed_memavailable_before_kib={s.clean_before_available} source=/proc/meminfo no_system_write=true")
     elif target == 711.0 and s.clean_state == 1:
         s.clean_state = 5
