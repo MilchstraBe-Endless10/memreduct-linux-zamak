@@ -712,7 +712,7 @@ for _ in {1..100}; do
 done
 grep -Fq 'CI_SETTINGS_KEY name=Tab page_idd=101 focus=116' "$widget_log"
 capture "$widget_window" 'production-checkbox-preview-focus-en.png' '558x335' light en
-xdotool key --clearmodifiers Space
+xdotool key --clearmodifiers space
 for _ in {1..100}; do
   grep -Fq 'CI_WIDGET_PREVIEW resource=116 checked=false source=keyboard-space persistence=none side_effects=none' "$widget_log" && break
   sleep 0.1
@@ -787,7 +787,7 @@ capture "$appearance_window" 'production-checkbox-136-unchecked-en.png' '558x335
 xdotool key --clearmodifiers Tab
 wait_appearance_marker 'CI_SETTINGS_KEY name=Tab page_idd=103 focus=136'
 capture "$appearance_window" 'production-checkbox-136-focus-en.png' '558x335' light en
-xdotool key --clearmodifiers Space
+xdotool key --clearmodifiers space
 wait_appearance_marker 'CI_WIDGET_PREVIEW resource=136 checked=true source=keyboard-space persistence=none side_effects=none'
 capture "$appearance_window" 'production-checkbox-136-keyboard-en.png' '558x335' light en
 xdotool key --clearmodifiers Alt+F4

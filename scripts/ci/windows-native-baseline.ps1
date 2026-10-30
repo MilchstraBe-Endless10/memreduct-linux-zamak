@@ -174,6 +174,9 @@ public static class P2CWin32 {
     public int LogFontCharSet; public int TextMetricHeight; public int TextMetricAscent; public int TextMetricDescent; public int TextMetricWeight;
     public int AverageCharWidth; public int MeasuredTextWidth; public int MeasuredTextHeight; public string FontSource;
   }
+  public sealed class DialogUnitMeasurement {
+    public bool Success; public int WidthPx; public int HeightPx;
+  }
   public sealed class WindowInfo {
     public IntPtr Handle; public uint ProcessId; public string Title; public string ClassName;
     public bool Visible; public bool Enabled; public int Left; public int Top; public int Width; public int Height; public int ControlId;
@@ -181,7 +184,12 @@ public static class P2CWin32 {
   private delegate bool EnumWindowsCallback(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
-  [DllImport("user32.dll", SetLastError=true)] public static extern bool MapDialogRect(IntPtr hDlg, ref RECT rect);
+  [DllImport("user32.dll", SetLastError=true)] private static extern bool MapDialogRect(IntPtr hDlg, ref RECT rect);
+  public static DialogUnitMeasurement MapDialogRectUnits(IntPtr hDlg, int widthDlu, int heightDlu) {
+    var rect = new RECT { Right=widthDlu, Bottom=heightDlu };
+    bool success = MapDialogRect(hDlg, ref rect);
+    return new DialogUnitMeasurement { Success=success, WidthPx=rect.Right, HeightPx=rect.Bottom };
+  }
   [DllImport("user32.dll", SetLastError=true)] public static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr GetMenu(IntPtr hWnd);
   [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr GetSubMenu(IntPtr hMenu, int position);
@@ -789,13 +797,11 @@ public static class P2CWin32 {
                     & $writeStatusClosure "Win32 geometry child enumeration complete page_idd=$pageId controls=$($current.Count)"
                     $activePage = $current | Where-Object { $_.Visible -and $_.ClassName -eq '#32770' -and $_.Width -eq 390 -and $_.Height -eq 273 } | Select-Object -First 1
                     if (-not $activePage) { throw "Visible child page geometry is missing for page $pageId ($Locale)." }
-                    $baseUnitRect = [P2CWin32+RECT]::new()
-                    $baseUnitRect.Right = 4
-                    $baseUnitRect.Bottom = 8
-                    if (-not [P2CWin32]::MapDialogRect([IntPtr]$activePage.Handle, [ref]$baseUnitRect)) {
+                    $dialogUnits = [P2CWin32]::MapDialogRectUnits([IntPtr]$activePage.Handle, 4, 8)
+                    if (-not $dialogUnits.Success) {
                         throw "MapDialogRect failed for child page $pageId ($Locale)."
                     }
-                    if ($baseUnitRect.Right -le 0 -or $baseUnitRect.Bottom -le 0) {
+                    if ($dialogUnits.WidthPx -le 0 -or $dialogUnits.HeightPx -le 0) {
                         throw "MapDialogRect returned invalid DLU base units for child page $pageId ($Locale)."
                     }
                     $dialogFont = [P2CWin32]::MeasureControlText([IntPtr]$activePage.Handle, 'Ag')
@@ -804,12 +810,12 @@ public static class P2CWin32 {
                         font_face=$dialogFont.FaceName; resolved_font_face=$dialogFont.ResolvedFaceName
                         font_source=$dialogFont.FontSource; logfont_height_px=$dialogFont.LogFontHeight
                         average_char_width_px=$dialogFont.AverageCharWidth
-                        mapdialogrect_width_for_4_dlu_px=$baseUnitRect.Right
-                        mapdialogrect_height_for_8_dlu_px=$baseUnitRect.Bottom
-                        x_px_per_dlu=[Math]::Round(($baseUnitRect.Right / 4.0), 4)
-                        y_px_per_dlu=[Math]::Round(($baseUnitRect.Bottom / 8.0), 4)
+                        mapdialogrect_width_for_4_dlu_px=$dialogUnits.WidthPx
+                        mapdialogrect_height_for_8_dlu_px=$dialogUnits.HeightPx
+                        x_px_per_dlu=[Math]::Round(($dialogUnits.WidthPx / 4.0), 4)
+                        y_px_per_dlu=[Math]::Round(($dialogUnits.HeightPx / 8.0), 4)
                     } | Export-Csv -LiteralPath $dluCalibrationFile -NoTypeInformation -Append -Encoding UTF8
-                    & $writeStatusClosure "PASS MapDialogRect page_idd=$pageId locale=$Locale dpi=$settingsDpi base_units=$($baseUnitRect.Right)x$($baseUnitRect.Bottom) x_px_per_dlu=$([Math]::Round(($baseUnitRect.Right / 4.0), 4)) y_px_per_dlu=$([Math]::Round(($baseUnitRect.Bottom / 8.0), 4)) font=$($dialogFont.ResolvedFaceName)"
+                    & $writeStatusClosure "PASS MapDialogRect page_idd=$pageId locale=$Locale dpi=$settingsDpi base_units=$($dialogUnits.WidthPx)x$($dialogUnits.HeightPx) x_px_per_dlu=$([Math]::Round(($dialogUnits.WidthPx / 4.0), 4)) y_px_per_dlu=$([Math]::Round(($dialogUnits.HeightPx / 8.0), 4)) font=$($dialogFont.ResolvedFaceName)"
                     $rows.Add([pscustomobject]@{ page_idd=$pageId; locale=$Locale; state='default'; resource_id=$pageId; part='page'; x=$activePage.Left-$settingsClientOrigin.X; y=$activePage.Top-$settingsClientOrigin.Y; width=$activePage.Width; height=$activePage.Height; class=$activePage.ClassName })
                     foreach ($control in $current | Where-Object { $_.Visible -and $_.ControlId -ne 0 }) {
                         & $writeStatusClosure "Win32 geometry control begin page_idd=$pageId resource=$($control.ControlId) class=$($control.ClassName)"

@@ -183,7 +183,7 @@ grep -Eq 'CI_LAYOUT_GROUP index=0 locale=en .*title_y=36\.[0-9]+ rule_x=[0-9.]+ 
 grep -Eq 'CI_LAYOUT_GROUP index=1 locale=en .*title_y=117\.[0-9]+ rule_x=[0-9.]+ rule_y=122\.[0-9]+ row0=136\.[0-9]+ row1=153\.[0-9]+ row2=171\.[0-9]+' "$artifact_dir/client.log"
 grep -Eq 'CI_LAYOUT_GROUP index=2 locale=en .*title_y=192\.[0-9]+ rule_x=[0-9.]+ rule_y=200\.[0-9]+ row0=210\.[0-9]+ row1=228\.[0-9]+ row2=246\.[0-9]+' "$artifact_dir/client.log"
 grep -Fq 'CI_LAYOUT_GROUP index=1 locale=en title=Pagefile / Swap ' "$artifact_dir/client.log"
-grep -Eq 'CI_LAYOUT_GROUP index=0 locale=en title=Physical memory usage=[0-9]+\.[0-9]{3}%' "$artifact_dir/client.log"
+grep -Eq 'CI_LAYOUT_GROUP index=0 locale=en title=Physical memory collapsed=false usage=[0-9]+\.[0-9]{3}%' "$artifact_dir/client.log"
 window_geometry "$artifact_dir/geometry-en.txt"
 # The upstream IDD_MAIN has no resizable frame. Ask the isolated WM to tile the
 # window to the same large geometry observed on Hyprland and require the GTK

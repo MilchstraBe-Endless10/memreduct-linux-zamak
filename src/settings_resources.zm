@@ -440,4 +440,3 @@ fn test_combo_arrow_raster_matches_pinned_light_and_dark_captures():
     assert(combo_arrow_pixel_rgb(5, 5, true) == 0x474747)
     assert(combo_arrow_pixel_rgb(-1, 0, false) == 0)
     assert(combo_arrow_pixel_rgb(6, 9, true) == 0)
-
