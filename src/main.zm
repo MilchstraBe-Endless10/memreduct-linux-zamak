@@ -211,11 +211,11 @@ fn clean_popup_rect(s: &MainWindow) -> ui.Rect:
     ui_geometry.clean_popup_rect(s.width, s.height, &b)
 
 fn clean_confirm_panel(s: &MainWindow) -> ui.Rect:
-    ui.rect((s.width - 249.0) / 2.0, (s.height - 84.0) / 2.0, 249.0, 84.0)
+    ui.rect((s.width - 249.0) / 2.0, (s.height - 104.0) / 2.0, 249.0, 104.0)
 
 fn clean_confirm_button(confirm: bool) -> ui.Rect:
-    if confirm: return ui.rect(112.0, 190.0, 78.0, 24.0)
-    ui.rect(197.0, 190.0, 70.0, 24.0)
+    if confirm: return ui.rect(112.0, 200.0, 78.0, 24.0)
+    ui.rect(197.0, 200.0, 70.0, 24.0)
 
 fn clean_operation_busy(state: i64) -> bool:
     state == 2 or state == 3 or state == 9 or state == 11
@@ -454,12 +454,24 @@ fn draw_clean_confirmation(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, second
     let panel = clean_confirm_panel(s)
     p.fill_rect(&panel, surface)
     draw_outline(p, &panel, border)
-    if s.clean_simulation:
-        p.text(panel.x + 10.0, panel.y + 9.0, label(s.zh, "Test-only simulated clean", "仅测试模拟清理"), fg, size=8.0)
-        p.text(panel.x + 10.0, panel.y + 27.0, label(s.zh, "Mock helper writes a temp file; no system memory changes", "模拟 helper 只写临时文件；不会清理系统内存"), secondary, size=8.0)
-    else:
-        p.text(panel.x + 10.0, panel.y + 9.0, label(s.zh, "Clean page cache", "清理页缓存"), fg, size=8.0)
-        p.text(panel.x + 10.0, panel.y + 27.0, label(s.zh, "Requires authorization; kernel decides how much is freed", "需要系统授权；释放多少由内核决定"), secondary, size=8.0)
+    # The panel width is fixed, so every line has to fit inside it. Split the
+    # explanation over two short lines instead of one long one that the panel
+    # edge would clip mid-word.
+    let backend_mode = if s.clean_simulation: "simulation" else: "production"
+    let title_text = if s.clean_simulation: label(s.zh, "Test-only simulated clean", "仅测试模拟清理") else: label(s.zh, "Clean page cache", "清理页缓存")
+    let body_a = if s.clean_simulation: label(s.zh, "Mock helper only; writes a temp file.", "仅使用模拟 helper，只写临时文件。") else: label(s.zh, "Requires system authorization.", "需要系统授权。")
+    let body_b = if s.clean_simulation: label(s.zh, "No system memory is changed.", "不会改动系统内存。") else: label(s.zh, "The kernel decides the effect.", "实际效果由内核决定。")
+    p.text(panel.x + 10.0, panel.y + 9.0, title_text, fg, size=8.0)
+    p.text(panel.x + 10.0, panel.y + 26.0, body_a, secondary, size=8.0)
+    p.text(panel.x + 10.0, panel.y + 40.0, body_b, secondary, size=8.0)
+    if s.test_mode:
+        let inner = panel.w - 20.0
+        let mut widest = ui.text_width(title_text, size=8.0)
+        let wa = ui.text_width(body_a, size=8.0)
+        let wb = ui.text_width(body_b, size=8.0)
+        if wa > widest: widest = wa
+        if wb > widest: widest = wb
+        mr_ci_emit(f"CI_CLEAN_CONFIRM_TEXT mode={backend_mode} inner_width={inner} widest_line={widest} fits={widest <= inner}")
     let confirm = clean_confirm_button(true)
     let cancel = clean_confirm_button(false)
     if s.clean_confirm_focus == 0: p.fill_rect(&confirm, hot)

@@ -167,6 +167,19 @@ xdotool click 1
 sleep 0.3
 require_marker 'CI_MOUSE_ACTION target=19'
 require_marker 'CI_CLEAN_CONFIRM open=true mode=simulation'
+# The dialog panel has a fixed width, so a sentence that overruns it is clipped
+# mid-word. The window itself reports the measured line widths; require them to
+# fit rather than trusting the wording to stay short.
+for _ in {1..50}; do
+  grep -q 'CI_CLEAN_CONFIRM_TEXT ' "$app_log" && break
+  sleep 0.1
+done
+grep 'CI_CLEAN_CONFIRM_TEXT ' "$app_log" | tail -n 1 | tee -a "$artifact_dir/markers.txt"
+grep -q 'CI_CLEAN_CONFIRM_TEXT mode=simulation .* fits=true' "$app_log" || {
+  printf 'Confirmation text does not fit the panel.\n' >&2
+  grep 'CI_CLEAN_CONFIRM_TEXT' "$app_log" >&2
+  exit 1
+}
 capture_dialog="$artifact_dir/clean-confirm.png"
 import -window "$window_id" "$capture_dialog"
 
