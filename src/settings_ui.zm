@@ -1,9 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Canvas-rendered settings shell based on Mem Reduct v.3.5.2 resource.rc.
-# All setting controls remain non-persistent and non-operational in this phase.
+# Dialog interaction only; main owns locale/theme state and persistence.
 use std/ui
 use ui_geometry
 use settings_resources
+
+# Stable event results consumed by main after any required preference transaction.
+pub fn action_none() -> i64: 0
+pub fn action_close() -> i64: 1
+pub fn action_select_english() -> i64: 10
+pub fn action_select_simplified_chinese() -> i64: 11
+pub fn action_reset_preferences() -> i64: 12
+
+struct TestPreview:
+    resource_id: i64
+    checked: bool
 
 pub struct State:
     page: i64
@@ -16,8 +27,7 @@ pub struct State:
     language_open: bool
     language_focus: i64
     test_mode: bool
-    widget_preview_id: i64
-    widget_preview_checked: bool
+    test_preview: TestPreview
     logged_page: i64
     logged_zh: bool
     logged_width: f64
@@ -28,7 +38,7 @@ pub struct State:
     logged_region_scroll: i64
 
 pub fn initial(test_mode: bool) -> State:
-    State(page: 0, focus: 100, modal: 0, status: "", dark: false, hover: 0.0, pressed: 0.0, language_open: false, language_focus: 801, test_mode: test_mode, widget_preview_id: 0, widget_preview_checked: false, logged_page: -1, logged_zh: false, logged_width: -1.0, logged_height: -1.0, logged_dark: false, emit_geometry: false, region_scroll: 0, logged_region_scroll: -1)
+    State(page: 0, focus: 100, modal: 0, status: "", dark: false, hover: 0.0, pressed: 0.0, language_open: false, language_focus: 801, test_mode: test_mode, test_preview: TestPreview(resource_id: 0, checked: false), logged_page: -1, logged_zh: false, logged_width: -1.0, logged_height: -1.0, logged_dark: false, emit_geometry: false, region_scroll: 0, logged_region_scroll: -1)
 
 fn checkbox_preview_spec(id: i64) -> settings_resources.ControlSpec:
     if id == 116: return settings_resources.lookup(0, id)
@@ -39,30 +49,36 @@ pub fn enable_widget_preview_checkbox(s: &mut State, id: i64):
     if not s.test_mode: return
     let resource = checkbox_preview_spec(id)
     if resource.kind != "checkbox": return
-    s.widget_preview_id = id
-    s.widget_preview_checked = resource.checked
+    s.test_preview.resource_id = id
+    s.test_preview.checked = resource.checked
     s.page = resource.page
     s.focus = 100 + resource.page
-    println(f"CI_WIDGET_PREVIEW enabled=true resource={id} page_idd={page_dialog_id(resource.page)} checked={s.widget_preview_checked} persistence=none side_effects=none")
+    println(f"CI_WIDGET_PREVIEW enabled=true resource={id} page_idd={page_dialog_id(resource.page)} checked={s.test_preview.checked} persistence=none side_effects=none")
 
 fn checkbox_enabled(s: &State, id: i64, resource_enabled: bool) -> bool:
-    resource_enabled or (s.test_mode and s.widget_preview_id == id and preview_checkbox_on_page(s) == id)
+    resource_enabled or (s.test_mode and s.test_preview.resource_id == id and preview_checkbox_on_page(s) == id)
 
 fn checkbox_checked(s: &State, id: i64, resource_checked: bool) -> bool:
-    if s.test_mode and s.widget_preview_id == id and preview_checkbox_on_page(s) == id: return s.widget_preview_checked
+    if s.test_mode and s.test_preview.resource_id == id and preview_checkbox_on_page(s) == id: return s.test_preview.checked
     resource_checked
 
 fn toggle_preview_checkbox(s: &mut State, id: i64, source: string, zh: bool):
-    if not s.test_mode or s.widget_preview_id != id or preview_checkbox_on_page(s) != id: return
-    s.widget_preview_checked = not s.widget_preview_checked
+    if not s.test_mode or s.test_preview.resource_id != id or preview_checkbox_on_page(s) != id: return
+    s.test_preview.checked = not s.test_preview.checked
     s.status = text(zh, "Preview only; no setting changed or saved", "仅预览；未更改或保存设置")
-    println(f"CI_WIDGET_PREVIEW resource={id} checked={s.widget_preview_checked} source={source} persistence=none side_effects=none")
+    println(f"CI_WIDGET_PREVIEW resource={id} checked={s.test_preview.checked} source={source} persistence=none side_effects=none")
 
 fn preview_checkbox_on_page(s: &State) -> i64:
-    if s.widget_preview_id == 0: return 0
-    let resource = settings_resources.lookup(s.page, s.widget_preview_id)
-    if resource.kind == "checkbox": return s.widget_preview_id
+    if not s.test_mode or s.test_preview.resource_id == 0: return 0
+    let resource = settings_resources.lookup(s.page, s.test_preview.resource_id)
+    if resource.kind == "checkbox": return s.test_preview.resource_id
     0
+
+fn reset_question(zh: bool) -> string:
+    text(zh, "Reset language and app theme?", "重置界面语言和应用主题？")
+
+fn reset_default_description(zh: bool) -> string:
+    text(zh, "Default: English + Light (en + light)", "默认：English + 亮色（en + light）")
 
 fn text(zh: bool, en: string, cn: string) -> string:
     if zh: return cn
@@ -600,8 +616,8 @@ pub fn draw(s: &mut State, p: &ui.Painter, zh: bool, dark: bool, width: f64, hei
         let modal = ui_geometry.settings_reset_modal_rect(width, height)
         p.fill_rect(&modal, &bg)
         outline(p, &modal, &border)
-        canvas_text(s, p, 83, "question", modal.x + 10.0, modal.y + 10.0, text(zh, "Reset all application settings?", "确定要将所有设置恢复默认吗？"), fg, 8.0, false)
-        canvas_text(s, p, 0, "limitation", modal.x + 10.0, modal.y + 27.0, text(zh, "No settings are saved in this build.", "当前版本尚未保存设置。"), disabled, 8.0, false)
+        canvas_text(s, p, 83, "question", modal.x + 10.0, modal.y + 10.0, reset_question(zh), fg, 8.0, false)
+        canvas_text(s, p, 0, "limitation", modal.x + 10.0, modal.y + 27.0, reset_default_description(zh), disabled, 8.0, false)
         let yes = ui_geometry.settings_modal_button_rect(width, height, true)
         let no = ui_geometry.settings_modal_button_rect(width, height, false)
         p.fill_rect(&yes, &button_bg)
@@ -723,7 +739,7 @@ pub fn release(s: &mut State, target: f64, zh: bool) -> i64:
         if s.test_mode: println("CI_SETTINGS_LANGUAGE_CANCEL reason=outside-release")
     if was_pressed != 0.0 and was_pressed == target:
         return click(s, target, zh)
-    0
+    action_none()
 
 pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
     s.pressed = 0.0
@@ -731,14 +747,14 @@ pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
         if target == 701.0:
             s.modal = 0
             s.focus = 106
-            s.status = text(zh, "No settings changed; persistence is not implemented", "没有更改设置；设置持久化尚未实现")
-            if s.test_mode: println("CI_RESET_CONFIRMED no_system_change=true")
+            if s.test_mode: println(f"CI_RESET_CONFIRMED action={action_reset_preferences()}")
+            return action_reset_preferences()
         elif target == 702.0 or target == 700.0:
             s.modal = 0
             s.focus = 106
             s.status = text(zh, "Reset cancelled", "已取消重置")
             if s.test_mode: println("CI_RESET_CANCELLED no_system_change=true")
-        return 0
+        return action_none()
     if s.language_open and target != 123.0 and target != 801.0 and target != 802.0:
         s.language_open = false
         if s.test_mode: println("CI_SETTINGS_LANGUAGE_CANCEL reason=outside-click")
@@ -755,7 +771,7 @@ pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
     elif target == 106.0:
         s.focus = 107
         if s.test_mode: println("CI_SETTINGS_CLOSE resource=106 action=return_to_main")
-        return 1
+        return action_close()
     elif target == 123.0:
         s.focus = 105
         s.language_open = not s.language_open
@@ -763,21 +779,17 @@ pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
             if zh: s.language_focus = 802
             else: s.language_focus = 801
         if s.test_mode: println(f"CI_SETTINGS_LANGUAGE resource=123 popup_open={s.language_open}")
-    elif s.widget_preview_id != 0 and target == f64(s.widget_preview_id):
-        s.focus = s.widget_preview_id
-        toggle_preview_checkbox(s, s.widget_preview_id, "mouse", zh)
-    elif target == 801.0 or target == 802.0:
+    elif s.test_preview.resource_id != 0 and target == f64(s.test_preview.resource_id):
+        s.focus = s.test_preview.resource_id
+        toggle_preview_checkbox(s, s.test_preview.resource_id, "mouse", zh)
+    elif s.language_open and s.page == 0 and (target == 801.0 or target == 802.0):
         s.language_open = false
         if target == 801.0:
-            # The main loop redraws with the destination locale after this
-            # returns 2, so the feedback must already use that locale too.
-            s.status = "Language selection applies for this session only; settings are not saved"
-            if s.test_mode: println("CI_SETTINGS_LANGUAGE_SELECT resource=123 locale=en")
-            if zh: return 2
+            if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_SELECT resource=123 locale=en action={action_select_english()}")
+            return action_select_english()
         else:
-            s.status = "语言选择仅在当前会话有效；设置不会保存"
-            if s.test_mode: println("CI_SETTINGS_LANGUAGE_SELECT resource=123 locale=zh-CN")
-            if not zh: return 2
+            if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_SELECT resource=123 locale=zh-CN action={action_select_simplified_chinese()}")
+            return action_select_simplified_chinese()
     elif target >= 1240.0 and target < 1248.0:
         let index = i64(target - 1240.0)
         s.status = unavailable_status(124, zh)
@@ -795,7 +807,7 @@ pub fn click(s: &mut State, target: f64, zh: bool) -> i64:
         let id = i64(target)
         s.status = unavailable_status(id, zh)
         if s.test_mode: println(f"CI_SETTINGS_DISABLED resource={id} action=none")
-    0
+    action_none()
 
 pub fn scroll(s: &mut State, x: f64, y: f64, width: f64, height: f64, delta: i64) -> bool:
     if delta == 0 or s.modal != 0 or s.page != 1: return false
@@ -853,9 +865,9 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
                 s.status = text(zh, "Reset cancelled", "已取消重置")
                 if s.test_mode: println("CI_RESET_CANCELLED no_system_change=true source=keyboard")
             else:
-                s.status = text(zh, "No settings changed; persistence is not implemented", "没有更改设置；设置持久化尚未实现")
-                if s.test_mode: println("CI_RESET_CONFIRMED no_system_change=true source=keyboard")
-        return 0
+                if s.test_mode: println(f"CI_RESET_CONFIRMED action={action_reset_preferences()} source=keyboard")
+                return action_reset_preferences()
+        return action_none()
     if s.language_open:
         if name == "Escape" or name == "Esc" or name == "\x1b":
             s.language_open = false
@@ -884,13 +896,16 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
         elif name == "Enter" or name == "Return" or name == "\r" or name == "\n" or name == "Space" or name == "space" or name == " ":
             let selected = s.language_focus
             s.language_open = false
-            if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_KEY name={name} selected={selected}")
-            if selected == 801 and zh: return 2
-            if selected == 802 and not zh: return 2
-        return 0
+            if selected == 801:
+                if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_KEY name={name} selected={selected} action={action_select_english()}")
+                return action_select_english()
+            if selected == 802:
+                if s.test_mode: println(f"CI_SETTINGS_LANGUAGE_KEY name={name} selected={selected} action={action_select_simplified_chinese()}")
+                return action_select_simplified_chinese()
+        return action_none()
     if name == "Escape" or name == "Esc" or name == "\x1b":
         if s.test_mode: println("CI_SETTINGS_ESCAPE action=return_to_main")
-        return 1
+        return action_close()
     if name == "Tab" or name == "\t":
         next_focus(s, 1)
     elif name == "Shift+Tab":
@@ -923,10 +938,11 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
             s.page = s.focus - 100
         elif s.focus == 107:
             if s.test_mode: println("CI_SETTINGS_CLOSE resource=106 action=return_to_main source=keyboard")
-            return 1
+            return action_close()
         elif s.focus == 106:
             s.focus = 701
             s.modal = 1
+            s.status = ""
             if s.test_mode: println("CI_RESET_CONFIRMATION resource=105 resource_string=83")
         elif s.focus == 105 and s.page == 0:
             s.language_open = true
@@ -937,21 +953,22 @@ pub fn key(s: &mut State, name: string, zh: bool) -> i64:
         if s.focus >= 100 and s.focus <= 104:
             s.page = s.focus - 100
         elif preview_checkbox_on_page(s) != 0 and s.focus == preview_checkbox_on_page(s):
-            toggle_preview_checkbox(s, s.widget_preview_id, "keyboard-space", zh)
+            toggle_preview_checkbox(s, s.test_preview.resource_id, "keyboard-space", zh)
         elif s.focus == 106:
             s.focus = 701
             s.modal = 1
+            s.status = ""
             if s.test_mode: println("CI_RESET_CONFIRMATION resource=105 resource_string=83 source=Space")
         elif s.focus == 107:
             if s.test_mode: println("CI_SETTINGS_CLOSE resource=106 action=return_to_main source=Space")
-            return 1
+            return action_close()
         elif s.focus == 105 and s.page == 0:
             s.language_open = true
             if zh: s.language_focus = 802
             else: s.language_focus = 801
             if s.test_mode: println("CI_SETTINGS_LANGUAGE resource=123 popup_open=true source=Space")
     if s.test_mode: println(f"CI_SETTINGS_KEY name={name} page_idd={page_dialog_id(s.page)} focus={s.focus}")
-    0
+    action_none()
 
 fn test_settings_resource_mapping_is_complete():
     assert page_dialog_id(0) == 101
@@ -1067,30 +1084,83 @@ fn test_settings_navigation_language_and_reset_are_interactive():
     assert click(&mut s, 1040.0, false) == 0
     assert s.page == 0
     assert click(&mut s, 123.0, false) == 0
-    assert s.language_open
-    assert click(&mut s, 802.0, false) == 2
+    assert s.language_open and s.language_focus == 801
+    assert click(&mut s, 802.0, false) == action_select_simplified_chinese()
     assert not s.language_open
     assert click(&mut s, 105.0, true) == 0
     assert s.modal == 1
-    assert click(&mut s, 702.0, true) == 0
+    assert click(&mut s, 700.0, true) == action_none()
+    assert s.modal == 0 and s.status == "已取消重置"
+    assert click(&mut s, 105.0, true) == action_none()
+    assert s.modal == 1
+    assert click(&mut s, 702.0, true) == action_none()
     assert s.modal == 0
     assert click(&mut s, 105.0, true) == 0
-    assert click(&mut s, 701.0, true) == 0
+    s.status = "awaiting reset result"
+    assert click(&mut s, 701.0, true) == action_reset_preferences()
     assert s.modal == 0
-    assert click(&mut s, 106.0, true) == 1
+    assert s.status == "awaiting reset result" and not s.dark
+    assert click(&mut s, 106.0, true) == action_close()
 
-fn test_language_selection_feedback_uses_destination_locale():
+fn test_language_selection_returns_explicit_locale_without_premature_update():
     let mut s = initial(true)
-    assert click(&mut s, 802.0, false) == 2
-    assert s.status == "语言选择仅在当前会话有效；设置不会保存"
+    s.status = "keep until store result"
+    assert click(&mut s, 123.0, false) == action_none()
+    assert s.language_open and s.language_focus == 801
+    assert click(&mut s, 801.0, false) == action_select_english()
+    assert not s.language_open and s.status == "keep until store result"
+
+    assert click(&mut s, 123.0, false) == action_none()
+    assert s.language_open and s.language_focus == 801
+    assert click(&mut s, 802.0, false) == action_select_simplified_chinese()
+    assert not s.language_open and s.status == "keep until store result"
+
+    # The caller passes the newly committed locale when reopening the popup.
+    assert click(&mut s, 123.0, true) == action_none()
+    assert s.language_open and s.language_focus == 802
+    assert click(&mut s, 802.0, true) == action_select_simplified_chinese()
+    assert not s.language_open and s.status == "keep until store result"
+
+    assert click(&mut s, 123.0, true) == action_none()
+    assert s.language_focus == 802
+    assert click(&mut s, 801.0, true) == action_select_english()
+    assert not s.language_open and s.status == "keep until store result"
 
     s = initial(true)
-    assert click(&mut s, 801.0, true) == 2
-    assert s.status == "Language selection applies for this session only; settings are not saved"
+    assert click(&mut s, 123.0, false) == action_none()
+    assert s.language_focus == 801
+    assert key(&mut s, "Down", false) == action_none()
+    assert s.language_focus == 802
+    assert key(&mut s, "Escape", false) == action_none()
+    assert not s.language_open
+    assert click(&mut s, 123.0, false) == action_none()
+    assert s.language_open and s.language_focus == 801
+    assert key(&mut s, "Escape", false) == action_none()
+
+    s = initial(true)
+    s.status = "keep until store result"
+    assert key(&mut s, "Tab", false) == action_none()
+    assert s.focus == 105
+    assert key(&mut s, "Enter", false) == action_none()
+    assert s.language_open and s.language_focus == 801
+    assert key(&mut s, "Enter", false) == action_select_english()
+    assert not s.language_open and s.focus == 105
+    assert s.status == "keep until store result"
+
+fn test_settings_action_codes_are_stable_and_reset_copy_is_scoped():
+    assert action_none() == 0
+    assert action_close() == 1
+    assert action_select_english() == 10
+    assert action_select_simplified_chinese() == 11
+    assert action_reset_preferences() == 12
+    assert reset_question(false) == "Reset language and app theme?"
+    assert reset_question(true) == "重置界面语言和应用主题？"
+    assert reset_default_description(false) == "Default: English + Light (en + light)"
+    assert reset_default_description(true) == "默认：English + 亮色（en + light）"
 
 fn test_escape_returns_from_settings_or_cancels_reset():
     let mut s = initial(true)
-    assert key(&mut s, "Escape", false) == 1
+    assert key(&mut s, "Escape", false) == action_close()
     s.modal = 1
     assert key(&mut s, "Escape", false) == 0
     assert s.modal == 0
@@ -1103,18 +1173,18 @@ fn test_keyboard_focus_activates_language_reset_and_close_controls():
     assert s.language_open
     assert key(&mut s, "Down", false) == 0
     assert s.language_focus == 802
-    assert key(&mut s, "Enter", false) == 2
+    assert key(&mut s, "Enter", false) == action_select_simplified_chinese()
     assert not s.language_open
 
     s.focus = 106
     assert key(&mut s, "Enter", true) == 0
     assert s.modal == 1
     assert s.focus == 701
-    assert key(&mut s, "Escape", true) == 0
+    assert key(&mut s, "Escape", true) == action_none()
     assert s.modal == 0 and s.focus == 106
 
     s.focus = 107
-    assert key(&mut s, "Enter", true) == 1
+    assert key(&mut s, "Enter", true) == action_close()
 
 fn test_reset_modal_focus_cycles_and_keyboard_cancel_is_reachable():
     let mut s = initial(true)
@@ -1151,19 +1221,19 @@ fn test_space_activates_reset_close_and_modal_choices():
 
     assert key(&mut s, "Spacebar", false) == 0
     assert s.modal == 1 and s.focus == 701
-    assert key(&mut s, " ", false) == 0
+    assert key(&mut s, " ", false) == action_reset_preferences()
     assert s.modal == 0 and s.focus == 106
-    assert s.status == "No settings changed; persistence is not implemented"
 
     s.focus = 106
     assert key(&mut s, "Enter", false) == 0
     assert s.modal == 1 and s.focus == 701
-    assert key(&mut s, "Enter", false) == 0
+    s.status = "awaiting reset result"
+    assert key(&mut s, "Enter", false) == action_reset_preferences()
     assert s.modal == 0 and s.focus == 106
-    assert s.status == "No settings changed; persistence is not implemented"
+    assert s.status == "awaiting reset result" and not s.dark
 
     s.focus = 107
-    assert key(&mut s, "Space", false) == 1
+    assert key(&mut s, "Space", false) == action_close()
 
     assert click(&mut s, 105.0, false) == 0
     assert s.modal == 1 and s.focus == 701
@@ -1185,12 +1255,11 @@ fn test_lowercase_gdk_space_activates_settings_controls():
     s.focus = 106
     assert key(&mut s, "Enter", false) == 0
     assert s.modal == 1 and s.focus == 701
-    assert key(&mut s, "space", false) == 0
+    assert key(&mut s, "space", false) == action_reset_preferences()
     assert s.modal == 0 and s.focus == 106
-    assert s.status == "No settings changed; persistence is not implemented"
 
     s.focus = 107
-    assert key(&mut s, "space", false) == 1
+    assert key(&mut s, "space", false) == action_close()
 
     s = initial(true)
     assert key(&mut s, "Tab", false) == 0
@@ -1199,7 +1268,7 @@ fn test_lowercase_gdk_space_activates_settings_controls():
     assert s.language_open and s.language_focus == 801
     assert key(&mut s, "Down", false) == 0
     assert s.language_focus == 802
-    assert key(&mut s, "space", false) == 2
+    assert key(&mut s, "space", false) == action_select_simplified_chinese()
     assert not s.language_open
 
 fn test_combo_pointer_keyboard_focus_and_cancel_paths():
@@ -1236,7 +1305,7 @@ fn test_combo_keyboard_space_f4_alt_and_shift_tab():
     assert s.language_open and s.language_focus == 801
     assert key(&mut s, "Down", false) == 0
     assert s.language_focus == 802
-    assert key(&mut s, "Space", false) == 2
+    assert key(&mut s, "Space", false) == action_select_simplified_chinese()
     assert not s.language_open
 
     assert key(&mut s, "F4", false) == 0
@@ -1270,7 +1339,7 @@ fn test_combo_home_end_and_page_keys_select_first_and_last_without_early_apply()
 
     assert key(&mut s, "End", false) == 0
     assert s.language_open and s.language_focus == 802
-    assert key(&mut s, "Enter", false) == 2
+    assert key(&mut s, "Enter", false) == action_select_simplified_chinese()
     assert not s.language_open
 
 fn test_mouse_hit_targets_cover_all_five_resource_pages():
@@ -1316,14 +1385,14 @@ fn test_disabled_native_settings_never_toggle_or_open():
 fn test_checkbox_preview_is_test_only_transient_and_side_effect_free():
     let mut s = initial(false)
     enable_widget_preview_checkbox(&mut s, 116)
-    assert s.widget_preview_id == 0
+    assert s.test_preview.resource_id == 0
     assert not checkbox_enabled(&s, 116, settings_resources.lookup(0, 116).linux_enabled)
 
     s = initial(true)
     enable_widget_preview_checkbox(&mut s, 125)
-    assert s.widget_preview_id == 0
+    assert s.test_preview.resource_id == 0
     enable_widget_preview_checkbox(&mut s, 116)
-    assert s.widget_preview_id == 116 and not s.widget_preview_checked
+    assert s.test_preview.resource_id == 116 and not s.test_preview.checked
     assert checkbox_enabled(&s, 116, settings_resources.lookup(0, 116).linux_enabled)
     assert not checkbox_enabled(&s, 117, settings_resources.lookup(0, 117).linux_enabled)
     assert not checkbox_checked(&s, 116, settings_resources.lookup(0, 116).checked)
@@ -1331,11 +1400,11 @@ fn test_checkbox_preview_is_test_only_transient_and_side_effect_free():
     pointer(&mut s, 116.0, true)
     assert settings_resources.checkbox_visual_state(true, false, false, true, true) == 8
     assert release(&mut s, 0.0, false) == 0
-    assert not s.widget_preview_checked
+    assert not s.test_preview.checked
 
     pointer(&mut s, 116.0, true)
     assert release(&mut s, 116.0, false) == 0
-    assert s.widget_preview_checked and s.focus == 116
+    assert s.test_preview.checked and s.focus == 116
     assert s.status == "Preview only; no setting changed or saved"
     assert settings_resources.checkbox_visual_state(true, true, false, true, false) == 7
     assert checkbox_checked(&s, 116, false)
@@ -1347,15 +1416,15 @@ fn test_checkbox_preview_keyboard_space_and_tab_order():
     assert key(&mut s, "Tab", false) == 0
     assert s.focus == 116
     assert key(&mut s, "Space", false) == 0
-    assert s.widget_preview_checked
+    assert s.test_preview.checked
     assert key(&mut s, "Enter", false) == 0
-    assert s.widget_preview_checked
+    assert s.test_preview.checked
     assert key(&mut s, "Tab", false) == 0
     assert s.focus == 105
     assert key(&mut s, "Shift+Tab", false) == 0
     assert s.focus == 116
     assert key(&mut s, "Space", true) == 0
-    assert not s.widget_preview_checked
+    assert not s.test_preview.checked
     assert s.status == "仅预览；未更改或保存设置"
 
     s = initial(true)
@@ -1365,7 +1434,7 @@ fn test_checkbox_preview_keyboard_space_and_tab_order():
 fn test_appearance_checkbox_preview_uses_resource_default_and_page_tab_order():
     let mut s = initial(true)
     enable_widget_preview_checkbox(&mut s, 136)
-    assert s.widget_preview_id == 136 and s.widget_preview_checked
+    assert s.test_preview.resource_id == 136 and s.test_preview.checked
     assert s.page == 2 and s.focus == 102
     assert checkbox_enabled(&s, 136, settings_resources.lookup(2, 136).linux_enabled)
     assert checkbox_checked(&s, 136, false)
@@ -1376,14 +1445,14 @@ fn test_appearance_checkbox_preview_uses_resource_default_and_page_tab_order():
     assert key(&mut s, "Tab", false) == 0
     assert s.focus == 136
     assert key(&mut s, "Space", false) == 0
-    assert not s.widget_preview_checked
+    assert not s.test_preview.checked
     assert upstream_default_checked(136, -1)
     assert key(&mut s, "Tab", false) == 0
     assert s.focus == 106
     assert key(&mut s, "Shift+Tab", false) == 0
     assert s.focus == 136
     assert key(&mut s, "Space", true) == 0
-    assert s.widget_preview_checked
+    assert s.test_preview.checked
     assert s.status == "仅预览；未更改或保存设置"
 
 fn test_groupbox_frame_inset_matches_win32_capture_without_changing_resource_rect():
@@ -1438,7 +1507,7 @@ fn test_mouse_press_survives_drag_and_release_cancels_outside_combo():
     assert(s.language_open)
     pointer(&mut s, 123.0, true)
     pointer(&mut s, 801.0, true)
-    assert(release(&mut s, 801.0, false) == 0)
+    assert(release(&mut s, 801.0, false) == action_select_english())
     assert(not s.language_open)
     assert(s.pressed == 0.0)
 
@@ -1449,5 +1518,5 @@ fn test_combo_mouse_release_selects_language_through_production_transition():
     assert(s.language_open and s.focus == 105)
     pointer(&mut s, 802.0, false)
     pointer(&mut s, 802.0, true)
-    assert(release(&mut s, 802.0, false) == 2)
+    assert(release(&mut s, 802.0, false) == action_select_simplified_chinese())
     assert(not s.language_open and s.pressed == 0.0)
