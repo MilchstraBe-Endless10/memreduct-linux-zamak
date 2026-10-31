@@ -2,12 +2,12 @@
 
 ## 2026-10-31 — P3B 生产 GUI 与隔离清理闭环
 
-- **分支与提交：**`feat/issue-10-p3b-clean-closure`，起点 `d8ca307090782182355892d2777a44c1ddac68fa`。本轮本地提交依次为 `71621ac`（Polkit action 固定 helper 路径）、`1f8434f`（CI 标记改走原生无缓冲输出）、`db7cf23`（隔离清理闭环脚本）、`b3c8936`（默认构建拒绝清理的门控脚本）。无 push / Ready / merge / release。
-- **修复的缺陷（均有回归或实跑证据）：**①`src/main.zm` 全部标记原走 Zamak 运行时缓冲 `println`，进程被限时定时器击杀时整批丢失 —— 新增原生 `mr_ci_emit`（写 stderr 并 flush），74 处标记全部迁移；`tests/test_native.py` 断言无标记使用 `println`，并断言无 `MEMREDUCT_CI` 时静默、有时刷新；用变异法验证（把发射器改成空操作即失败）。②清理按钮标签颜色只判断 `clean_simulation`，启用生产构建时会被画成禁用态 → 条件加 `or clean_production`。③取消分支原对后端无条件打模拟标记 → 改为按后端选择 marker/note。
+- **分支与提交：**`feat/issue-10-p3b-clean-closure`，起点 `d8ca307090782182355892d2777a44c1ddac68fa`。本轮本地提交依次为 `71621ac`（Polkit action 固定 helper 路径）、`1f8434f`（CI 标记改走原生无缓冲输出）、`db7cf23`（隔离清理闭环脚本）、`b3c8936`（默认构建拒绝清理的门控脚本）、`07dd2a4`（ADR/报告/记忆）、`ace6396`（确认框文字截断修复）。无 push / Ready / merge / release。
+- **修复的缺陷（均有回归或实跑证据）：**①`src/main.zm` 全部标记原走 Zamak 运行时缓冲 `println`，进程被限时定时器击杀时整批丢失 —— 新增原生 `mr_ci_emit`（写 stderr 并 flush），74 处标记全部迁移；`tests/test_native.py` 断言无标记使用 `println`，并断言无 `MEMREDUCT_CI` 时静默、有时刷新；用变异法验证（把发射器改成空操作即失败）。②清理按钮标签颜色只判断 `clean_simulation`，启用生产构建时会被画成禁用态 → 条件加 `or clean_production`。③取消分支原对后端无条件打模拟标记 → 改为按后端选择 marker/note。④确认框第二行文字宽约 290px，超出固定面板 229px 内宽被截断成 `…no system memory chan` → 拆成两行短句并把面板加高到容得下三行文字，窗口新增 `CI_CLEAN_CONFIRM_TEXT` 上报实测宽度，脚本要求 `fits=true`。
 - **隔离闭环（真实 GUI 事件）：**`scripts/ci/p3b-clean-simulation-xvfb.sh` 在私有 Xvfb 内用真实 XTEST 点击驱动：点击 Clean → 确认框 → Tab 双按钮焦点 → 点击 Confirm → 模拟授权接受 → helper 阶段 → 结果回显。断言假 helper 收到生产契约 `/usr/libexec/memreduct-zamak-helper pagecache`、结果改变渲染像素（约 2900）、第二次点击不自动重试、全程无特权操作。**不涉及 pkexec、root helper、内核写入。**
 - **默认构建门控：**`scripts/ci/p3b-production-gate-xvfb.sh` 设 `MEMREDUCT_CI=1` 但不开模拟后端，断言点击确实落在按钮上（`CI_MOUSE_ACTION target=19`）后被执行分支拒绝（`CI_CLEAN_DISABLED action=none`），且无确认框、无 helper。注意：无窗口管理器时 GTK 按缩放因子绘制为 674×738，固定像素坐标会点空导致假通过 —— 已改为按客户区比例取点。
 - **普通模式：**`MEMREDUCT_CI` 未设置下启动，stdout/stderr 均 0 字节、0 个 `CI_` 标记、0 次特权提及、0 条 GTK 警告，窗口 337×369 正常驻留。
-- **回归：**`python3 -m unittest discover -s tests` → 61 passed；`zam test .` → 76 passed / 0 failed；`bash -n scripts/*.sh scripts/ci/*.sh` → 通过；`zam check .` → CHECK OK。可运行二进制 `build/memreduct_zamak-c4cd63d643ab45df32fe51132036fbfbf96a03e8fcfdd882ed7e7f25cdb2e0c5`。
+- **回归：**`python3 -m unittest discover -s tests` → 61 passed；`zam test .` → 76 passed / 0 failed；`bash -n scripts/*.sh scripts/ci/*.sh` → 通过；`zam check .` → CHECK OK。可运行二进制 `build/memreduct_zamak-7582f543dc00123fb8100b4df5092a9532fd518594e23bf19b01f23f95cbd3f1`（对话框修复后重建；此前含标记修复的 `-c4cd63d6…` 已被取代）。
 - **未验收（构造性未验证）：**真实 Polkit 授权、已安装的 root helper、任何真实页缓存写入 —— 均需产品所有者另行明示授权与设备测试，ADR-0005 仍为 PROPOSED。真实 Hyprland 输入注入未做，所有事件流均在隔离 Xvfb 内完成。整页 Windows v3.5.2 像素 1:1 仍 NOT PASS。
 - **工作区边界：**`artifacts/` 仍为原有未跟踪目录，未暂存未提交；未触碰其他 worktree、真实 `/proc/sys/vm/drop_caches`、Swap/ZRAM 或 root GUI。
 

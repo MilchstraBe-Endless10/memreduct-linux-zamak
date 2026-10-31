@@ -111,6 +111,7 @@ kernel state.
 | Stage file always rejected | `>` under the default umask produced 0644, but the reader requires 0600 | mock sets `umask 077` |
 | Privileged-reference check could never fail | `grep -q` emitted nothing, so the downstream filter saw empty input | check rewritten to capture and test the actual hits |
 | Gate check would pass without touching the button | fixed-pixel click landed in empty space at the GTK scale factor (window 674x738, not 337x369) | click coordinates derived as a fraction of the client area, and the run asserts the button was hit |
+| Confirmation dialog clipped its own text mid-word (`…no system memory chan`) | second line measured 290px against 229px of usable inner width in a fixed-width panel | explanation split over two short lines and the panel made tall enough for three; the window now reports measured widths and the script requires `fits=true` |
 
 ## 6. Progress against P3A
 
@@ -126,7 +127,7 @@ reach it. Now:
 
 ## 7. Binaries
 
-- default/runnable: `build/memreduct_zamak-c4cd63d643ab45df32fe51132036fbfbf96a03e8fcfdd882ed7e7f25cdb2e0c5`
+- default/runnable: `build/memreduct_zamak-7582f543dc00123fb8100b4df5092a9532fd518594e23bf19b01f23f95cbd3f1`
 - helper: `build/memreduct-zamak-helper`
 
 ## 8. Remaining blockers
