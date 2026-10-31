@@ -1,0 +1,116 @@
+name: P3A preference persistence GUI
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+    branches:
+      - main
+    paths:
+      - 'src/main.zm'
+      - 'src/settings_ui.zm'
+      - 'src/settings_resources.zm'
+      - 'src/ui_geometry.zm'
+      - 'native/gui_window.c'
+      - 'native/gui_test.c'
+      - 'native/preferences_store.c'
+      - 'native/preferences_store.h'
+      - 'tests/test_preferences_store.py'
+      - 'scripts/ci/build-production-gui.sh'
+      - 'scripts/build-arch.sh'
+      - 'zam.toml'
+      - 'scripts/ci/p3a-preferences-xvfb.sh'
+      - '.github/workflows/p3a-preferences-gui.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p3a-preferences-gui-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preferences-xvfb:
+    name: Normal-mode XDG persistence and Reset (Xvfb/XTEST)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, Node 24
+        with:
+          node-version: '22'
+      - name: Update APT indexes
+        timeout-minutes: 10
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p3a-apt
+          APT_UPDATE_TIMEOUT: 8m
+        run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "APT_UPDATE_TIMEOUT=$APT_UPDATE_TIMEOUT" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh update
+      - name: Install isolated GUI and build dependencies
+        timeout-minutes: 40
+        env:
+          APT_DIAGNOSTICS_DIR: ${{ runner.temp }}/p3a-apt
+          APT_INSTALL_TIMEOUT: 38m
+        run: |
+          mkdir -p "$APT_DIAGNOSTICS_DIR"
+          sudo env \
+            "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
+            "APT_INSTALL_TIMEOUT=$APT_INSTALL_TIMEOUT" \
+            "ImageOS=${ImageOS:-unknown}" \
+            "ImageVersion=${ImageVersion:-unknown}" \
+            bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox wmctrl fonts-noto-cjk fonts-dejavu python3-yaml
+      - name: Install pinned Zamak 0.2.0
+        run: npm install --global @veyralux/zamak@0.2.0
+      - name: Validate shell and workflow syntax
+        run: |
+          for file in scripts/*.sh scripts/ci/*.sh; do bash -n "$file"; done
+          python3 - <<'PY'
+          from pathlib import Path
+          import yaml
+          for path in sorted(Path(".github/workflows").glob("*.yml")):
+              yaml.safe_load(path.read_text(encoding="utf-8"))
+          print("PASS: all shell scripts and workflow YAML parsed")
+          PY
+      - name: Build GUI and run repository checks
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p3a-build
+        run: bash scripts/ci/build-production-gui.sh
+      - name: Re-run Arch build entrypoint
+        run: bash scripts/build-arch.sh
+      - name: Test normal-mode preference persistence in isolated XDG root
+        env:
+          ARTIFACT_DIR: ${{ runner.temp }}/p3a-preferences
+        run: bash scripts/ci/p3a-preferences-xvfb.sh "$RUNNER_TEMP/p3a-build/memreduct-zamak-production"
+      - name: Upload APT diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
+        with:
+          name: p3a-apt-diagnostics
+          path: ${{ runner.temp }}/p3a-apt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload build logs and production binaries
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
+        with:
+          name: p3a-production-build
+          path: ${{ runner.temp }}/p3a-build
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload preference screenshots, temporary config evidence, and X11 logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
+        with:
+          name: p3a-preferences-xvfb
+          path: ${{ runner.temp }}/p3a-preferences
+          if-no-files-found: error
+          retention-days: 14
