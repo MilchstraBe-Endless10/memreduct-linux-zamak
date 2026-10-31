@@ -21,6 +21,10 @@ extern fn mr_gui_test_selected_group() -> i64
 extern fn mr_gui_test_clean_simulation_enabled() -> i64
 extern fn mr_ci_emit(line: &string)
 extern fn mr_production_clean_enabled() -> i64
+extern fn mr_self_reclaim() -> i64
+extern fn mr_self_reclaim_bytes() -> i64
+extern fn mr_self_reclaim_failed_batches() -> i64
+extern fn mr_self_reclaim_error() -> i64
 extern fn mr_start_reclaim(mode: i64) -> i64
 extern fn mr_start_reclaim_mock(mode: i64) -> i64
 extern fn mr_poll_reclaim() -> i64
@@ -74,6 +78,7 @@ struct MainWindow:
     sample_failure_draw_logged: bool
     clean_simulation: bool
     clean_production: bool
+    clean_self: bool
     clean_state: i64
     clean_confirm_focus: i64
     clean_before_available: i64
@@ -258,6 +263,25 @@ fn clean_result_status(zh: bool, state: i64) -> string:
     if state == 12: return label(zh, "Memory sample unavailable; simulation was not started", "内存采样不可用；未启动模拟")
     label(zh, "Operation is in progress", "操作正在进行")
 
+# ADR-0006 action 2 result states. Kept separate from the page-cache states
+# because the two actions have different costs and different guarantees.
+fn clean_self_status_name(state: i64) -> string:
+    if state == 20: return "self-trimmed"
+    if state == 21: return "unsupported"
+    if state == 22: return "failed"
+    "not-started"
+
+fn clean_self_status_text(zh: bool, state: i64) -> string:
+    if state == 20: return label(zh, "This app's own memory was paged out", "已释放本程序自身内存")
+    if state == 21: return label(zh, "This kernel cannot page out memory", "当前内核不支持释放内存")
+    if state == 22: return label(zh, "This app's memory could not be paged out", "无法释放本程序内存")
+    label(zh, "Trimming this app's memory...", "正在释放本程序内存……")
+
+fn clean_self_state_for(result: i64) -> i64:
+    if result == 0: return 20
+    if result == 1: return 21
+    22
+
 fn clean_result_name(state: i64) -> string:
     if state == 4: return "accepted"
     if state == 5: return "confirmation-cancelled"
@@ -268,6 +292,23 @@ fn clean_result_name(state: i64) -> string:
     if state == 11: return "already-running"
     if state == 12: return "not-started-sample-unavailable"
     "in-progress"
+
+# ADR-0006 action 2, self mode: page out this process's own memory. It needs no
+# privilege, cannot reach another process, and is therefore always available.
+fn clean_self_can_start(state: i64) -> bool:
+    state != 1 and not clean_operation_busy(state)
+
+# Runs ADR-0006 action 2 in self mode. No helper, no authorization, no other
+# process: mr_self_reclaim only ever targets this process. The byte count is the
+# length the kernel accepted, not a measurement, so it is reported as such.
+fn run_self_reclaim(s: &mut MainWindow):
+    let result = mr_self_reclaim()
+    let state = clean_self_state_for(result)
+    s.clean_state = state
+    s.status = clean_self_status_text(s.zh, state)
+    if s.test_mode:
+        mr_ci_emit(f"CI_CLEAN_SELF result={clean_self_status_name(state)} result_state={state} status={result} accepted_bytes={mr_self_reclaim_bytes()} failed_batches={mr_self_reclaim_failed_batches()} error={mr_self_reclaim_error()} target=self only other_processes=false no_privilege=true")
+    s.canvas.redraw()
 
 fn clean_simulation_can_start(state: i64) -> bool:
     state != 1 and not clean_operation_busy(state)
@@ -441,14 +482,19 @@ fn draw_clean_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, disabled: &ui.
     let r = clean_popup_rect(s)
     p.fill_rect(&r, surface)
     draw_outline(p, &r, border)
-    let names_en = ["Working set", "System file cache", "Modified page list", "Standby list", "Standby list (without priority)", "Modified file cache", "Registry cache (Windows)", "Combine memory lists (Windows)"]
-    let names_zh = ["工作集", "系统文件缓存", "已修改页列表", "备用列表", "无优先级备用列表", "已修改文件缓存", "注册表缓存（Windows）", "合并内存列表（Windows）"]
+    # ADR-0006: the first two entries are the Linux actions that actually exist.
+    # The rest stay disabled because they name Windows objects that Linux has no
+    # equivalent for; leaving them listed keeps the divergence visible instead of
+    # silently dropping rows the original has.
+    let names_en = ["Trim this app's memory (no privilege)", "Clean page cache (needs authorization)", "Modified page list", "Standby list", "Standby list (without priority)", "Modified file cache", "Registry cache (Windows)", "Combine memory lists (Windows)"]
+    let names_zh = ["释放本程序内存（无需授权）", "清理页缓存（需系统授权）", "已修改页列表", "备用列表", "无优先级备用列表", "已修改文件缓存", "注册表缓存（Windows）", "合并内存列表（Windows）"]
     for i in 0..8:
         let row = ui_geometry.clean_menu_item_rect(&r, i)
         let target = 500.0 + f64(i)
         let mut name = names_en[i]
         if s.zh: name = names_zh[i]
-        draw_menu_item(s, p, &row, target, name, false, fg, disabled, hot)
+        let enabled = i == 0 or (i == 1 and (s.clean_simulation or s.clean_production))
+        draw_menu_item(s, p, &row, target, name, enabled, fg, disabled, hot)
 
 fn draw_clean_confirmation(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Color, border: &ui.Color, surface: &ui.Color, hot: &ui.Color):
     let panel = clean_confirm_panel(s)
@@ -902,8 +948,27 @@ fn activate(s: &mut MainWindow, target: f64):
     elif target >= 500.0 and target < 508.0:
         let index = i64(target - 500.0)
         s.popup = 0
-        s.status = label(s.zh, "This Windows cleanup API has no approved Linux equivalent", "该 Windows 清理接口没有已批准的 Linux 等价操作")
-        if s.test_mode: mr_ci_emit(f"CI_CLEAN_REGION_DISABLED index={index} action=none")
+        if index == 0:
+            if clean_self_can_start(s.clean_state):
+                if s.test_mode: mr_ci_emit("CI_CLEAN_SELF_MENU action=self-trim target=self only")
+                run_self_reclaim(s)
+            else:
+                s.status = clean_result_status(s.zh, s.clean_state)
+                if s.test_mode: mr_ci_emit("CI_CLEAN_SELF_MENU action=skipped reason=busy")
+        elif index == 1:
+            if (s.clean_simulation or s.clean_production) and clean_simulation_can_start(s.clean_state):
+                s.clean_state = 1
+                s.clean_confirm_focus = 0
+                s.status = ""
+                if s.test_mode:
+                    let confirm_mode = if s.clean_simulation: "simulation" else: "production"
+                    mr_ci_emit(f"CI_CLEAN_CONFIRM open=true mode={confirm_mode}")
+            else:
+                s.status = label(s.zh, "Page cache cleaning is disabled pending safety review", "安全验收完成前，页缓存清理保持禁用")
+                if s.test_mode: mr_ci_emit("CI_CLEAN_DISABLED action=none")
+        else:
+            s.status = label(s.zh, "This Windows cleanup API has no approved Linux equivalent", "该 Windows 清理接口没有已批准的 Linux 等价操作")
+            if s.test_mode: mr_ci_emit(f"CI_CLEAN_REGION_DISABLED index={index} action=none")
     s.canvas.redraw()
     if settings_canvas_needs_redraw(s.settings_open, target):
         s.settings_canvas.redraw()
@@ -1180,6 +1245,7 @@ fn main():
         swap_free: 0, page_cache_estimate: 0, sample_ok: false, draw_logged: false,
         test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, ci_sample_failure_latched: false, sample_failure_draw_logged: false,
         clean_simulation: clean_simulation, clean_production: clean_production,
+        clean_self: true,
         clean_state: 0, clean_confirm_focus: 0, clean_before_available: 0,
         preferences_load_status: preferences_status,
         settings_open: false, settings: settings_ui.initial(test_mode)

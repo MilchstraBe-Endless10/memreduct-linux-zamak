@@ -551,3 +551,74 @@ class TestCiMarkerOutputPath(unittest.TestCase):
         )
         self.assertEqual(loud.stdout, '')
         self.assertEqual(loud.stderr, 'CI_PRODUCTION_START\n')
+
+
+class TestSelfReclaim(unittest.TestCase):
+    """ADR-0006 action 2, self mode: page out this process only, no privilege.
+
+    The security property is that this path cannot reach another process. It has
+    no pid argument at all; the C side always opens a pidfd for getpid(). These
+    tests pin that shape so a later "optimisation" cannot add a target.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (ROOT / 'native/self_reclaim.c').read_text()
+
+    def test_it_has_no_way_to_name_another_process(self):
+        source = self.source
+        # The only pid that may ever be opened is the caller's own.
+        self.assertIn('pidfd_open, (pid_t)getpid()', source)
+        self.assertNotIn('argv', source, 'the reclaim path must take no arguments')
+        self.assertNotIn('getenv', source, 'no environment variable may redirect it')
+        # Every process_madvise call uses that same pidfd.
+        calls = source.count('__NR_process_madvise')
+        uses_own_pidfd = source.count('syscall(__NR_process_madvise, pidfd,')
+        self.assertGreaterEqual(calls, uses_own_pidfd + 1)
+        self.assertEqual(uses_own_pidfd, 2, 'both batch and tail call the same pidfd')
+
+    def test_it_skips_shared_and_unreadable_mappings(self):
+        # Shared mappings belong to other processes; pushing them out from under
+        # those processes is exactly what this action must never do.
+        self.assertIn("if (perms[0] != 'r' || perms[3] != 'p')", self.source)
+
+    def test_it_reports_an_amount_it_measured_itself(self):
+        # bytes_paged_out is the length the kernel accepted, so the caller must
+        # be able to tell it apart from "memory freed". The wording test below
+        # pins the user-visible half; this pins the field.
+        self.assertIn('bytes_paged_out', self.source)
+        self.assertIn('failed_batches', self.source)
+
+    def test_gui_wording_does_not_claim_system_wide_effect(self):
+        gui = (ROOT / 'src/main.zm').read_text()
+        self.assertIn('Trim this app', gui)
+        self.assertIn("释放本程序内存", gui)
+        # The self action must not be described as touching other processes.
+        self.assertNotIn('Trim all processes', gui.split('let names_en')[1].split(']')[0])
+
+    def test_marker_states_that_it_cannot_touch_other_processes(self):
+        gui = (ROOT / 'src/main.zm').read_text()
+        self.assertIn('target=self only other_processes=false no_privilege=true', gui)
+
+    def test_runs_and_only_ever_affects_itself(self):
+        """Drive the real function and check the outcome shape."""
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        library_path = pathlib.Path(temp.name) / 'libself.so'
+        subprocess.run(
+            ['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic',
+             '-shared', '-fPIC', str(ROOT / 'native/self_reclaim.c'),
+             '-o', str(library_path)],
+            check=True,
+        )
+        library = ctypes.CDLL(str(library_path))
+        library.mr_self_reclaim.restype = ctypes.c_int64
+        library.mr_self_reclaim_bytes.restype = ctypes.c_int64
+        library.mr_self_reclaim_failed_batches.restype = ctypes.c_int64
+        library.mr_self_reclaim_error.restype = ctypes.c_int64
+
+        status = library.mr_self_reclaim()
+        self.assertIn(status, (0, 1), 'either it worked or the kernel lacks the syscall')
+        if status == 0:
+            self.assertGreaterEqual(library.mr_self_reclaim_bytes(), 0)
+            self.assertGreaterEqual(library.mr_self_reclaim_failed_batches(), 0)
