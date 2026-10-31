@@ -28,6 +28,11 @@ enum mr_reclaim_poll_result {
     MR_RECLAIM_IDLE = -2
 };
 
+/* Production authorization switch. The production bridge above is compiled in
+ * unconditionally so its behaviour stays auditable, but the GUI may only call
+ * it when the build was configured with MEMREDUCT_ENABLE_PRODUCTION_CLEAN=1.
+ * That switch stays off until the product owner accepts ADR 0005. */
+int64_t mr_production_clean_enabled(void);
 /* mode 0 is the sole supported fixed action: pagecache. */
 int64_t mr_start_reclaim(int64_t mode);
 /* Test-only UI path: requires MEMREDUCT_CI=1 and a private fake authorizer.

@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Mem Reduct Linux — production main window candidate.
 # The original Mem Reduct 3.5.2 resources are the layout and interaction source.
-# Cleaning commands remain disabled until Linux semantics receive separate review.
+# Clean memory runs through the fixed pagecache helper only when this build was
+# compiled with MEMREDUCT_ENABLE_PRODUCTION_CLEAN=1 (see ADR 0005). The default
+# build keeps the action disabled and says so in the button and status line.
 use std/ui
 use memory
 use ui_geometry
@@ -17,6 +19,9 @@ extern fn mr_gui_test_widget_preview_resource() -> i64
 extern fn mr_gui_test_schedule_capture() -> i64
 extern fn mr_gui_test_selected_group() -> i64
 extern fn mr_gui_test_clean_simulation_enabled() -> i64
+extern fn mr_ci_emit(line: &string)
+extern fn mr_production_clean_enabled() -> i64
+extern fn mr_start_reclaim(mode: i64) -> i64
 extern fn mr_start_reclaim_mock(mode: i64) -> i64
 extern fn mr_poll_reclaim() -> i64
 extern fn mr_gui_test_mock_stage() -> i64
@@ -68,6 +73,7 @@ struct MainWindow:
     ci_sample_failure_latched: bool
     sample_failure_draw_logged: bool
     clean_simulation: bool
+    clean_production: bool
     clean_state: i64
     clean_confirm_focus: i64
     clean_before_available: i64
@@ -149,17 +155,17 @@ fn apply_stored_preferences(s: &mut MainWindow, status: i64):
 
 fn persist_language(s: &mut MainWindow, language: i64):
     let result = mr_preferences_set_language(language)
-    if s.test_mode: println(f"CI_PREFERENCE_SAVE field=language value={language} status={result} known={mr_preferences_values_known() != 0}")
+    if s.test_mode: mr_ci_emit(f"CI_PREFERENCE_SAVE field=language value={language} status={result} known={mr_preferences_values_known() != 0}")
     apply_stored_preferences(s, result)
 
 fn persist_theme(s: &mut MainWindow, theme: i64):
     let result = mr_preferences_set_theme(theme)
-    if s.test_mode: println(f"CI_PREFERENCE_SAVE field=theme value={theme} status={result} known={mr_preferences_values_known() != 0}")
+    if s.test_mode: mr_ci_emit(f"CI_PREFERENCE_SAVE field=theme value={theme} status={result} known={mr_preferences_values_known() != 0}")
     apply_stored_preferences(s, result)
 
 fn reset_preferences(s: &mut MainWindow):
     let result = mr_preferences_reset()
-    if s.test_mode: println(f"CI_PREFERENCE_RESET status={result} known={mr_preferences_values_known() != 0}")
+    if s.test_mode: mr_ci_emit(f"CI_PREFERENCE_RESET status={result} known={mr_preferences_values_known() != 0}")
     apply_stored_preferences(s, result)
 
 fn root_menu_target(menu: i64, row: i64) -> f64:
@@ -214,10 +220,19 @@ fn clean_confirm_button(confirm: bool) -> ui.Rect:
 fn clean_operation_busy(state: i64) -> bool:
     state == 2 or state == 3 or state == 9 or state == 11
 
-fn clean_progress_status(zh: bool, state: i64) -> string:
-    if state == 2: return label(zh, "Waiting for simulated authorization", "正在等待模拟授权")
-    if state == 3: return label(zh, "Mock authorization accepted", "模拟授权已接受")
-    label(zh, "Mock helper running", "模拟 helper 正在运行")
+fn clean_progress_status(simulation: bool, zh: bool, state: i64) -> string:
+    if simulation:
+        if state == 2: return label(zh, "Waiting for simulated authorization", "正在等待模拟授权")
+        if state == 3: return label(zh, "Mock authorization accepted", "模拟授权已接受")
+        return label(zh, "Mock helper running", "模拟 helper 正在运行")
+    if state == 2: return label(zh, "Waiting for authorization", "正在等待授权")
+    if state == 3: return label(zh, "Authorization accepted; helper running", "授权已接受；helper 正在运行")
+    label(zh, "Reclaim helper running", "回收 helper 正在运行")
+
+fn clean_result_status_for(simulation: bool, zh: bool, state: i64) -> string:
+    if state == 4 and not simulation:
+        return label(zh, "Kernel accepted the page cache reclaim request", "内核已接受页缓存回收请求")
+    clean_result_status(zh, state)
 
 fn clean_result_state(result: i64) -> i64:
     if result == 0: return 4
@@ -244,7 +259,7 @@ fn clean_result_status(zh: bool, state: i64) -> string:
     label(zh, "Operation is in progress", "操作正在进行")
 
 fn clean_result_name(state: i64) -> string:
-    if state == 4: return "success"
+    if state == 4: return "accepted"
     if state == 5: return "confirmation-cancelled"
     if state == 6: return "authorization-cancelled"
     if state == 7: return "authorization-failed"
@@ -261,7 +276,7 @@ fn log_popup(s: &MainWindow, kind: string, r: &ui.Rect):
     if not s.test_mode: return
     let fits = r.x >= 2.0 and r.y >= 2.0 and r.right() <= s.width - 2.0 and r.bottom() <= s.height - 2.0
     let locale = label(s.zh, "en", "zh-CN")
-    println(f"CI_POPUP kind={kind} menu={s.menu} locale={locale} x={r.x} y={r.y} w={r.w} h={r.h} canvas={s.width}x{s.height} fits={fits}")
+    mr_ci_emit(f"CI_POPUP kind={kind} menu={s.menu} locale={locale} x={r.x} y={r.y} w={r.w} h={r.h} canvas={s.width}x{s.height} fits={fits}")
 
 fn menu_item_at(s: &MainWindow, x: f64, y: f64) -> f64:
     if s.popup == 2:
@@ -420,7 +435,7 @@ fn draw_stats_group(s: &mut MainWindow, p: &ui.Painter, group: i64, title: strin
         p.text(value_x, row2, total, fg, size=8.0)
     if s.test_mode:
         let locale = label(s.zh, "en", "zh-CN")
-        println(f"CI_LAYOUT_GROUP index={group} locale={locale} title={title} collapsed={collapsed} usage={usage} available={available} total={total} title_y={title_y} rule_x={rule_x} rule_y={rule_y} row0={row0} row1={row1} row2={row2}")
+        mr_ci_emit(f"CI_LAYOUT_GROUP index={group} locale={locale} title={title} collapsed={collapsed} usage={usage} available={available} total={total} title_y={title_y} rule_x={rule_x} rule_y={rule_y} row0={row0} row1={row1} row2={row2}")
 
 fn draw_clean_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, surface: &ui.Color, hot: &ui.Color):
     let r = clean_popup_rect(s)
@@ -439,8 +454,12 @@ fn draw_clean_confirmation(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, second
     let panel = clean_confirm_panel(s)
     p.fill_rect(&panel, surface)
     draw_outline(p, &panel, border)
-    p.text(panel.x + 10.0, panel.y + 9.0, label(s.zh, "Test-only simulated clean", "仅测试模拟清理"), fg, size=8.0)
-    p.text(panel.x + 10.0, panel.y + 27.0, label(s.zh, "Mock helper writes a temp file; no system memory changes", "模拟 helper 只写临时文件；不会清理系统内存"), secondary, size=8.0)
+    if s.clean_simulation:
+        p.text(panel.x + 10.0, panel.y + 9.0, label(s.zh, "Test-only simulated clean", "仅测试模拟清理"), fg, size=8.0)
+        p.text(panel.x + 10.0, panel.y + 27.0, label(s.zh, "Mock helper writes a temp file; no system memory changes", "模拟 helper 只写临时文件；不会清理系统内存"), secondary, size=8.0)
+    else:
+        p.text(panel.x + 10.0, panel.y + 9.0, label(s.zh, "Clean page cache", "清理页缓存"), fg, size=8.0)
+        p.text(panel.x + 10.0, panel.y + 27.0, label(s.zh, "Requires authorization; kernel decides how much is freed", "需要系统授权；释放多少由内核决定"), secondary, size=8.0)
     let confirm = clean_confirm_button(true)
     let cancel = clean_confirm_button(false)
     if s.clean_confirm_focus == 0: p.fill_rect(&confirm, hot)
@@ -459,7 +478,7 @@ fn draw(s: &mut MainWindow, p: &ui.Painter):
     s.height = p.height()
     if s.test_mode and (not s.draw_logged or old_w != s.width or old_h != s.height):
         s.draw_logged = true
-        println(f"CI_DRAW width={s.width} height={s.height}")
+        mr_ci_emit(f"CI_DRAW width={s.width} height={s.height}")
 
     let mut surface = ui.rgb(0xffffff)
     let mut fg = ui.rgb(0x000000)
@@ -506,7 +525,7 @@ fn draw(s: &mut MainWindow, p: &ui.Painter):
         p.line(x, ui_geometry.main_column_rule_top_y_px(), x, ui_geometry.main_column_rule_bottom_y_px(), &column_rule)
     if s.test_mode and not s.sample_ok and not s.sample_failure_draw_logged:
         s.sample_failure_draw_logged = true
-        println("CI_DRAW_SAMPLE state=unavailable values=em-dash")
+        mr_ci_emit("CI_DRAW_SAMPLE state=unavailable values=em-dash")
 
     let b = button_rect(s)
     p.fill_rect(&b, button_bg)
@@ -516,7 +535,7 @@ fn draw(s: &mut MainWindow, p: &ui.Painter):
     draw_outline(p, &b, border)
     let clean_label = label(s.zh, "Clean memory", "清理内存")
     let clean_label_width = ui.text_width(clean_label, size=8.0)
-    if s.clean_simulation:
+    if s.clean_simulation or s.clean_production:
         p.text(ui_geometry.clean_button_label_x(s.width, s.height, clean_label_width), b.y + 5.0, clean_label, &fg, size=8.0)
     else:
         p.text(ui_geometry.clean_button_label_x(s.width, s.height, clean_label_width), b.y + 5.0, clean_label, &disabled, size=8.0)
@@ -607,15 +626,26 @@ fn test_clean_operation_result_labels_are_explicit_and_localized():
     assert(clean_result_status(false, 10) == "Result is uncertain; do not retry automatically")
     assert(clean_result_status(true, 10) == "结果不确定；不会自动重试")
     assert(clean_result_status(false, 12) == "Memory sample unavailable; simulation was not started")
+    assert(clean_result_name(4) == "accepted")
     assert(clean_result_name(5) == "confirmation-cancelled")
     assert(clean_result_name(6) == "authorization-cancelled")
     assert(clean_result_name(7) == "authorization-failed")
     assert(clean_result_name(8) == "execution-failed")
     assert(clean_result_name(10) == "uncertain")
-    assert(clean_progress_status(false, 2) == "Waiting for simulated authorization")
-    assert(clean_progress_status(true, 2) == "正在等待模拟授权")
-    assert(clean_progress_status(false, 9) == "Mock helper running")
-    assert(clean_progress_status(true, 9) == "模拟 helper 正在运行")
+    # Simulation wording never appears on the production path, and vice versa.
+    assert(clean_progress_status(true, false, 2) == "Waiting for simulated authorization")
+    assert(clean_progress_status(true, true, 2) == "正在等待模拟授权")
+    assert(clean_progress_status(true, false, 9) == "Mock helper running")
+    assert(clean_progress_status(true, true, 9) == "模拟 helper 正在运行")
+    assert(clean_progress_status(false, false, 2) == "Waiting for authorization")
+    assert(clean_progress_status(false, true, 2) == "正在等待授权")
+    assert(clean_progress_status(false, false, 9) == "Reclaim helper running")
+    assert(clean_progress_status(false, true, 3) == "授权已接受；helper 正在运行")
+    # Success wording must not promise a byte count the kernel never reported.
+    assert(clean_result_status_for(true, false, 4) == "Simulation complete; no system changes")
+    assert(clean_result_status_for(false, false, 4) == "Kernel accepted the page cache reclaim request")
+    assert(clean_result_status_for(false, true, 4) == "内核已接受页缓存回收请求")
+    assert(clean_result_status_for(false, false, 8) == clean_result_status(false, 8))
 
 fn suppress_ci_resample(test_mode: bool, failure_latched: bool) -> bool:
     test_mode and failure_latched
@@ -632,9 +662,9 @@ fn refresh(s: &mut MainWindow):
         s.swap_free = 0
         s.page_cache_estimate = 0
         s.status = label(s.zh, "Cannot read /proc/meminfo", "无法读取 /proc/meminfo")
-        if s.test_mode: println(f"CI_MEMORY_ERROR {e}")
+        if s.test_mode: mr_ci_emit(f"CI_MEMORY_ERROR {e}")
         s.canvas.redraw()
-        if s.test_mode: println("CI_MEMORY_INVALIDATED redraw_requested=true")
+        if s.test_mode: mr_ci_emit("CI_MEMORY_INVALIDATED redraw_requested=true")
         return
     s.mem_total = snapshot.total
     s.mem_available = snapshot.available
@@ -644,28 +674,34 @@ fn refresh(s: &mut MainWindow):
     s.sample_ok = true
     s.sample_failure_draw_logged = false
     if s.test_mode:
-        println(f"CI_MEMORY source=/proc/meminfo MemTotal={snapshot.total} MemAvailable={snapshot.available} CachedPageCache={snapshot.page_cache} SReclaimableSlab={snapshot.reclaimable_slab} SwapTotal={snapshot.swap_total} SwapFree={snapshot.swap_free}")
+        mr_ci_emit(f"CI_MEMORY source=/proc/meminfo MemTotal={snapshot.total} MemAvailable={snapshot.available} CachedPageCache={snapshot.page_cache} SReclaimableSlab={snapshot.reclaimable_slab} SwapTotal={snapshot.swap_total} SwapFree={snapshot.swap_free}")
     s.canvas.redraw()
 
 fn finish_clean_simulation(s: &mut MainWindow, bridge_result: i64):
     let state = clean_result_state(bridge_result)
     s.clean_state = state
-    s.status = clean_result_status(s.zh, state)
+    s.status = clean_result_status_for(s.clean_simulation, s.zh, state)
+    let source = if s.clean_simulation: "mock-helper" else: "pkexec-helper"
+    let marker = if s.clean_simulation: "CI_CLEAN_SIM" else: "CI_CLEAN"
     if state == 4:
+        if not s.clean_simulation:
+            if s.test_mode: mr_ci_emit(f"CI_CLEAN result=accepted source={source} kernel_accepted=true bytes_measured=false")
+            refresh(s)
+            return
         let after = memory.sample() catch e:
-            if s.test_mode: println(f"CI_CLEAN_SIM result=success source=mock-helper after_sample=unavailable error={e} no_system_write=true")
+            if s.test_mode: mr_ci_emit(f"CI_CLEAN_SIM result=accepted source={source} after_sample=unavailable error={e} no_system_write=true")
             s.canvas.redraw()
             return
         let delta = after.available - s.clean_before_available
-        if s.test_mode: println(f"CI_CLEAN_SIM result=success source=mock-helper observed_memavailable_before_kib={s.clean_before_available} observed_memavailable_after_kib={after.available} observed_delta_kib={delta} causal_attribution=none no_system_write=true")
+        if s.test_mode: mr_ci_emit(f"CI_CLEAN_SIM result=accepted source={source} observed_memavailable_before_kib={s.clean_before_available} observed_memavailable_after_kib={after.available} observed_delta_kib={delta} causal_attribution=none no_system_write=true")
     elif s.test_mode:
-        println(f"CI_CLEAN_SIM result={clean_result_name(state)} result_state={state} automatic_retry=false no_system_write=true")
+        mr_ci_emit(f"{marker} result={clean_result_name(state)} result_state={state} source={source} automatic_retry=false no_system_write=true")
     s.canvas.redraw()
 
 fn sample_for_ui(s: &mut MainWindow) -> memory.Snapshot!string:
     if s.test_mode and mr_gui_test_consume_sample_failure_trigger() != 0:
         s.ci_sample_failure_latched = true
-        println("CI_SAMPLE_FAILURE_TRIGGER consumed=1 source=private-trigger-file")
+        mr_ci_emit("CI_SAMPLE_FAILURE_TRIGGER consumed=1 source=private-trigger-file")
         fail "injected non-privileged CI sample failure"
     memory.sample()?
 
@@ -675,7 +711,7 @@ fn set_settings_open(s: &mut MainWindow, open: bool):
     let changed = mr_gui_window_mode(mode)
     if changed == 0 or (open and mr_gui_settings_window_exists() == 0):
         s.status = label(s.zh, "Could not open the settings window", "无法打开设置窗口")
-        if s.test_mode: println(f"CI_SETTINGS_WINDOW mode={mode} action=failed")
+        if s.test_mode: mr_ci_emit(f"CI_SETTINGS_WINDOW mode={mode} action=failed")
         return
     s.settings_open = open
     s.popup = 0
@@ -689,32 +725,32 @@ fn set_settings_open(s: &mut MainWindow, open: bool):
             settings_ui.enable_widget_preview_checkbox(&mut s.settings, widget_preview)
         s.settings_canvas.redraw()
         if s.test_mode:
-            println(f"CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true close_handler={mr_gui_settings_close_handler_connected() != 0} resource=IDD_SETTINGS_*:260x168_dlu shell={ui_geometry.settings_window_width_px()}x{ui_geometry.settings_window_height_px()}_provisional")
+            mr_ci_emit(f"CI_SETTINGS_WINDOW mode=settings visible=true native_toplevel=true close_handler={mr_gui_settings_close_handler_connected() != 0} resource=IDD_SETTINGS_*:260x168_dlu shell={ui_geometry.settings_window_width_px()}x{ui_geometry.settings_window_height_px()}_provisional")
     else:
         s.status = preferences_load_feedback(s.zh, s.preferences_load_status)
-        if s.test_mode: println("CI_SETTINGS_WINDOW mode=main settings_hidden=true")
+        if s.test_mode: mr_ci_emit("CI_SETTINGS_WINDOW mode=main settings_hidden=true")
     s.canvas.redraw()
 
 fn tick(s: &mut MainWindow):
     s.elapsed_ms += 1000
     if mr_gui_take_settings_close_request() != 0:
-        if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST source=delete_event")
+        if s.test_mode: mr_ci_emit("CI_SETTINGS_CLOSE_REQUEST source=delete_event")
         set_settings_open(s, false)
-        if s.test_mode: println("CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true")
+        if s.test_mode: mr_ci_emit("CI_SETTINGS_CLOSE_REQUEST_HANDLED main_visible=true")
     if clean_operation_busy(s.clean_state):
-        let mock_stage = mr_gui_test_mock_stage()
+        let mock_stage = if s.clean_simulation: mr_gui_test_mock_stage() else: 0
         let bridge_result = mr_poll_reclaim()
         if bridge_result != -1:
             finish_clean_simulation(s, bridge_result)
         elif mock_stage == 1 and s.clean_state == 2:
             s.clean_state = 3
-            s.status = clean_progress_status(s.zh, 3)
-            if s.test_mode: println("CI_CLEAN_SIM stage=authorization-accepted backend=mock no_privilege_request=true")
+            s.status = clean_progress_status(s.clean_simulation, s.zh, 3)
+            if s.test_mode: mr_ci_emit("CI_CLEAN_SIM stage=authorization-accepted backend=mock no_privilege_request=true")
             s.canvas.redraw()
         elif mock_stage == 2 and s.clean_state != 9:
             s.clean_state = 9
-            s.status = clean_progress_status(s.zh, 9)
-            if s.test_mode: println("CI_CLEAN_SIM stage=helper-running helper=mock no_system_write=true")
+            s.status = clean_progress_status(s.clean_simulation, s.zh, 9)
+            if s.test_mode: mr_ci_emit("CI_CLEAN_SIM stage=helper-running helper=mock no_system_write=true")
             s.canvas.redraw()
     if s.test_mode and mr_gui_test_sample_failure_requested() != 0:
         refresh(s)
@@ -722,7 +758,7 @@ fn tick(s: &mut MainWindow):
         refresh(s)
     if not s.test_mode or s.test_timeout_ms <= 0: return
     if s.elapsed_ms >= s.test_timeout_ms:
-        println("CI_QUIT source=bounded_test_timer")
+        mr_ci_emit("CI_QUIT source=bounded_test_timer")
         ui.quit()
 
 fn settings_scroll_tick(s: &mut MainWindow):
@@ -732,7 +768,7 @@ fn settings_scroll_tick(s: &mut MainWindow):
     let x = f64(mr_gui_settings_scroll_x())
     let y = f64(mr_gui_settings_scroll_y())
     let changed = settings_ui.scroll(&mut s.settings, x, y, f64(ui_geometry.settings_client_width_px()), f64(ui_geometry.settings_client_height_px()), delta)
-    if s.test_mode: println(f"CI_SETTINGS_SCROLL_DISPATCH x={x} y={y} delta={delta} changed={changed}")
+    if s.test_mode: mr_ci_emit(f"CI_SETTINGS_SCROLL_DISPATCH x={x} y={y} delta={delta} changed={changed}")
     if changed: s.settings_canvas.redraw()
 
 fn activate(s: &mut MainWindow, target: f64):
@@ -746,7 +782,7 @@ fn activate(s: &mut MainWindow, target: f64):
             s.popup = 1
             s.focus = f64(selected - 1)
             s.menu_focus = first_root_menu_target(selected)
-        if s.test_mode: println(f"CI_MENU root={s.menu} open={s.popup == 1}")
+        if s.test_mode: mr_ci_emit(f"CI_MENU root={s.menu} open={s.popup == 1}")
         if s.popup == 1: log_popup(s, "root", &menu_rect(s))
     elif target == 20.0:
         s.popup = 2
@@ -754,49 +790,56 @@ fn activate(s: &mut MainWindow, target: f64):
         s.focus = 4.0
         s.menu_focus = 500.0
         s.status = label(s.zh, "Cleaning is not enabled in this build", "当前版本尚未开放内存清理")
-        if s.test_mode: println("CI_CLEAN_MENU open=true")
+        if s.test_mode: mr_ci_emit("CI_CLEAN_MENU open=true")
         log_popup(s, "clean", &clean_popup_rect(s))
     elif target == 19.0:
-        if s.clean_simulation and clean_simulation_can_start(s.clean_state):
+        if (s.clean_simulation or s.clean_production) and clean_simulation_can_start(s.clean_state):
             s.clean_state = 1
             s.clean_confirm_focus = 0
             s.status = ""
-            if s.test_mode: println("CI_CLEAN_CONFIRM open=true mode=simulation only=true")
+            if s.test_mode:
+                let confirm_mode = if s.clean_simulation: "simulation" else: "production"
+                mr_ci_emit(f"CI_CLEAN_CONFIRM open=true mode={confirm_mode}")
         else:
             s.status = if clean_operation_busy(s.clean_state): clean_result_status(s.zh, s.clean_state) else: label(s.zh, "Cleaning is disabled pending safety review", "安全验收完成前，清理操作保持禁用")
-            if s.test_mode: println("CI_CLEAN_DISABLED action=none")
+            if s.test_mode: mr_ci_emit("CI_CLEAN_DISABLED action=none")
     elif target == 710.0 and s.clean_state == 1:
         if not s.sample_ok:
             s.clean_state = 12
             s.status = clean_result_status(s.zh, 12)
-            if s.test_mode: println("CI_CLEAN_SIM result=not-started-sample-unavailable mock_helper_called=false no_system_write=true")
+            if s.test_mode: mr_ci_emit("CI_CLEAN_SIM result=not-started-sample-unavailable mock_helper_called=false no_system_write=true")
         else:
             s.clean_before_available = s.mem_available
-            let start_result = mr_start_reclaim_mock(0)
+            let start_result = if s.clean_simulation: mr_start_reclaim_mock(0) else: mr_start_reclaim(0)
             if start_result == 0:
                 s.clean_state = 2
-                s.status = clean_progress_status(s.zh, 2)
-                if s.test_mode: println(f"CI_CLEAN_SIM stage=confirmed observed_memavailable_before_kib={s.clean_before_available} source=/proc/meminfo mock_bridge=started no_system_write=true")
-                if s.test_mode: println("CI_CLEAN_SIM stage=authorizing backend=mock no_privilege_request=true")
+                s.status = clean_progress_status(s.clean_simulation, s.zh, 2)
+                let backend = if s.clean_simulation: "mock" else: "pkexec"
+                let marker = if s.clean_simulation: "CI_CLEAN_SIM" else: "CI_CLEAN"
+                if s.test_mode: mr_ci_emit(f"{marker} stage=confirmed observed_memavailable_before_kib={s.clean_before_available} source=/proc/meminfo backend={backend} started=true")
             else:
                 s.clean_state = clean_start_failure_state(start_result)
                 s.status = clean_result_status(s.zh, s.clean_state)
-                if s.test_mode: println(f"CI_CLEAN_SIM result=start-failed status={start_result} no_system_write=true")
+                if s.test_mode: mr_ci_emit(f"CI_CLEAN result=start-failed start_state={start_result} automatic_retry=false")
     elif target == 711.0 and s.clean_state == 1:
         s.clean_state = 5
         s.status = clean_result_status(s.zh, 5)
-        if s.test_mode: println("CI_CLEAN_SIM result=confirmation-cancelled stage=confirmation mock_helper_called=false no_system_write=true")
+        if s.test_mode:
+            let cancel_backend = if s.clean_simulation: "mock" else: "pkexec"
+            let cancel_marker = if s.clean_simulation: "CI_CLEAN_SIM" else: "CI_CLEAN"
+            let cancel_note = if s.clean_simulation: " no_system_write=true" else: ""
+            mr_ci_emit(f"{cancel_marker} result=confirmation-cancelled stage=confirmation backend={cancel_backend} helper_called=false{cancel_note}")
     elif target >= 30.0 and target < 33.0:
         let group = i64(target - 30.0)
         s.collapsed_groups = ui_geometry.toggle_group_collapse(s.collapsed_groups, group)
-        if s.test_mode: println(f"CI_GROUP_COLLAPSE group={group} collapsed={ui_geometry.group_is_collapsed(s.collapsed_groups, group)}")
+        if s.test_mode: mr_ci_emit(f"CI_GROUP_COLLAPSE group={group} collapsed={ui_geometry.group_is_collapsed(s.collapsed_groups, group)}")
     elif target >= 40.0 and target < 43.0:
         s.selected_group = i64(target - 40.0)
-        if s.test_mode: println(f"CI_GROUP_SELECT group={s.selected_group} selected=true")
+        if s.test_mode: mr_ci_emit(f"CI_GROUP_SELECT group={s.selected_group} selected=true")
     elif target == 101.0:
         set_settings_open(s, true)
     elif target == 102.0:
-        if s.test_mode: println("CI_EXIT source=file_menu")
+        if s.test_mode: mr_ci_emit("CI_EXIT source=file_menu")
         ui.quit()
     elif target == 201.0 or target == 203.0:
         s.status = label(s.zh, "This Windows setting is not available yet", "此原版设置尚未实现")
@@ -805,11 +848,11 @@ fn activate(s: &mut MainWindow, target: f64):
         let next_theme = if s.dark: 0 else: 1
         s.popup = 0
         persist_theme(s, next_theme)
-        if s.test_mode: println(f"CI_THEME dark={s.dark}")
+        if s.test_mode: mr_ci_emit(f"CI_THEME dark={s.dark}")
     elif target == 204.0:
         s.popup = 3
         s.menu_focus = 601.0
-        if s.test_mode: println("CI_LANGUAGE_MENU open=true")
+        if s.test_mode: mr_ci_emit("CI_LANGUAGE_MENU open=true")
         log_popup(s, "language", &language_rect(s))
     elif target == 301.0 or target == 302.0 or target == 303.0 or target == 304.0:
         s.status = label(s.zh, "This startup/update action is not implemented", "启动或更新操作尚未实现")
@@ -821,17 +864,17 @@ fn activate(s: &mut MainWindow, target: f64):
         s.popup = 0
         s.menu = 0
         persist_language(s, 0)
-        if s.test_mode: println("CI_LOCALE locale=en")
+        if s.test_mode: mr_ci_emit("CI_LOCALE locale=en")
     elif target == 602.0:
         s.popup = 0
         s.menu = 0
         persist_language(s, 1)
-        if s.test_mode: println("CI_LOCALE locale=zh-CN")
+        if s.test_mode: mr_ci_emit("CI_LOCALE locale=zh-CN")
     elif target >= 500.0 and target < 508.0:
         let index = i64(target - 500.0)
         s.popup = 0
         s.status = label(s.zh, "This Windows cleanup API has no approved Linux equivalent", "该 Windows 清理接口没有已批准的 Linux 等价操作")
-        if s.test_mode: println(f"CI_CLEAN_REGION_DISABLED index={index} action=none")
+        if s.test_mode: mr_ci_emit(f"CI_CLEAN_REGION_DISABLED index={index} action=none")
     s.canvas.redraw()
     if settings_canvas_needs_redraw(s.settings_open, target):
         s.settings_canvas.redraw()
@@ -879,26 +922,26 @@ fn mouse(s: &mut MainWindow, event: &ui.Mouse):
     if event.down() == 1:
         s.pressed = target
         if target >= 1.0 and target <= 4.0: s.focus = target - 1.0
-        if s.test_mode: println(f"CI_MOUSE_DOWN target={target}")
+        if s.test_mode: mr_ci_emit(f"CI_MOUSE_DOWN target={target}")
         s.canvas.redraw()
     elif event.up() == 1:
         let was_pressed = s.pressed
         s.pressed = 0.0
-        if s.test_mode: println(f"CI_MOUSE_UP target={target}")
+        if s.test_mode: mr_ci_emit(f"CI_MOUSE_UP target={target}")
         if was_pressed != 0.0 and was_pressed == target:
-            if s.test_mode: println(f"CI_MOUSE_ACTION target={target}")
+            if s.test_mode: mr_ci_emit(f"CI_MOUSE_ACTION target={target}")
             activate(s, target)
         else:
-            if s.test_mode: println("CI_MOUSE_ACTION target=none")
+            if s.test_mode: mr_ci_emit("CI_MOUSE_ACTION target=none")
         s.canvas.redraw()
     elif old_hover != target:
-        if s.test_mode and target != 0.0: println(f"CI_MOUSE_HOVER target={target}")
+        if s.test_mode and target != 0.0: mr_ci_emit(f"CI_MOUSE_HOVER target={target}")
         s.canvas.redraw()
 
 fn key(s: &mut MainWindow, event: &ui.Key):
     if event.released(): return
     let name = event.name()
-    if s.test_mode: println(f"CI_KEY name={name}")
+    if s.test_mode: mr_ci_emit(f"CI_KEY name={name}")
     if s.clean_state == 1:
         if name == "Escape" or name == "Esc" or name == "\x1b":
             activate(s, 711.0)
@@ -906,7 +949,7 @@ fn key(s: &mut MainWindow, event: &ui.Key):
             s.clean_confirm_focus = 1 - s.clean_confirm_focus
             if s.test_mode:
                 let choice = if s.clean_confirm_focus == 0: "confirm" else: "cancel"
-                println(f"CI_CLEAN_CONFIRM_FOCUS choice={choice}")
+                mr_ci_emit(f"CI_CLEAN_CONFIRM_FOCUS choice={choice}")
         elif name == "Enter" or name == "Return" or name == "\r" or name == "\n":
             activate(s, if s.clean_confirm_focus == 0: 710.0 else: 711.0)
         s.canvas.redraw()
@@ -915,10 +958,10 @@ fn key(s: &mut MainWindow, event: &ui.Key):
         s.popup = 0
         s.menu = 0
         s.pressed = 0.0
-        if s.test_mode: println(f"CI_MENU closed reason=Escape focus={s.focus}")
+        if s.test_mode: mr_ci_emit(f"CI_MENU closed reason=Escape focus={s.focus}")
     elif name == "Tab" or name == "\t":
         s.focus = next_focus_index(s.focus)
-        if s.test_mode: println(f"CI_FOCUS value={s.focus}")
+        if s.test_mode: mr_ci_emit(f"CI_FOCUS value={s.focus}")
     elif name == "F1":
         s.status = label(s.zh, "About page is not implemented yet", "关于页面尚未实现")
     elif name == "F2":
@@ -936,7 +979,7 @@ fn key(s: &mut MainWindow, event: &ui.Key):
         else:
             if name == "Down": move_menu_focus(s, 1)
             else: move_menu_focus(s, -1)
-        if s.test_mode: println(f"CI_FOCUS item={s.menu_focus}")
+        if s.test_mode: mr_ci_emit(f"CI_FOCUS item={s.menu_focus}")
     elif name == "Right" or name == "Left":
         if s.popup == 1:
             if name == "Right": s.menu += 1
@@ -954,7 +997,7 @@ fn key(s: &mut MainWindow, event: &ui.Key):
             else: s.focus -= 1.0
             if s.focus < 0.0: s.focus = 4.0
             if s.focus > 4.0: s.focus = 0.0
-        if s.test_mode: println(f"CI_FOCUS value={s.focus} item={s.menu_focus}")
+        if s.test_mode: mr_ci_emit(f"CI_FOCUS value={s.focus} item={s.menu_focus}")
     elif name == "Enter" or name == "Return" or name == "\r" or name == "\n":
         if s.popup != 0:
             activate(s, s.menu_focus)
@@ -965,7 +1008,7 @@ fn key(s: &mut MainWindow, event: &ui.Key):
             s.menu = i64(s.focus) + 1
             s.popup = 1
             s.menu_focus = first_root_menu_target(s.menu)
-        if s.test_mode: println("CI_KEY_ACTION Enter")
+        if s.test_mode: mr_ci_emit("CI_KEY_ACTION Enter")
     s.canvas.redraw()
 
 fn draw_settings(s: &mut MainWindow, p: &ui.Painter):
@@ -977,31 +1020,31 @@ fn settings_mouse(s: &mut MainWindow, event: &ui.Mouse):
     let target = settings_ui.hit(&s.settings, event.x(), event.y(), width, height)
     if event.down() == 1:
         settings_ui.pointer(&mut s.settings, target, true)
-        if s.test_mode: println(f"CI_SETTINGS_MOUSE_DOWN target={target}")
+        if s.test_mode: mr_ci_emit(f"CI_SETTINGS_MOUSE_DOWN target={target}")
         s.settings_canvas.redraw()
     elif event.up() == 1:
         let was_pressed = s.settings.pressed
         let action = settings_ui.release(&mut s.settings, target, s.zh)
-        if s.test_mode: println(f"CI_SETTINGS_MOUSE_UP target={target}")
+        if s.test_mode: mr_ci_emit(f"CI_SETTINGS_MOUSE_UP target={target}")
         if was_pressed != 0.0 and was_pressed == target:
             if action == 1: set_settings_open(s, false)
             elif action == 10: persist_language(s, 0)
             elif action == 11: persist_language(s, 1)
             elif action == 12: reset_preferences(s)
-            if s.test_mode: println(f"CI_SETTINGS_MOUSE_ACTION target={target}")
+            if s.test_mode: mr_ci_emit(f"CI_SETTINGS_MOUSE_ACTION target={target}")
         s.settings_canvas.redraw()
         s.canvas.redraw()
     else:
         let old_hover = s.settings.hover
         settings_ui.pointer(&mut s.settings, target, false)
         if old_hover != target:
-            if s.test_mode: println(f"CI_SETTINGS_MOUSE_MOVE target={target}")
+            if s.test_mode: mr_ci_emit(f"CI_SETTINGS_MOUSE_MOVE target={target}")
             s.settings_canvas.redraw()
 
 fn settings_key(s: &mut MainWindow, event: &ui.Key):
     if event.released(): return
     let name = normalized_key_name(event.name())
-    if s.test_mode: println(f"CI_SETTINGS_KEY_EVENT name={name}")
+    if s.test_mode: mr_ci_emit(f"CI_SETTINGS_KEY_EVENT name={name}")
     let action = settings_ui.key(&mut s.settings, name, s.zh)
     if action == 1:
         set_settings_open(s, false)
@@ -1012,8 +1055,8 @@ fn settings_key(s: &mut MainWindow, event: &ui.Key):
     elif action == 12:
         reset_preferences(s)
         if s.test_mode:
-            if s.zh: println("CI_LOCALE locale=zh-CN source=IDC_LANGUAGE_123")
-            else: println("CI_LOCALE locale=en source=IDC_LANGUAGE_123")
+            if s.zh: mr_ci_emit("CI_LOCALE locale=zh-CN source=IDC_LANGUAGE_123")
+            else: mr_ci_emit("CI_LOCALE locale=en source=IDC_LANGUAGE_123")
     s.settings_canvas.redraw()
     s.canvas.redraw()
 
@@ -1043,7 +1086,7 @@ fn test_font_policy_name_reports_only_a_confirmed_result():
     assert(font_policy_name(2) == "system-default")
 
 fn close_window(s: &mut MainWindow):
-    if s.test_mode: println("CI_WINDOW_CLOSE")
+    if s.test_mode: mr_ci_emit("CI_WINDOW_CLOSE")
     if s.settings_open: set_settings_open(s, false)
     ui.quit()
 
@@ -1072,24 +1115,26 @@ fn main():
     let fixed_size_policy = mr_gui_lock_window_sizes(width, height, settings_width, settings_height)
     let main_background_ready = mr_gui_set_main_background(if initial_dark: 1 else: 0)
     let clean_simulation = test_mode and mr_gui_test_clean_simulation_enabled() != 0
+    # Production cleaning is compiled in but stays inert unless the build opted in.
+    let clean_production = not clean_simulation and mr_production_clean_enabled() != 0
     let test_timeout = mr_gui_test_timeout_ms()
     let capture_scheduled = mr_gui_test_schedule_capture()
     let initial_selected_group = mr_gui_test_selected_group()
     if test_mode:
-        println("CI_PRODUCTION_START")
-        println(f"CI_TEST_TIMEOUT_MS={test_timeout}")
-        println(f"CI_CAPTURE_SCHEDULED={capture_scheduled}")
-        println(f"CI_WINDOW_SIZE_POLICY fixed={fixed_size_policy}")
-        println(f"CI_FONT_POLICY result={font_policy} family={font_family} size_pt=8")
-        println(f"CI_MAIN_BACKGROUND initialized={main_background_ready}")
-        println(f"CI_PREFERENCES load_status={preferences_status} language={initial_language_value} theme={initial_theme_value} can_save={mr_preferences_can_save() != 0}")
-        println(f"CI_CLEAN_SIM enabled={clean_simulation} mock_bridge_connected={clean_simulation} production_bridge_connected=false")
-        if initial_selected_group >= 0: println(f"CI_GROUP_SELECT group={initial_selected_group} selected=true source=test-fixture")
-        println(f"CI_GEOMETRY resource=IDD_MAIN:224x214_dlu provisional_window={width}x{height}")
-        println(f"CI_SETTINGS_GEOMETRY resource=IDD_SETTINGS_*:260x168_dlu provisional_shell={settings_width}x{settings_height} canvas={ui_geometry.settings_client_width_px()}x{ui_geometry.settings_client_height_px()}")
+        mr_ci_emit("CI_PRODUCTION_START")
+        mr_ci_emit(f"CI_TEST_TIMEOUT_MS={test_timeout}")
+        mr_ci_emit(f"CI_CAPTURE_SCHEDULED={capture_scheduled}")
+        mr_ci_emit(f"CI_WINDOW_SIZE_POLICY fixed={fixed_size_policy}")
+        mr_ci_emit(f"CI_FONT_POLICY result={font_policy} family={font_family} size_pt=8")
+        mr_ci_emit(f"CI_MAIN_BACKGROUND initialized={main_background_ready}")
+        mr_ci_emit(f"CI_PREFERENCES load_status={preferences_status} language={initial_language_value} theme={initial_theme_value} can_save={mr_preferences_can_save() != 0}")
+        mr_ci_emit(f"CI_CLEAN_SIM enabled={clean_simulation} mock_bridge_connected={clean_simulation} production_bridge_connected={clean_production}")
+        if initial_selected_group >= 0: mr_ci_emit(f"CI_GROUP_SELECT group={initial_selected_group} selected=true source=test-fixture")
+        mr_ci_emit(f"CI_GEOMETRY resource=IDD_MAIN:224x214_dlu provisional_window={width}x{height}")
+        mr_ci_emit(f"CI_SETTINGS_GEOMETRY resource=IDD_SETTINGS_*:260x168_dlu provisional_shell={settings_width}x{settings_height} canvas={ui_geometry.settings_client_width_px()}x{ui_geometry.settings_client_height_px()}")
     let app: ui.App[MainWindow] = ui.app()
     if test_mode and mr_gui_test_log_canvas_font() == 0:
-        println("CI_GTK_FONT status=unavailable")
+        mr_ci_emit("CI_GTK_FONT status=unavailable")
     app.on_draw(canvas, draw)
     app.on_mouse(canvas, mouse)
     app.on_key(canvas, key)
@@ -1105,7 +1150,8 @@ fn main():
         focus: -1.0, menu_focus: 0.0, collapsed_groups: 0, selected_group: initial_selected_group, status: "", mem_total: 0, mem_available: 0, swap_total: 0,
         swap_free: 0, page_cache_estimate: 0, sample_ok: false, draw_logged: false,
         test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, ci_sample_failure_latched: false, sample_failure_draw_logged: false,
-        clean_simulation: clean_simulation, clean_state: 0, clean_confirm_focus: 0, clean_before_available: 0,
+        clean_simulation: clean_simulation, clean_production: clean_production,
+        clean_state: 0, clean_confirm_focus: 0, clean_before_available: 0,
         preferences_load_status: preferences_status,
         settings_open: false, settings: settings_ui.initial(test_mode)
     )
@@ -1113,4 +1159,4 @@ fn main():
     if mr_gui_test_start_settings() != 0: set_settings_open(&mut state, true)
     refresh(&mut state)
     app.run(window, state)
-    if test_mode: println("CI_APP_RETURNED")
+    if test_mode: mr_ci_emit("CI_APP_RETURNED")

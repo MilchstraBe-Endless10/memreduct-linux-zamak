@@ -36,6 +36,17 @@ int64_t mr_start_reclaim(int64_t mode) {
     return MR_RECLAIM_STARTED;
 }
 
+/* Whether the GUI is allowed to reach the production bridge. This is a build
+ * decision, not a runtime toggle: an unbuilt switch cannot be flipped by an
+ * environment variable on a user machine. */
+int64_t mr_production_clean_enabled(void) {
+#ifdef MEMREDUCT_ENABLE_PRODUCTION_CLEAN
+    return 1;
+#else
+    return 0;
+#endif
+}
+
 /* Explicit CI simulation only. This path executes a same-UID test launcher;
  * it never invokes pkexec or the installed helper. The launcher receives the
  * same fixed helper path and enum as the production bridge for contract tests. */

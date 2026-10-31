@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -186,6 +187,37 @@ class TestNativeBackend(unittest.TestCase):
                 return result
             time.sleep(0.01)
         self.fail('bridge child did not finish within 3 seconds')
+
+    def _build_bridge(self, name, defines=()):
+        target = self.work / name
+        subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic', '-shared', '-fPIC',
+                        '-DMEMREDUCT_TESTING'] + list(defines) +
+                       [str(ROOT / 'native/async_privileged.c'), str(ROOT / 'tests/native_waitpid_shim.c'),
+                        '-Wl,--wrap=waitpid', '-o', str(target)], check=True)
+        library = ctypes.CDLL(str(target))
+        library.mr_production_clean_enabled.restype = ctypes.c_int64
+        return library
+
+    def test_production_clean_is_a_compile_time_gate(self):
+        off = self._build_bridge('libnative-gate-off.so')
+        self.assertEqual(off.mr_production_clean_enabled(), 0,
+                         'default builds must not expose the privileged path')
+        on = self._build_bridge('libnative-gate-on.so', ('-DMEMREDUCT_ENABLE_PRODUCTION_CLEAN',))
+        self.assertEqual(on.mr_production_clean_enabled(), 1)
+        # The opt-in build compiles the bridge in, but it still refuses to do
+        # anything unless the packaged helper path is actually installed.
+        with mock.patch.dict(os.environ, {}, clear=False):
+            start = on.mr_start_reclaim
+            start.argtypes = [ctypes.c_int64]
+            start.restype = ctypes.c_int64
+            self.assertEqual(start(1), self._start_state('MR_RECLAIM_UNSUPPORTED_ACTION'))
+            os.environ['MEMREDUCT_TEST_PKEXEC'] = str(self.work / 'missing-pkexec')
+            self.assertEqual(start(0), self._start_state('MR_RECLAIM_LAUNCH_FAILED'))
+
+    @staticmethod
+    def _start_state(name):
+        return {'MR_RECLAIM_STARTED': 0, 'MR_RECLAIM_BUSY': 1,
+                'MR_RECLAIM_UNSUPPORTED_ACTION': 2, 'MR_RECLAIM_LAUNCH_FAILED': 3}[name]
 
     def test_bridge_nonblocking_busy_and_invalid_action(self):
         fake = self._write_fake_pkexec()
@@ -370,3 +402,63 @@ class TestGuiTestBridge(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestCiMarkerOutputPath(unittest.TestCase):
+    """CI markers must reach an unbuffered sink, or a killed run loses them all.
+
+    Regression for the P3B defect where every `src/main.zm` marker went to the
+    buffered stdout of the Zamak runtime: the process is normally terminated by
+    its bounded test timer, so buffered markers never reached any capture file
+    and startup evidence such as CI_PRODUCTION_START was invisible.
+    """
+
+    def test_main_markers_use_the_unbuffered_native_emitter(self):
+        source = (ROOT / 'src/main.zm').read_text()
+        self.assertIn('extern fn mr_ci_emit(line: &string)', source)
+        leaked = [
+            line.strip()
+            for line in source.splitlines()
+            if 'println(' in line and 'CI_' in line
+        ]
+        self.assertEqual(leaked, [], 'CI markers must not use buffered println')
+        self.assertNotIn('println(', source)
+
+    def test_emitter_is_silent_without_ci_and_flushes_with_it(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        library_path = pathlib.Path(temp.name) / 'libemit.so'
+        gtk_flags = subprocess.run(
+            ['pkg-config', '--cflags', '--libs', 'gtk+-3.0'],
+            check=True, capture_output=True, text=True,
+        ).stdout.split()
+        subprocess.run(
+            ['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic',
+             '-shared', '-fPIC', str(ROOT / 'native/gui_test.c'), *gtk_flags,
+             '-o', str(library_path)],
+            check=True,
+        )
+        # The emitter writes to the process-level stderr the C runtime owns, so
+        # the assertion has to observe a real child process, not sys.stderr.
+        script = (
+            'import ctypes, sys\n'
+            'emit = ctypes.CDLL(sys.argv[1]).mr_ci_emit\n'
+            'emit.argtypes = [ctypes.c_char_p]\n'
+            'emit.restype = None\n'
+            'emit(b"CI_PRODUCTION_START")\n'
+        )
+        quiet_env = {k: v for k, v in os.environ.items() if k != 'MEMREDUCT_CI'}
+        quiet = subprocess.run(
+            [sys.executable, '-c', script, str(library_path)],
+            capture_output=True, text=True, env=quiet_env, check=True,
+        )
+        self.assertEqual(quiet.stderr, '')
+        self.assertEqual(quiet.stdout, '')
+
+        loud_env = dict(quiet_env, MEMREDUCT_CI='1')
+        loud = subprocess.run(
+            [sys.executable, '-c', script, str(library_path)],
+            capture_output=True, text=True, env=loud_env, check=True,
+        )
+        self.assertEqual(loud.stdout, '')
+        self.assertEqual(loud.stderr, 'CI_PRODUCTION_START\n')

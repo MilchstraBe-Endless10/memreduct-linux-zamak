@@ -420,3 +420,15 @@ long long mr_gui_test_log_canvas_font(void)
     g_object_unref(probe);
     return 1;
 }
+
+/* CI markers must survive an abnormal exit, so they bypass the buffered
+   stdout the Zamak runtime uses for `println`. */
+void mr_ci_emit(const char *line)
+{
+    if (getenv("MEMREDUCT_CI") == NULL || line == NULL) {
+        return;
+    }
+    fputs(line, stderr);
+    fputc('\n', stderr);
+    fflush(stderr);
+}
