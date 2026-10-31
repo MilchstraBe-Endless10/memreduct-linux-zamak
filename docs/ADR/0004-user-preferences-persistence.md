@@ -1,6 +1,6 @@
 # ADR-0004 草案：无特权语言与主题偏好持久化
 
-- **状态：PROPOSED / 待 ChatGPT 与项目所有者复审；未批准、未实现。**
+- **状态：PROPOSED / 待 ChatGPT 与项目所有者复审；尚未批准。** 2026-10-31 本地集成候选已按本 ADR 范围实现偏好存储与 UI 接线（代码提交 `ba85775ecfe3b1be072e34eb2ee0f0304201eb76`），尚未推送、合并或作为正式产品验收；该实现不等于 ADR 已接受。
 - **阶段：P3A-pre；本 ADR 不授权生产实现。**
 - **跟踪：**[Issue #8](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/8)。
 - **范围：**仅持久化界面语言与应用亮/暗主题；不包含系统或内存管理设置。
