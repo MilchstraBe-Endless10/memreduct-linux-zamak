@@ -585,7 +585,13 @@ fn draw(s: &mut MainWindow, p: &ui.Painter):
 
     draw_stats_group(s, p, 0, label(s.zh, "Physical memory", "物理内存"), usage_percentage(s.mem_total - s.mem_available, s.mem_total, s.sample_ok), value(s.mem_available, s.sample_ok), value(s.mem_total, s.sample_ok), &fg, &secondary, &group_title, &group_rule, &selected)
     draw_stats_group(s, p, 1, label(s.zh, "Pagefile / Swap", "交换空间"), usage_percentage(s.swap_total - s.swap_free, s.swap_total, s.sample_ok), value(s.swap_free, s.sample_ok), value(s.swap_total, s.sample_ok), &fg, &secondary, &group_title, &group_rule, &selected)
-    draw_stats_group(s, p, 2, label(s.zh, "System working set", "系统工作集"), "—", "—", "—", &fg, &secondary, &group_title, &group_rule, &selected)
+    # Windows reads a system_cache field here; Linux has no whole-system working
+    # set figure. An em dash in every cell reads as a broken panel, so the group
+    # states why it is empty instead of looking like a loading failure.
+    let ws_note_usage = label(s.zh, "Not available on Linux", "Linux 无此指标")
+    let ws_note_available = label(s.zh, "Not available on Linux", "Linux 无此指标")
+    let ws_note_total = label(s.zh, "Not available on Linux", "Linux 无此指标")
+    draw_stats_group(s, p, 2, label(s.zh, "System working set", "系统工作集"), ws_note_usage, ws_note_available, ws_note_total, &fg, &secondary, &group_title, &group_rule, &selected)
     for index in 0..2:
         let x = ui_geometry.main_column_rule_x_px(index)
         p.line(x, ui_geometry.main_column_rule_top_y_px(), x, ui_geometry.main_column_rule_bottom_y_px(), &column_rule)
