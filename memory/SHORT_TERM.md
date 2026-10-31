@@ -1,5 +1,15 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-10-31 — P3B 第二轮：授权语义修复
+
+- **提交：**`48522c2`（授权归因修复），前一轮 `676d73f`。分支 `feat/issue-10-p3b-clean-closure`，未 push。
+- **修的缺陷：**pkexec 会转发子进程退出码，126/127 既可能是 pkexec 自身的取消/授权失败，也可能是子进程以相同数值退出。桥上原本把 126 直接映射成 `AUTH_CANCELLED`、127 映射成 `AUTH_OR_PKEXEC_FAILED`，GUI 显示成“已取消授权”——这是在断言无法证明的原因。现在：无子进程自报证据时 126/127 → `OUTCOME_UNCERTAIN`；有证据时 → `HELPER_FAILED`。不解析 pkexec 的 stderr（那是不可信输入）。GUI 状态 6 改名为 `authorization-unconfirmed`，文案改为“授权或执行结果未确认”。`mr_reclaim_child_reported_failure()` 是记录子进程自述的通道。
+- **生产警告文案：**不再复用模拟句子，改为 `仅丢弃干净页缓存。` / `文件将变慢重读；不保证释放量。`
+- **无法完成项（工具限制，已如实记录）：**Issue 要求渲染生产警告，但 `zam` 不支持 `-D`、`zam.toml` 无 defines 段，且构建缓存按源码内容键控——PATH 上的 cc 包装器只在缓存探测时被调用一次，真正编译复用缓存。证据：用包装器构建出的二进制与不用的 **sha256 完全相同**（`16ffda1f…`）。宏本身在源码层有效（直接编译该 .c：无宏返回 0，带宏返回 1）。曾写过一个包装 cc 的脚本，发现它会产出误导性的成功构建，已删除而非保留。**渲染后的生产字符串 = NOT RUN。**
+- **回归：**Python 66 passed；`zam test .` 76/0 失败；`zam check .` OK；shell 语法干净。变异验证：把归因改回“信任数字”会有 4 条断言失败。
+- **方案（只准备未执行）：**`docs/REAL_DEVICE_CLEAN_TEST_PLAN.md` —— 含命令、每步预期输出、成本、回滚、以及该方案不授权的范围。未在任何设备上执行。
+- **需要用户授权：**①指名设备与动作的真实设备测试；②一个能定义 `MEMREDUCT_ENABLE_PRODUCTION_CLEAN` 的构建路径；③push / PR Ready / Merge。
+
 ## 2026-10-31 — P3B 生产 GUI 与隔离清理闭环
 
 - **分支与提交：**`feat/issue-10-p3b-clean-closure`，起点 `d8ca307090782182355892d2777a44c1ddac68fa`。本轮本地提交依次为 `71621ac`（Polkit action 固定 helper 路径）、`1f8434f`（CI 标记改走原生无缓冲输出）、`db7cf23`（隔离清理闭环脚本）、`b3c8936`（默认构建拒绝清理的门控脚本）、`07dd2a4`（ADR/报告/记忆）、`ace6396`（确认框文字截断修复）。无 push / Ready / merge / release。
