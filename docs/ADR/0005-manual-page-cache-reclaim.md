@@ -1,7 +1,7 @@
 # ADR-0005: Manual Linux Page-Cache Reclaim
 
-- **Status:** PROPOSED — no owner approval, no UI binding, and no production action enabled.
-- **Date:** 2026-10-28.
+- **Status:** PROPOSED — no owner approval and no production action enabled. The UI binding and the isolated GUI → authorization → helper loop now exist behind a build-time switch; this ADR does not treat that as approval.
+- **Date:** 2026-10-28 (implementation note added 2026-10-31).
 - **Scope:** Define the safety boundary for any future user-triggered Linux cache action. This ADR does not approve real kernel writes.
 
 ## Context
@@ -32,7 +32,23 @@ This proposal's current code work only hardens the existing helper's result cont
 - short writes or close errors return exit code `3` and report an uncertain outcome;
 - tests use a temporary file and injected write results; no kernel state is written.
 
-This does not approve connecting the helper to the GUI. The main-window action remains disabled until this ADR is reviewed and the operation's product value is accepted against the kernel's warning.
+This does not approve connecting the helper to the GUI for production use.
+
+### P3B addition (2026-10-31): the loop is built and gated, not enabled
+
+The GUI binding and the full state machine now exist, reachable only in a build configured with `MEMREDUCT_ENABLE_PRODUCTION_CLEAN`. A default build compiles the bridge but never calls it:
+
+- `mr_production_clean_enabled()` answers the switch; a missing build flag cannot be turned on by an environment variable on a user machine.
+- The main window asks that function before enabling the clean action, so the default build refuses the click at the button.
+- Both backends share one result-state model and one wording function; `simulation` only selects the phrasing, never the safety claim.
+- Simulation runs print `CI_CLEAN_SIM … no_system_write=true` and never measure bytes; the production wording omits `no_system_write` and reports `bytes_measured=false`, because the kernel accepts a request and does not report an amount.
+
+Two isolated scripts exercise this without privilege:
+
+- `scripts/ci/p3b-clean-simulation-xvfb.sh` drives real XTEST clicks through confirmation, mock authorization and a same-UID launcher to the result shown in the window, then asserts a second click does not silently retry.
+- `scripts/ci/p3b-production-gate-xvfb.sh` sets `MEMREDUCT_CI`, leaves the simulation backend unselected, and asserts the same click is refused: no confirmation, no helper launch.
+
+Neither script invokes `pkexec`, installs the helper, or writes kernel state. What remains unproven is exactly what the status line still says: real Polkit authorization, the installed root helper, and any real page-cache write.
 
 ## Alternatives considered
 
