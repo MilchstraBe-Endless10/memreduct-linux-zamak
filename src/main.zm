@@ -250,7 +250,7 @@ fn clean_start_failure_state(result: i64) -> i64:
 fn clean_result_status(zh: bool, state: i64) -> string:
     if state == 4: return label(zh, "Simulation complete; no system changes", "模拟完成；未更改系统")
     if state == 5: return label(zh, "Confirmation cancelled", "已取消确认")
-    if state == 6: return label(zh, "Authorization cancelled", "已取消授权")
+    if state == 6: return label(zh, "Authorization or execution not confirmed", "授权或执行结果未确认")
     if state == 7: return label(zh, "Authorization or helper launch failed", "授权失败或 helper 无法启动")
     if state == 8: return label(zh, "The helper reported failure", "helper 执行失败")
     if state == 10: return label(zh, "Result is uncertain; do not retry automatically", "结果不确定；不会自动重试")
@@ -261,7 +261,7 @@ fn clean_result_status(zh: bool, state: i64) -> string:
 fn clean_result_name(state: i64) -> string:
     if state == 4: return "accepted"
     if state == 5: return "confirmation-cancelled"
-    if state == 6: return "authorization-cancelled"
+    if state == 6: return "authorization-unconfirmed"
     if state == 7: return "authorization-failed"
     if state == 8: return "execution-failed"
     if state == 10: return "uncertain"
@@ -459,8 +459,13 @@ fn draw_clean_confirmation(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, second
     # edge would clip mid-word.
     let backend_mode = if s.clean_simulation: "simulation" else: "production"
     let title_text = if s.clean_simulation: label(s.zh, "Test-only simulated clean", "仅测试模拟清理") else: label(s.zh, "Clean page cache", "清理页缓存")
-    let body_a = if s.clean_simulation: label(s.zh, "Mock helper only; writes a temp file.", "仅使用模拟 helper，只写临时文件。") else: label(s.zh, "Requires system authorization.", "需要系统授权。")
-    let body_b = if s.clean_simulation: label(s.zh, "No system memory is changed.", "不会改动系统内存。") else: label(s.zh, "The kernel decides the effect.", "实际效果由内核决定。")
+    # The production warning must carry the risks the kernel documents and must
+    # never promise an amount: dropping caches costs later re-reads, may not
+    # touch dirty objects, and does not guarantee any free memory. The simulated
+    # path keeps its own wording so a test string can never stand in for a
+    # production warning.
+    let body_a = if s.clean_simulation: label(s.zh, "Mock helper only; writes a temp file.", "仅使用模拟 helper，只写临时文件。") else: label(s.zh, "Drops clean page cache only.", "仅丢弃干净页缓存。")
+    let body_b = if s.clean_simulation: label(s.zh, "No system memory is changed.", "不会改动系统内存。") else: label(s.zh, "Files re-read slower; no free amount promised.", "文件将变慢重读；不保证释放量。")
     p.text(panel.x + 10.0, panel.y + 9.0, title_text, fg, size=8.0)
     p.text(panel.x + 10.0, panel.y + 26.0, body_a, secondary, size=8.0)
     p.text(panel.x + 10.0, panel.y + 40.0, body_b, secondary, size=8.0)
@@ -471,7 +476,10 @@ fn draw_clean_confirmation(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, second
         let wb = ui.text_width(body_b, size=8.0)
         if wa > widest: widest = wa
         if wb > widest: widest = wb
-        mr_ci_emit(f"CI_CLEAN_CONFIRM_TEXT mode={backend_mode} inner_width={inner} widest_line={widest} fits={widest <= inner}")
+        # Report the strings that were actually drawn. Asserting their content
+        # here would only re-check this same literal; the wording guarantee is
+        # enforced where it can be verified, against the source, in the test suite.
+        mr_ci_emit(f"CI_CLEAN_CONFIRM_TEXT mode={backend_mode} inner_width={inner} widest_line={widest} fits={widest <= inner} line2={body_a} line3={body_b}")
     let confirm = clean_confirm_button(true)
     let cancel = clean_confirm_button(false)
     if s.clean_confirm_focus == 0: p.fill_rect(&confirm, hot)
@@ -633,14 +641,14 @@ fn test_clean_operation_result_labels_are_explicit_and_localized():
     assert(clean_result_status(true, 4) == "模拟完成；未更改系统")
     assert(clean_result_status(false, 5) == "Confirmation cancelled")
     assert(clean_result_status(true, 5) == "已取消确认")
-    assert(clean_result_status(false, 6) == "Authorization cancelled")
+    assert(clean_result_status(false, 6) == "Authorization or execution not confirmed")
     assert(clean_result_status(false, 8) == "The helper reported failure")
     assert(clean_result_status(false, 10) == "Result is uncertain; do not retry automatically")
     assert(clean_result_status(true, 10) == "结果不确定；不会自动重试")
     assert(clean_result_status(false, 12) == "Memory sample unavailable; simulation was not started")
     assert(clean_result_name(4) == "accepted")
     assert(clean_result_name(5) == "confirmation-cancelled")
-    assert(clean_result_name(6) == "authorization-cancelled")
+    assert(clean_result_name(6) == "authorization-unconfirmed")
     assert(clean_result_name(7) == "authorization-failed")
     assert(clean_result_name(8) == "execution-failed")
     assert(clean_result_name(10) == "uncertain")

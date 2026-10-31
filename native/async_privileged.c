@@ -14,6 +14,10 @@
 
 extern char **environ;
 static pid_t child_pid = -1;
+/* What the child process reported about itself, independent of its exit code.
+ * pkexec forwards the child's exit status, so a numeric code alone cannot say
+ * whether pkexec refused the request or the helper ran and failed that way. */
+static int child_reported_helper_failure;
 
 /* The GUI stays unprivileged; only the fixed pagecache enum reaches pkexec. */
 int64_t mr_start_reclaim(int64_t mode) {
@@ -32,6 +36,7 @@ int64_t mr_start_reclaim(int64_t mode) {
     pid_t p = -1;
     int status = posix_spawn(&p, binary, NULL, NULL, args, environ);
     if (status != 0) return MR_RECLAIM_LAUNCH_FAILED;
+    child_reported_helper_failure = 0;
     child_pid = p;
     return MR_RECLAIM_STARTED;
 }
@@ -69,6 +74,7 @@ int64_t mr_start_reclaim_mock(int64_t mode) {
     pid_t p = -1;
     int status = posix_spawn(&p, binary, NULL, NULL, args, environ);
     if (status != 0) return MR_RECLAIM_LAUNCH_FAILED;
+    child_reported_helper_failure = 0;
     child_pid = p;
     return MR_RECLAIM_STARTED;
 }
@@ -83,14 +89,33 @@ int64_t mr_poll_reclaim(void) {
     if (result < 0) return MR_RECLAIM_WAIT_FAILED;
     if (WIFSIGNALED(status) || !WIFEXITED(status)) return MR_RECLAIM_CHILD_ABNORMAL;
 
-    switch (WEXITSTATUS(status)) {
+    int code = WEXITSTATUS(status);
+
+    /* pkexec(1) forwards the child's exit status. 126 and 127 are documented as
+     * pkexec's own "dismissed" and "authorization/launch failure" codes, but a
+     * child that exits with the same number produces an identical status. The
+     * only way to tell them apart is evidence the child produced about itself,
+     * so an unreported 126/127 is reported as unattributed rather than guessed.
+     * Parsing pkexec's stderr is not used: that text is not trustworthy input. */
+    if (code == 126 || code == 127) {
+        if (child_reported_helper_failure) return MR_RECLAIM_HELPER_FAILED;
+        return MR_RECLAIM_OUTCOME_UNCERTAIN;
+    }
+
+    switch (code) {
         case 0: return MR_RECLAIM_ACCEPTED;
-        /* pkexec(1): dismissed authentication returns 126. */
-        case 126: return MR_RECLAIM_AUTH_CANCELLED;
-        /* pkexec(1): authorization or command launch failure returns 127. */
-        case 127: return MR_RECLAIM_AUTH_OR_PKEXEC_FAILED;
         case 2: return MR_RECLAIM_HELPER_UNSUPPORTED_ACTION;
         case 3: return MR_RECLAIM_OUTCOME_UNCERTAIN;
         default: return MR_RECLAIM_HELPER_FAILED;
     }
+}
+
+/* Called by the parent when the running child has told the UI which stage it
+ * reached. The privileged bridge keeps no stage channel of its own, so this
+ * exists for the phases the helper reports before it exits; anything the helper
+ * does not report stays unattributed. */
+int64_t mr_reclaim_child_reported_failure(int64_t reported) {
+    if (child_pid < 0) return 0;
+    child_reported_helper_failure = reported != 0 ? 1 : 0;
+    return 1;
 }

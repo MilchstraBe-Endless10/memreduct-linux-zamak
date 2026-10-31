@@ -257,8 +257,10 @@ class TestNativeBackend(unittest.TestCase):
         previous = {name: os.environ.get(name) for name in env_names}
         scenarios = (
             ('success', 'helper', b'', None, 0, b'1\n'),
-            ('user canceled authorization', 'cancel', b'', None, 1, b''),
-            ('authorization or pkexec failure', 'pkexec-fail', b'', None, 2, b''),
+            # pkexec forwards the child's status, so a bare 126 cannot prove the
+            # user cancelled: it is reported as unattributed, never as "cancelled".
+            ('unattributed 126 from pkexec or child', 'cancel', b'', None, 5, b''),
+            ('unattributed 127 from pkexec or child', 'pkexec-fail', b'', None, 5, b''),
             ('helper failed', 'helper', b'unchanged', 'write-eio-once', 3, b'unchanged'),
             ('helper reported uncertain result', 'helper', b'', 'short-once', 5, b'1'),
             ('helper rejected action', 'helper-unsupported', b'', None, 4, b''),
@@ -276,6 +278,49 @@ class TestNativeBackend(unittest.TestCase):
             self.assertEqual(len(calls.read_text().splitlines()), len(scenarios))
         finally:
             self._restore_environment(previous)
+
+    def test_exit_codes_126_and_127_need_child_evidence_to_be_attributed(self):
+        """pkexec forwards the child status, so the number alone proves nothing.
+
+        Without evidence the parent must say "unattributed"; only a child that
+        reported its own failure turns the same number into a helper failure.
+        """
+        fake = self._write_fake_pkexec()
+        calls = self.work / 'calls.log'
+        library = self._load_bridge()
+        env_names = (
+            'MEMREDUCT_TEST_PKEXEC', 'MEMREDUCT_TEST_HELPER', 'MEMREDUCT_TEST_PKEXEC_BEHAVIOR',
+            'MEMREDUCT_TEST_PKEXEC_LOG', 'MEMREDUCT_TEST_PKEXEC_RELEASE',
+            'MEMREDUCT_TEST_DROP_CACHES_PATH', 'MEMREDUCT_TEST_WRITE_FAULT',
+        )
+        previous = {name: os.environ.get(name) for name in env_names}
+        try:
+            for behavior in ('cancel', 'pkexec-fail'):
+                with self.subTest(behavior=behavior, reported=False):
+                    target = self.work / f'unattributed-{behavior}.target'
+                    target.write_bytes(b'')
+                    os.environ.update(self._bridge_environment(fake, behavior, target, calls))
+                    self.assertEqual(library.mr_start_reclaim(0), 0)
+                    # 5 is OUTCOME_UNCERTAIN, not a cancellation or auth verdict.
+                    self.assertEqual(self._poll_bridge(library), 5)
+
+                with self.subTest(behavior=behavior, reported=True):
+                    target = self.work / f'attributed-{behavior}.target'
+                    target.write_bytes(b'')
+                    os.environ.update(self._bridge_environment(fake, behavior, target, calls))
+                    self.assertEqual(library.mr_start_reclaim(0), 0)
+                    # The child told the parent it failed, so the number is explained.
+                    self.assertEqual(library.mr_reclaim_child_reported_failure(1), 1)
+                    self.assertEqual(self._poll_bridge(library), 3)
+
+            # Reporting a stage for a child that is not running must do nothing.
+            self.assertEqual(library.mr_reclaim_child_reported_failure(1), 0)
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
     def test_bridge_reports_spawn_wait_and_abnormal_child_failures(self):
         fake = self._write_fake_pkexec()
@@ -402,6 +447,50 @@ class TestGuiTestBridge(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestConfirmationWording(unittest.TestCase):
+    """The production warning must not borrow the simulation's harmless wording.
+
+    The simulated path says nothing changes; the production path must state the
+    cost of the action and must not promise an amount, because the kernel only
+    accepts a request. Both live in the same file, so the check reads the source.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.source = (ROOT / 'src/main.zm').read_text()
+
+    def _dialog_block(self):
+        start = self.source.index('fn draw_clean_confirmation')
+        end = self.source.index('fn draw(s: &mut MainWindow', start)
+        return self.source[start:end]
+
+    def test_simulation_and_production_use_distinct_text(self):
+        block = self._dialog_block()
+        self.assertIn('Test-only simulated clean', block)
+        self.assertIn('仅测试模拟清理', block)
+        # The production title must not be the test wording.
+        self.assertIn('"Clean page cache", "清理页缓存"', block)
+
+    def test_production_warning_states_cost_and_promises_nothing(self):
+        block = self._dialog_block()
+        self.assertIn('Files re-read slower; no free amount promised.', block)
+        self.assertIn('文件将变慢重读；不保证释放量。', block)
+        self.assertIn('只丢弃干净页缓存' if False else '仅丢弃干净页缓存。', block)
+
+    def test_production_warning_does_not_reuse_simulation_sentences(self):
+        block = self._dialog_block()
+        # Each simulation sentence must appear only on the simulation branch.
+        for sentence in ('No system memory is changed.', '不会改动系统内存。'):
+            self.assertEqual(block.count(sentence), 1, sentence)
+
+    def test_authorization_states_do_not_claim_a_cause(self):
+        # 126/127 cannot prove who refused; the wording must stay neutral.
+        self.assertIn('"Authorization or execution not confirmed"', self.source)
+        self.assertNotIn('"Authorization cancelled"', self.source)
+        self.assertIn('"authorization-unconfirmed"', self.source)
+        self.assertNotIn('"authorization-cancelled"', self.source)
 
 
 class TestCiMarkerOutputPath(unittest.TestCase):
