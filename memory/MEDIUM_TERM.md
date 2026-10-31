@@ -1,6 +1,13 @@
 # 中期记忆 / Roadmap State
 更新时间：2026-10-31；当前真实状态以本节为准，后续各节均为有日期的历史快照。
 
+## 2026-10-31 当前补充：P3A 偏好持久化与清理模拟本地候选
+
+- 本地集成分支 `codex/memred-parallel-integrator` 的代码提交为 `ba85775ecfe3b1be072e34eb2ee0f0304201eb76`（Tree `f4e84ef30525f377554be659a7cce3ea8c8795ad`，父 `d51cbf7b6572c7b386b1d77eb1cc418a015f432f`），尚未推送。偏好存储沿用已并入本地候选的 C 安全存储层；主窗现调用它实现 English/简中和亮/暗保存、启动恢复及事务式 Reset。正常模式 Xvfb 验证四种组合与重启恢复通过。当前默认值为 English + Light；ADR 产品默认仍需所有者确认。
+- 仅 `MEMREDUCT_CI=1` 下连接固定测试授权器和测试 helper 的 Clean 模拟闭环；正常生产启动保持 Clean 禁用。没有触发 Polkit、root helper、`sync`、`drop_caches` 或系统写操作。
+- 本地治理、安全、Zamak、shell 和生产 GUI/helper 构建回归通过；详细来源、输出目录及 SHA 见 `memory/SHORT_TERM.md` 最新条目。所有结论为本地候选，不代表 PR #7/远端 CI 已更新。
+- 当前仍需处理的产品验收：实际 Hyprland 键鼠交互、Windows v3.5.2 整页 1:1 还原，以及经独立安全/产品批准后的 Polkit、安装边界和目标主机特权测试。P2C 的 12 项简中来源差异继续 `DECISION_REQUIRED`。
+
 ## 2026-10-31 当前补充：并行 P2C 产品代码候选
 
 - 本地隔离集成树从 `db50fd15bc8254240f70c476c0aa5a3cab954a68` 并入 UI、清理核心、视觉三条代理工作线；Integrator 另负责 `src/main.zm` 与 CI/test 集成，代码合入点 `90a3acf348b1bfe13a4aa04ac15959d9ecb3044a`。代理提交分别为 UI `10b3c21e3bb120f185958e37f5de4b77968d637e`、核心 `bc3ce482dd2192e4fb2c780816678e03718ed9aa`、视觉 `6f8147f7f101e14a56cfbaae3a53252d2af1e888`，Integrator 代码提交 `d6394996828189c6cb30a896070cb64b8974da52`；随后 `1d74922437558c96b76b069aae4afe27ce333316` 增加可见的 mock 授权/helper 中间态反馈。实际并行代理为三条，没有第四名 CI Agent 同时开发；各合并和 follow-up 只作用于本地 `codex/memred-parallel-integrator`。

@@ -1,5 +1,14 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-10-31 — 普通模式偏好持久化与安全清理模拟集成
+
+- **当前本地代码提交：**`ba85775ecfe3b1be072e34eb2ee0f0304201eb76`，Tree `f4e84ef30525f377554be659a7cce3ea8c8795ad`，父 `d51cbf7b6572c7b386b1d77eb1cc418a015f432f`。分支 `codex/memred-parallel-integrator`。代码改动 8 个文件：`src/main.zm`、`zam.toml`、C 偏好/模拟桥、两个 GUI 测试脚本及生产构建脚本。无远端 push/PR/Base/merge 操作。
+- **普通模式设置验证：**生产 GUI 以 UID 1000 在隔离 Xvfb 中启动，整个用例未设置 `MEMREDUCT_CI`，`XDG_CONFIG_HOME` 指向临时目录。English/简中 × Light/Dark 四种组合均通过保存、进程重启恢复；Reset 取消保留原配置字节，确认后新进程恢复默认 English + Light。主题菜单与语言 ComboBox 用 Escape 取消时配置不变；Windows 专属资源 116 明确只读且不写入。五个设置页均完成鼠标导航，Tab/方向键/Enter 截图与对应状态一致；Escape、Alt+F4 关闭后可重新打开；设置窗打开时语言/主题同步通过。配置样本为 schema 1，文件 0600、UID 1000。该默认组合是当前实现值，若产品默认应为简中仍需所有者确认。
+- **清理闭环：**仅在隔离 Xvfb 的 `MEMREDUCT_CI=1` 测试运行中，完成确认取消、模拟授权成功/取消/失败、测试 helper 成功/执行失败/不支持/结果不确定、重复调用防护及退出。模拟授权和 helper 均为当前 UID 并仅写入私有临时文件；结果不确定不自动重试。前后 `/proc/meminfo` 的 `MemAvailable` 仅记录观察值，不解释成已清理字节。**正常模式 Clean 仍禁用，真实 Polkit、helper 安装和内核清理未启用或执行。**
+- **回归：**治理 34/34、安全 C/Python 41/41、Zamak 0.2.0 `check` / `test`（76/76）/ `build`、13 个 shell 脚本语法检查、生产 GUI/helper 构建、`git diff --check` 均 PASS。普通模式测试与模拟清理报告/截图、源码和构建日志存于 `/mnt/Server_Data_Center/Personal_Files(个人文件)/Cosmos_File/AI产出数据文件/报告与研究/MemReduct-Production-GUI-2026-10-31-P3A/`。生产 GUI SHA-256 `2e09abfa42ab92fd0318d4a72f7c0f1d751ca6b8e21dba35c0063f74fd1cc27d`；测试 helper SHA-256 `b0652c8ac3ae70576e39b71fbdcd047a7c57f23873fec2e45b1b691b34c45a5e`。
+- **未验收：**本轮真实键鼠使用隔离 Xvfb，不代表活动 Hyprland 输入；真实 Wayland 窗口交互未运行。整页 Windows v3.5.2 像素 1:1 仍 NOT PASS，字体与原生控件栅格差异未收敛。Canvas 独立 12 项探针未在本轮重跑，既有证据保持独立，不用来替代当前生产 GUI 测试。
+- **工作区边界：**源代码已提交；仓库内 `artifacts/` 仍为原有未跟踪目录且未暂存/提交。没有触碰 PR #6 审计工作树、其他 worktree、活动桌面或任何特权系统接口。
+
 ## 2026-10-31 — P2C 并行产品代码集成候选
 
 - **远端：**只读核实 `main=83dbf58fb039645f08e08bc89170adcdaa7997be`、PR #7 OPEN / Draft、Base `main`、Head `db05ecd8ca2d49130f21a86cb5f233d378e914ad`。没有 push、Ready、merge 或新 Actions；PR #6 审计 worktree 与原 `p2c-main-integration-r1` worktree 均未改。
