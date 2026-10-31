@@ -555,13 +555,22 @@ fn draw(s: &mut MainWindow, p: &ui.Painter):
     draw_outline(p, &b, border)
     let clean_label = label(s.zh, "Clean memory", "清理内存")
     let clean_label_width = ui.text_width(clean_label, size=8.0)
-    if s.clean_simulation or s.clean_production:
-        p.text(ui_geometry.clean_button_label_x(s.width, s.height, clean_label_width), b.y + 5.0, clean_label, &fg, size=8.0)
-    else:
-        p.text(ui_geometry.clean_button_label_x(s.width, s.height, clean_label_width), b.y + 5.0, clean_label, &disabled, size=8.0)
-    p.line(b.right() - ui_geometry.clean_arrow_width_px(), b.y, b.right() - ui_geometry.clean_arrow_width_px(), b.bottom(), &border)
-    p.line(b.right() - 22.0, b.y + 7.0, b.right() - 17.0, b.y + 12.0, &disabled)
-    p.line(b.right() - 17.0, b.y + 12.0, b.right() - 12.0, b.y + 7.0, &disabled)
+    # The label keeps the normal foreground in every build. A greyed-out button
+    # reads as "this control is broken"; what is actually true is that the action
+    # is not available here, and that belongs in the status line where the user
+    # finds the reason rather than in the label's colour alone.
+    # The label keeps the normal foreground in every build: a greyed-out button
+    # reads as "this control is broken", and the actual reason belongs in the
+    # status line, not squeezed into the button next to the label.
+    p.text(ui_geometry.clean_button_label_x(s.width, s.height, clean_label_width), b.y + 5.0, clean_label, &fg, size=8.0)
+    # Centre the chevron inside the 17px drop-down cell instead of pinning it to
+    # the outer edge: the divider is at right-17, so the cell runs from there to
+    # the button edge and the glyph belongs in the middle of it.
+    let arrow_right = b.right() - ui_geometry.clean_arrow_width_px()
+    let chevron_mid = arrow_right + ui_geometry.clean_arrow_width_px() / 2.0
+    p.line(arrow_right, b.y, arrow_right, b.bottom(), &border)
+    p.line(chevron_mid - 5.0, b.y + 7.0, chevron_mid, b.y + 12.0, &disabled)
+    p.line(chevron_mid, b.y + 12.0, chevron_mid + 5.0, b.y + 7.0, &disabled)
     if s.focus == 4.0: draw_outline(p, &ui.rect(b.right() - ui_geometry.clean_arrow_width_px(), b.y + 1.0, ui_geometry.clean_arrow_width_px() - 2.0, b.h - 2.0), &border)
     if s.status != "": p.text(ui_geometry.metric_label_x(s.width), list_y(s, 183.0), s.status, &secondary, size=8.0)
 

@@ -193,9 +193,16 @@ pub fn clean_menu_item_rect(popup: &ui.Rect, row: i64) -> ui.Rect:
     ui.rect(popup.x + inset, popup.y + inset + f64(row) * row_h, popup.w - inset * 2.0, row_h)
 
 pub fn clean_button_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
+    # The canvas already excludes the GTK holder inset, so the button sits on
+    # the canvas floor. Subtracting one extra pixel keeps the 21px button inside
+    # the canvas instead of letting its last row fall off the edge.
     let x = x_at_dlu(8.0, canvas_width)
     let right = canvas_width - 6.0
     ui.rect(x, canvas_height - 22.0, right - x, 21.0)
+
+pub fn clean_button_bottom_gap_px(canvas_height: f64) -> i64:
+    let button = clean_button_rect(325.0, canvas_height)
+    i64(canvas_height - button.bottom())
 
 pub fn clean_button_label_x(canvas_width: f64, canvas_height: f64, text_width: f64) -> f64:
     let button = clean_button_rect(canvas_width, canvas_height)
