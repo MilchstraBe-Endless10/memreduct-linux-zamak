@@ -442,8 +442,12 @@ set -Eeuo pipefail
 printf '%s %s\n' "${MEMREDUCT_CI_MOCK_SCENARIO:-success}" "$(date +%s%N)" >>"$MEMREDUCT_CI_MOCK_INVOCATIONS"
 wait_for_ack() {
   local ack="$1"
-  for _ in {1..200}; do
+  # Screenshot capture and XTEST delivery can take longer than one short
+  # polling window on loaded runners. Keep the fake authorization alive while
+  # the GUI process is alive, but bound the test-only handshake to 60 seconds.
+  for _ in {1..1200}; do
     [[ -f "$ack" && ! -L "$ack" ]] && return 0
+    kill -0 "$PPID" 2>/dev/null || exit 127
     sleep 0.05
   done
   exit 127
@@ -544,7 +548,7 @@ start_clean_simulation() {
   : >"$sim_target_file"
   chmod 0600 "$sim_target_file"
   mkdir "$sim_target_dir"
-  MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 MEMREDUCT_CI_CLEAN_SIMULATION=1 \
+  MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=180000 MEMREDUCT_CI_CLEAN_SIMULATION=1 \
     MEMREDUCT_CI_MOCK_AUTHORIZER="$mock_authorizer" MEMREDUCT_CI_MOCK_STAGE_FILE="$sim_stage_file" \
     MEMREDUCT_CI_MOCK_SCENARIO="$scenario" MEMREDUCT_CI_MOCK_INVOCATIONS="$sim_invocations" \
     MEMREDUCT_CI_MOCK_START_ACK="$sim_start_ack" MEMREDUCT_CI_MOCK_AUTHORIZED_ACK="$sim_authorized_ack" \

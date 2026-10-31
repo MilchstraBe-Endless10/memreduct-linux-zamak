@@ -116,19 +116,37 @@ long long mr_gui_test_clean_simulation_enabled(void)
     return mr_gui_test_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
 }
 
-/* Test-only mock outcomes: success, cancelled, auth-failed, helper-failed, uncertain. */
-long long mr_gui_test_clean_simulation_result(void)
+/* Read an unprivileged CI helper-stage marker from its private runtime dir. */
+long long mr_gui_test_mock_stage(void)
 {
-    const char *value = getenv("MEMREDUCT_CI_CLEAN_RESULT");
-    if (mr_gui_test_clean_simulation_enabled() == 0 || value == NULL) {
-        return -1;
+    const char *path = getenv("MEMREDUCT_CI_MOCK_STAGE_FILE");
+    struct stat status;
+    char value[32];
+    size_t used = 0;
+    int fd;
+
+    if (mr_gui_test_clean_simulation_enabled() == 0 || path == NULL || path[0] != '/') return 0;
+    fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (fd < 0) return 0;
+    if (fstat(fd, &status) != 0 || !S_ISREG(status.st_mode) || status.st_uid != geteuid() ||
+        status.st_nlink != 1 || (status.st_mode & 0777) != 0600 || status.st_size > (off_t)sizeof(value)) {
+        close(fd);
+        return 0;
     }
-    if (strcmp(value, "success") == 0) return 0;
-    if (strcmp(value, "cancelled") == 0) return 1;
-    if (strcmp(value, "auth-failed") == 0) return 2;
-    if (strcmp(value, "helper-failed") == 0) return 3;
-    if (strcmp(value, "uncertain") == 0) return 4;
-    return -1;
+    while (used < sizeof(value)) {
+        ssize_t count = read(fd, value + used, sizeof(value) - used);
+        if (count < 0 && errno == EINTR) continue;
+        if (count < 0) {
+            close(fd);
+            return 0;
+        }
+        if (count == 0) break;
+        used += (size_t)count;
+    }
+    close(fd);
+    if (used == sizeof("authorized\n") - 1 && memcmp(value, "authorized\n", used) == 0) return 1;
+    if (used == sizeof("helper-running\n") - 1 && memcmp(value, "helper-running\n", used) == 0) return 2;
+    return 0;
 }
 
 long long mr_gui_test_timeout_ms(void)

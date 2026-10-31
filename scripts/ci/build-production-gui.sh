@@ -14,8 +14,9 @@ version="$(zam --version 2>&1 | tee "$artifact_dir/zamak-version.log")"
 }
 
 python3 scripts/verify_project.py 2>&1 | tee "$artifact_dir/project-verification.log"
-for file in scripts/*.sh; do bash -n "$file"; done
-printf 'Shell syntax: PASS (%s scripts)\n' "$(find scripts -maxdepth 1 -name '*.sh' -type f | wc -l)" \
+shell_files=(scripts/*.sh scripts/ci/*.sh)
+for file in "${shell_files[@]}"; do bash -n "$file"; done
+printf 'Shell syntax: PASS (%s scripts)\n' "${#shell_files[@]}" \
   | tee "$artifact_dir/shell-syntax.log"
 python3 -m unittest discover -s tests -v 2>&1 | tee "$artifact_dir/c-safety-tests.log"
 zam check . 2>&1 | tee "$artifact_dir/zam-check.log"
@@ -44,7 +45,7 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
 } | tee "$artifact_dir/environment.txt"
 
 {
-  sha256sum src/main.zm src/settings_ui.zm src/settings_resources.zm src/ui_geometry.zm native/gui_test.c native/gui_window.c zam.toml \
+  sha256sum zam.toml src/*.zm native/*.c native/*.h scripts/ci/build-production-gui.sh \
     | sed 's#  #  #'
   sha256sum "$artifact_dir/memreduct-zamak-production" \
     | awk '{print $1 "  memreduct-zamak-production"}'

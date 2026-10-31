@@ -30,6 +30,9 @@ enum mr_reclaim_poll_result {
 
 /* mode 0 is the sole supported fixed action: pagecache. */
 int64_t mr_start_reclaim(int64_t mode);
+/* Test-only UI path: requires MEMREDUCT_CI=1 and a private fake authorizer.
+ * It never calls pkexec or the installed production helper. */
+int64_t mr_start_reclaim_mock(int64_t mode);
 int64_t mr_poll_reclaim(void);
 
 #endif

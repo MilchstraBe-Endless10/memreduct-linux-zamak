@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <spawn.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -25,6 +28,32 @@ int64_t mr_start_reclaim(int64_t mode) {
 #endif
     char *const args[] = {
         (char *)binary, "/usr/libexec/memreduct-zamak-helper", (char *)action, NULL
+    };
+    pid_t p = -1;
+    int status = posix_spawn(&p, binary, NULL, NULL, args, environ);
+    if (status != 0) return MR_RECLAIM_LAUNCH_FAILED;
+    child_pid = p;
+    return MR_RECLAIM_STARTED;
+}
+
+/* Explicit CI simulation only. This path executes a same-UID test launcher;
+ * it never invokes pkexec or the installed helper. The launcher receives the
+ * same fixed helper path and enum as the production bridge for contract tests. */
+int64_t mr_start_reclaim_mock(int64_t mode) {
+    const char *ci = getenv("MEMREDUCT_CI");
+    const char *simulation = getenv("MEMREDUCT_CI_CLEAN_SIMULATION");
+    const char *binary = getenv("MEMREDUCT_CI_MOCK_AUTHORIZER");
+    struct stat st;
+    if (mode != 0) return MR_RECLAIM_UNSUPPORTED_ACTION;
+    if (child_pid > 0) return MR_RECLAIM_BUSY;
+    if (ci == NULL || strcmp(ci, "1") != 0 || simulation == NULL || strcmp(simulation, "1") != 0 ||
+        binary == NULL || binary[0] != '/' || lstat(binary, &st) != 0 || !S_ISREG(st.st_mode) ||
+        st.st_uid != geteuid() || st.st_nlink != 1 || (st.st_mode & 0077) != 0 ||
+        (st.st_mode & 0111) == 0) {
+        return MR_RECLAIM_LAUNCH_FAILED;
+    }
+    char *const args[] = {
+        (char *)binary, "/usr/libexec/memreduct-zamak-helper", "pagecache", NULL
     };
     pid_t p = -1;
     int status = posix_spawn(&p, binary, NULL, NULL, args, environ);

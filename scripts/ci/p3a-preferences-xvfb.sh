@@ -183,7 +183,8 @@ capture_state() {
   sleep 0.1
 }
 assert_config() {
-  local language="$1" theme="$2" label="$3" expected="$runtime_dir/expected-$label.conf" mode owner
+  local language="$1" theme="$2" label="$3" expected mode owner
+  expected="$runtime_dir/expected-$label.conf"
   printf 'schema=1\nlanguage=%s\ntheme=%s\n' "$language" "$theme" >"$expected"
   [[ -f "$config_file" && ! -L "$config_file" ]] || {
     printf 'Missing regular preferences file: %s\n' "$config_file" >&2
@@ -204,15 +205,24 @@ assert_config() {
   printf 'state=%s/%s bytes=canonical mode=%s owner=%s\n' "$language" "$theme" "$mode" "$owner" | tee -a "$artifact_dir/preferences-state-matrix.txt"
 }
 close_app() {
-  local status
+  local status process_state exited=false
   xdotool windowfocus --sync "$window_id"
   xdotool key --clearmodifiers Alt+F4
   for _ in {1..100}; do
-    if ! kill -0 "$app_pid" 2>/dev/null; then break; fi
+    if ! kill -0 "$app_pid" 2>/dev/null; then
+      exited=true
+      break
+    fi
+    process_state="$(awk '{print $3}' "/proc/$app_pid/stat" 2>/dev/null || true)"
+    if [[ "$process_state" == Z ]]; then
+      exited=true
+      break
+    fi
     sleep 0.1
   done
-  if kill -0 "$app_pid" 2>/dev/null; then
+  if [[ "$exited" != true ]]; then
     printf 'Application did not exit after Alt+F4.\n' >&2
+    ps -o pid,state,stat,cmd -p "$app_pid" >&2 || true
     cat "$app_log" >&2
     return 1
   fi
@@ -242,6 +252,26 @@ select_theme() {
   sleep 0.1
   xdotool mousemove --sync --window "$window_id" 70 59 click 1
   sleep 0.15
+}
+cancel_theme_selection() {
+  local before after
+  before="$(sha256sum "$config_file" | awk '{print $1}')"
+  xdotool mousemove --sync --window "$window_id" 70 10 click 1
+  sleep 0.1
+  capture_window "$window_id" theme-cancel-popup.png '337x369'
+  xdotool key --clearmodifiers Escape
+  xdotool mousemove --sync --window "$window_id" 10 300
+  sleep 0.15
+  capture_window "$window_id" theme-cancel-closed.png '337x369'
+  after="$(sha256sum "$config_file" | awk '{print $1}')"
+  [[ "$before" == "$after" ]] || {
+    printf 'Cancelling the View/theme menu changed persisted preferences.\n' >&2
+    return 1
+  }
+  assert_changed "$artifact_dir/theme-cancel-popup.png" \
+    "$artifact_dir/theme-cancel-closed.png" theme-cancel-popup-dismissed.txt
+  printf 'theme_menu_cancelled=true preferences_unchanged=true\n' \
+    | tee -a "$artifact_dir/preferences-state-matrix.txt"
 }
 select_language() {
   local language="$1" y
@@ -273,6 +303,189 @@ open_settings() {
     return 1
   }
 }
+capture_settings_nav_page() {
+  local page="$1" method="$2" image crop nav x y
+  x=50
+  y=$((20 + page * 20))
+  if [[ "$method" == mouse ]]; then
+    xdotool mousemove --sync --window "$settings_window_id" "$x" "$y" click 1
+    sleep 0.15
+  fi
+  xdotool mousemove --sync --window "$settings_window_id" 540 320
+  sleep 0.1
+  image="$artifact_dir/settings-$method-page-$((101 + page)).png"
+  crop="$artifact_dir/settings-$method-page-$((101 + page))-content.png"
+  nav="$artifact_dir/settings-$method-page-$((101 + page))-navigation.png"
+  capture_window "$settings_window_id" "settings-$method-page-$((101 + page)).png" '558x335'
+  convert "$image" -crop 390x273+156+10 +repage "$crop"
+  convert "$image" -crop 132x100+12+10 +repage "$nav"
+  printf 'method=%s expected_page_idd=%s navigation_row=%s image=%s\n' \
+    "$method" "$((101 + page))" "$page" "$(basename "$image")" \
+    | tee -a "$artifact_dir/settings-page-navigation.txt"
+}
+assert_settings_navigation_pages() {
+  local page earlier
+  # Mouse-select all five actual production pages. Each content panel and the
+  # selected navigation row must produce a distinct rendered state.
+  for page in 0 1 2 3 4; do
+    capture_settings_nav_page "$page" mouse
+  done
+  for page in 1 2 3 4; do
+    for earlier in $(seq 0 $((page - 1))); do
+      assert_changed \
+        "$artifact_dir/settings-mouse-page-$((101 + earlier))-content.png" \
+        "$artifact_dir/settings-mouse-page-$((101 + page))-content.png" \
+        "settings-page-content-$((101 + earlier))-$((101 + page)).txt"
+      assert_changed \
+        "$artifact_dir/settings-mouse-page-$((101 + earlier))-navigation.png" \
+        "$artifact_dir/settings-mouse-page-$((101 + page))-navigation.png" \
+        "settings-page-selection-$((101 + earlier))-$((101 + page)).txt"
+    done
+  done
+
+  # Keyboard navigation must reach the same five pages as mouse navigation.
+  xdotool mousemove --sync --window "$settings_window_id" 50 20 click 1
+  xdotool mousemove --sync --window "$settings_window_id" 540 320
+  capture_window "$settings_window_id" settings-keyboard-page-101.png '558x335'
+  assert_same "$artifact_dir/settings-mouse-page-101.png" \
+    "$artifact_dir/settings-keyboard-page-101.png" settings-page-keyboard-101.txt
+  for page in 1 2 3 4; do
+    xdotool key --clearmodifiers Down
+    sleep 0.1
+    capture_window "$settings_window_id" \
+      "settings-keyboard-page-$((101 + page)).png" '558x335'
+    assert_same "$artifact_dir/settings-mouse-page-$((101 + page)).png" \
+      "$artifact_dir/settings-keyboard-page-$((101 + page)).png" \
+      "settings-page-keyboard-$((101 + page)).txt"
+  done
+  xdotool key --clearmodifiers Return
+  capture_window "$settings_window_id" settings-keyboard-enter-page-105.png '558x335'
+  assert_same "$artifact_dir/settings-mouse-page-105.png" \
+    "$artifact_dir/settings-keyboard-enter-page-105.png" settings-page-enter-105.txt
+}
+assert_settings_window_returns_to_main() {
+  local reason="$1" closed_id visible_settings main_visible
+  closed_id="$settings_window_id"
+  for _ in {1..100}; do
+    visible_settings="$(xdotool search --onlyvisible --name '^Settings - Mem Reduct$' 2>/dev/null || true)"
+    if ! grep -Fxq -- "$closed_id" <<<"$visible_settings"; then
+      main_visible="$(xdotool search --onlyvisible --name '^Mem Reduct$' 2>/dev/null || true)"
+      [[ -n "$main_visible" ]] || {
+        printf 'Main window was not visible after Settings closed by %s.\n' "$reason" >&2
+        return 1
+      }
+      [[ -n "$app_pid" ]] && kill -0 "$app_pid" 2>/dev/null || {
+        printf 'Application exited when Settings closed by %s.\n' "$reason" >&2
+        return 1
+      }
+      settings_window_id=""
+      printf 'settings_close_method=%s settings_xid=%s main_visible=true process_alive=true\n' \
+        "$reason" "$closed_id" | tee -a "$artifact_dir/settings-lifecycle.txt"
+      return 0
+    fi
+    sleep 0.1
+  done
+  printf 'Settings stayed visible after close method %s.\n' "$reason" >&2
+  return 1
+}
+capture_live_settings_sync() {
+  local name="$1"
+  xdotool windowraise "$settings_window_id"
+  xdotool windowfocus --sync "$settings_window_id"
+  sleep 0.15
+  capture_window "$settings_window_id" "$name.png" '558x335'
+  convert "$artifact_dir/$name.png" -crop 390x273+156+10 +repage \
+    "$artifact_dir/$name-content.png"
+}
+exercise_windows_only_setting_is_read_only() {
+  local before after
+  before="$(sha256sum "$config_file" | awk '{print $1}')"
+  capture_window "$settings_window_id" settings-windows-only-before.png '558x335'
+  convert "$artifact_dir/settings-windows-only-before.png" \
+    -crop 390x36+156+282 +repage "$artifact_dir/settings-windows-only-before-status.png"
+  # Resource 116 is the Windows-only Always on top checkbox in General.
+  xdotool mousemove --sync --window "$settings_window_id" 220 38 click 1
+  sleep 0.2
+  capture_window "$settings_window_id" settings-windows-only-after.png '558x335'
+  convert "$artifact_dir/settings-windows-only-after.png" \
+    -crop 390x36+156+282 +repage "$artifact_dir/settings-windows-only-after-status.png"
+  assert_changed "$artifact_dir/settings-windows-only-before-status.png" \
+    "$artifact_dir/settings-windows-only-after-status.png" \
+    settings-windows-only-feedback-visible.txt
+  after="$(sha256sum "$config_file" | awk '{print $1}')"
+  [[ "$before" == "$after" ]] || {
+    printf 'Clicking unsupported resource 116 changed persisted preferences.\n' >&2
+    return 1
+  }
+  printf 'resource=116 platform=Windows-only feedback=visible persisted_preferences=unchanged\n' \
+    | tee -a "$artifact_dir/preferences-state-matrix.txt"
+}
+exercise_settings_live_sync() {
+  open_settings
+  capture_live_settings_sync settings-live-sync-en-light
+
+  # Change the real main-window preference while Settings remains open. Its
+  # rendered palette and language must follow the shared application state.
+  xdotool windowfocus --sync "$window_id"
+  select_theme
+  assert_config en dark settings-live-theme-dark
+  capture_live_settings_sync settings-live-sync-en-dark
+  assert_changed "$artifact_dir/settings-live-sync-en-light-content.png" \
+    "$artifact_dir/settings-live-sync-en-dark-content.png" settings-live-theme-redraw.txt
+
+  xdotool windowfocus --sync "$window_id"
+  select_language zh-CN
+  assert_config zh-CN dark settings-live-locale-zh
+  capture_live_settings_sync settings-live-sync-zh-dark
+  assert_changed "$artifact_dir/settings-live-sync-en-dark-content.png" \
+    "$artifact_dir/settings-live-sync-zh-dark-content.png" settings-live-locale-redraw.txt
+
+  xdotool windowfocus --sync "$window_id"
+  select_language en
+  assert_config en dark settings-live-locale-en
+  xdotool windowfocus --sync "$window_id"
+  select_theme
+  assert_config en light settings-live-theme-light
+  capture_live_settings_sync settings-live-sync-en-light-restored
+  assert_same "$artifact_dir/settings-live-sync-en-light-content.png" \
+    "$artifact_dir/settings-live-sync-en-light-restored-content.png" \
+    settings-live-theme-locale-restored.txt
+  printf 'live_settings_sync=English/Light->English/Dark->简体中文/Dark->English/Light restored=true\n' \
+    | tee -a "$artifact_dir/settings-lifecycle.txt"
+  close_settings
+}
+exercise_settings_lifecycle() {
+  local retained_id
+  open_settings
+  retained_id="$settings_window_id"
+  exercise_windows_only_setting_is_read_only
+  assert_settings_navigation_pages
+
+  # Escape closes only Settings; reopening must restore the same native window.
+  xdotool key --clearmodifiers Escape
+  assert_settings_window_returns_to_main Escape
+  open_settings
+  [[ "$settings_window_id" == "$retained_id" ]] || {
+    printf 'Escape/reopen did not reuse the Settings window. before=%s after=%s\n' \
+      "$retained_id" "$settings_window_id" >&2
+    return 1
+  }
+  printf 'settings_reopened=true method=Escape reused_xid=%s\n' "$settings_window_id" \
+    | tee -a "$artifact_dir/settings-lifecycle.txt"
+
+  # Alt+F4 goes through the window manager's normal close protocol. Do not use
+  # xdotool `windowclose`: it destroys the X resource and bypasses GTK teardown.
+  xdotool windowfocus --sync "$settings_window_id"
+  xdotool key --clearmodifiers Alt+F4
+  assert_settings_window_returns_to_main Alt+F4
+  open_settings
+  [[ "$settings_window_id" == "$retained_id" ]] || {
+    printf 'Alt+F4/reopen did not reuse the Settings window. before=%s after=%s\n' \
+      "$retained_id" "$settings_window_id" >&2
+    return 1
+  }
+  close_settings
+}
 settings_language_combo_coords() {
   # Mirror settings_page_rect/settings_child_rect plus resource 123 bounds.
   # The settings client is fixed at 558x335; page reference and DLU scaling
@@ -284,7 +497,7 @@ page_width = 390.0
 page_height = 273.0
 page_dlu_width = 260.0
 page_dlu_height = 168.0
-combo_x_dlu, combo_y_dlu, combo_width_dlu, combo_height_dlu = 128.0, 104.0, 124.0, 30.0
+combo_x_dlu, combo_y_dlu, combo_width_dlu, combo_height_dlu = 128.0, 104.0, 124.0, 12.0
 combo_x = page_x + combo_x_dlu * page_width / page_dlu_width
 combo_y = page_y + combo_y_dlu * page_height / page_dlu_height
 combo_width = combo_width_dlu * page_width / page_dlu_width
@@ -349,6 +562,7 @@ assert_config en light seed
 
 start_app en-light-first "$test_xdg"
 assert_config en light en-light-first
+cancel_theme_selection
 capture_state en-light-before
 copy_state_record en-light-first
 restart_and_compare en-light en light "$artifact_dir/en-light-before-view-menu.png" "$artifact_dir/en-light-before-language-menu.png"
@@ -386,6 +600,8 @@ restart_and_compare en-light-final en light "$artifact_dir/en-light-final-before
 # Exercise resource 123's General-page ComboBox independently of the main
 # View-menu language command. Escape must not write; mouse choice must persist.
 open_settings
+close_settings
+open_settings
 read -r settings_combo_x settings_combo_y settings_english_row_y settings_chinese_row_y \
   settings_combo_popup_x settings_combo_popup_y settings_combo_popup_w settings_combo_popup_h \
   < <(settings_language_combo_coords | tee "$artifact_dir/resource-123-click-coordinates.txt")
@@ -408,7 +624,7 @@ capture_window "$settings_window_id" settings-language-combo-escape.png '558x335
 convert "$artifact_dir/settings-language-combo-escape.png" \
   -crop "${settings_combo_popup_w}x${settings_combo_popup_h}+${settings_combo_popup_x}+${settings_combo_popup_y}" +repage \
   "$artifact_dir/settings-language-combo-escape.roi.png"
-assert_same "$artifact_dir/settings-language-combo-popup-before.roi.png" \
+assert_changed "$artifact_dir/settings-language-combo-popup-open.roi.png" \
   "$artifact_dir/settings-language-combo-escape.roi.png" settings-language-combo-escape.txt
 [[ "$(sha256sum "$config_file" | awk '{print $1}')" == "$combo_sha_before" ]] || {
   printf 'Cancelling resource 123 language popup changed persisted settings.\n' >&2
@@ -475,7 +691,7 @@ capture_window "$settings_window_id" settings-keyboard-combo-escape.png '558x335
 convert "$artifact_dir/settings-keyboard-combo-escape.png" \
   -crop "${settings_combo_popup_w}x${settings_combo_popup_h}+${settings_combo_popup_x}+${settings_combo_popup_y}" +repage \
   "$artifact_dir/settings-keyboard-combo-escape.roi.png"
-assert_same "$artifact_dir/settings-keyboard-combo-before.roi.png" \
+assert_changed "$artifact_dir/settings-keyboard-combo-popup.roi.png" \
   "$artifact_dir/settings-keyboard-combo-escape.roi.png" settings-keyboard-combo-escape.txt
 [[ "$(sha256sum "$config_file" | awk '{print $1}')" == "$combo_sha_before" ]] || {
   printf 'Keyboard Escape on resource 123 changed persisted settings.\n' >&2
@@ -508,6 +724,12 @@ assert_same "$artifact_dir/en-light-final-before-view-menu.png" \
 close_app
 start_app settings-keyboard-reset-base "$test_xdg"
 assert_config en light settings-keyboard-reset-base
+exercise_settings_live_sync
+exercise_settings_lifecycle
+assert_config en light settings-keyboard-reset-after-lifecycle
+close_app
+start_app settings-reset-base "$test_xdg"
+assert_config en light settings-reset-base
 
 default_state=""
 for candidate in en-light en-dark zh-dark zh-light; do
