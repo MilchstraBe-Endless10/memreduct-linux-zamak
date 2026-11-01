@@ -12,6 +12,10 @@
 
 #include "async_privileged.h"
 
+/* The one action file this product owns. Fixed; never derived from input. */
+#define MR_POLKIT_ACTION_PATH \
+    "/usr/share/polkit-1/actions/io.github.milchstrasse_endless10.memreduct.zamak.policy"
+
 extern char **environ;
 static pid_t child_pid = -1;
 /* What the child process reported about itself, independent of its exit code.
@@ -39,6 +43,48 @@ int64_t mr_start_reclaim(int64_t mode) {
     child_reported_helper_failure = 0;
     child_pid = p;
     return MR_RECLAIM_STARTED;
+}
+
+
+/* Read-only component check for the privileged chain.
+ *
+ * Issue #13 M0: when the helper or the polkit action is not installed, pkexec
+ * exits 126/127 exactly like a refused authorization, and the bridge can only
+ * report "outcome unconfirmed". That is honest but useless to a user who
+ * simply never installed the components. This preflight answers the question
+ * before anything is spawned, using fixed absolute paths and a fixed
+ * root-owned/non-world-writable expectation, and never touches user input. */
+enum mr_reclaim_preflight_result {
+    MR_PREFLIGHT_READY = 0,
+    MR_PREFLIGHT_NEED_HELPER = 1,
+    MR_PREFLIGHT_NEED_POLICY = 2,
+    MR_PREFLIGHT_NEED_PKEXEC = 3
+};
+
+static int file_is_trusted_root(const char *path)
+{
+    struct stat info;
+    if (stat(path, &info) != 0) return 0;
+    if (!S_ISREG(info.st_mode)) return 0;
+    if (info.st_uid != 0) return 0;
+    if ((info.st_mode & 0022) != 0) return 0; /* not group/other writable */
+    return 1;
+}
+
+int64_t mr_reclaim_preflight(void)
+{
+    if (!file_is_trusted_root("/usr/libexec/memreduct-zamak-helper")) {
+        /* In a MEMREDUCT_TESTING build the path is what the stub contract
+         * uses; the production path above is the only one shipped. */
+        return MR_PREFLIGHT_NEED_HELPER;
+    }
+    if (!file_is_trusted_root(MR_POLKIT_ACTION_PATH)) {
+        return MR_PREFLIGHT_NEED_POLICY;
+    }
+    if (access("/usr/bin/pkexec", X_OK) != 0) {
+        return MR_PREFLIGHT_NEED_PKEXEC;
+    }
+    return MR_PREFLIGHT_READY;
 }
 
 /* mr_production_clean_enabled() is deliberately NOT defined here: it lives in

@@ -57,12 +57,30 @@ class PolkitPolicyTest(unittest.TestCase):
         # Polkit resolves files by id, but a mismatched name confuses audits.
         self.assertEqual(POLICY_BASENAME, "io.github.milchstrasse_endless10.memreduct.zamak.policy")
 
-    def test_defaults_never_grant_permission(self):
+    def test_defaults_match_the_documented_authorization_contract(self):
+        """Issue #13 M0 changed the contract from "grant nothing ever" to
+        "the active local session may authorize, every single time".
+
+        The previous all-"no" default made the product unusable: pkexec could
+        only ever refuse, so the one kernel write the program exists for was
+        unreachable in every installed configuration. The shipped policy now
+        follows the distribution-recommended shape:
+          allow_any=no         remote sessions can never authorize
+          allow_inactive=no    background sessions can never authorize
+          allow_active=auth_admin   the local user must type an admin password
+                                    for THIS request; approval is never cached
+        The test asserts exactly that, and separately that no *_keep variant
+        sneaks in, because *_keep is what would silently reuse an approval.
+        """
         defaults = self.actions[0].find(PK_DEFAULTS)
         self.assertIsNotNone(defaults)
-        for tag in ("allow_any", "allow_inactive", "allow_active"):
-            value = (defaults.findtext(tag) or "").strip()
-            self.assertEqual(value, "no", f"{tag} must default to no")
+        expected = {"allow_any": "no", "allow_inactive": "no", "allow_active": "auth_admin"}
+        for tag, value in expected.items():
+            actual = (defaults.findtext(tag) or "").strip()
+            self.assertEqual(actual, value, f"{tag} must be {value}")
+        joined = " ".join((defaults.findtext(t) or "") for t in expected)
+        self.assertNotIn("keep", joined, "no *_keep variant may appear")
+        self.assertNotIn("yes", joined.replace("auth_admin", ""), "no blanket yes")
 
     def test_exec_path_annotation_pins_the_root_owned_helper(self):
         annotations = {

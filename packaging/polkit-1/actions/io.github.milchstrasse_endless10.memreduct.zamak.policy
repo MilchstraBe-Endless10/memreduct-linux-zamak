@@ -35,9 +35,17 @@ action, not an optimisation.</message>
 无法保证能释放多少内存。这是一次性诊断操作，不是日常优化手段。</message>
     <icon_name>memreduct-zamak</icon_name>
     <defaults>
+      <!-- Issue #13 M0: the previously shipped all-"no" defaults made every
+           request impossible, so the product could never perform the one
+           kernel write it exists to perform ("pkexec refused" is not a usable
+           program). The active local session may authorize this single
+           fixed action with an administrator password, every time. No
+           *_keep variant: approval is never reused. No allow_any or
+           allow_inactive: a remote or background session can never authorize
+           it. -->
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>
-      <allow_active>no</allow_active>
+      <allow_active>auth_admin</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/memreduct-zamak-helper</annotate>
   </action>

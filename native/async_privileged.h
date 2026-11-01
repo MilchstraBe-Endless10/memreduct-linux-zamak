@@ -38,6 +38,11 @@ enum mr_reclaim_poll_result {
 int64_t mr_production_clean_enabled(void);
 /* mode 0 is the sole supported fixed action: pagecache. */
 int64_t mr_start_reclaim(int64_t mode);
+/* Read-only: what the privileged chain is missing, if anything.
+ * 0 ready, 1 helper not installed/untrusted, 2 polkit action missing,
+ * 3 pkexec missing. Lets the GUI name the missing component instead of
+ * reporting the unattributable 126/127 outcome. */
+int64_t mr_reclaim_preflight(void);
 /* Test-only UI path: requires MEMREDUCT_CI=1 and a private fake authorizer.
  * It never calls pkexec or the installed production helper. */
 int64_t mr_start_reclaim_mock(int64_t mode);

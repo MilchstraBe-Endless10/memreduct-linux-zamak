@@ -21,6 +21,10 @@ extern fn mr_gui_test_selected_group() -> i64
 extern fn mr_gui_test_clean_simulation_enabled() -> i64
 extern fn mr_ci_emit(line: &string)
 extern fn mr_production_clean_enabled() -> i64
+# Read-only check of the fixed privileged chain (helper / polkit action /
+# pkexec). Lets the window name the missing component instead of showing the
+# unattributable "outcome unconfirmed" that a bare pkexec 126/127 produces.
+extern fn mr_reclaim_preflight() -> i64
 extern fn mr_self_reclaim() -> i64
 # Read-only cross-process planner (ADR-0007): scans procfs, pins pidfds, and
 # reports what a later advise WOULD touch. It never writes and never advises;
@@ -260,6 +264,14 @@ fn clean_result_state(result: i64) -> i64:
 fn clean_start_failure_state(result: i64) -> i64:
     if result == 1: return 11
     7
+
+# Names the component the privileged chain is missing. Issue #13 M0 requires
+# this to be visible in the window, not only in CI markers.
+fn clean_preflight_status(zh: bool, preflight: i64) -> string:
+    if preflight == 1: return label(zh, "Component not installed: the reclaim helper (/usr/libexec/memreduct-zamak-helper)", "组件未安装：回收 helper（/usr/libexec/memreduct-zamak-helper）")
+    if preflight == 2: return label(zh, "Component not installed: the Polkit action for this program", "组件未安装：本程序的 Polkit 授权策略")
+    if preflight == 3: return label(zh, "Component not installed: pkexec", "组件未安装：pkexec")
+    return clean_result_status(zh, 10)
 
 fn clean_result_status(zh: bool, state: i64) -> string:
     if state == 4: return label(zh, "Simulation complete; no system changes", "模拟完成；未更改系统")
@@ -908,7 +920,14 @@ fn activate(s: &mut MainWindow, target: f64):
         if s.test_mode: mr_ci_emit("CI_CLEAN_MENU open=true")
         log_popup(s, "clean", &clean_popup_rect(s))
     elif target == 19.0:
-        if (s.clean_simulation or s.clean_production) and clean_simulation_can_start(s.clean_state):
+        # Production runs check the fixed chain first: a missing helper or
+        # policy must be named, not turned into "outcome unconfirmed".
+        let preflight = if s.clean_production: mr_reclaim_preflight() else: 0
+        if preflight != 0 and not s.clean_simulation and clean_simulation_can_start(s.clean_state):
+            s.clean_state = 13
+            s.status = clean_preflight_status(s.zh, preflight)
+            if s.test_mode: mr_ci_emit(f"CI_CLEAN_PREFLIGHT result={preflight} action=blocked component_missing=true")
+        elif (s.clean_simulation or s.clean_production) and clean_simulation_can_start(s.clean_state):
             s.clean_state = 1
             s.clean_confirm_focus = 0
             s.status = ""
