@@ -50,6 +50,24 @@ typedef long (*mr_crossproc_backend)(int pidfd, struct iovec *iov, size_t vlen,
                                      int advice, unsigned int flags);
 static mr_crossproc_backend test_backend;
 
+static int test_backend_errno;
+void mr_crossproc_test_clear_backend_errno(void);
+
+int mr_crossproc_test_backend_errno(void)
+{
+    return test_backend_errno;
+}
+
+void mr_crossproc_test_clear_backend_errno(void)
+{
+    test_backend_errno = 0;
+}
+
+void mr_crossproc_test_set_backend_errno(int value)
+{
+    test_backend_errno = value;
+}
+
 void mr_crossproc_set_backend(mr_crossproc_backend backend)
 {
     test_backend = backend;
@@ -61,7 +79,22 @@ static long call_process_madvise(int pidfd, struct iovec *iov, size_t vlen,
 {
 #ifdef MEMREDUCT_TESTING
     if (test_backend != NULL) {
-        return test_backend(pidfd, iov, vlen, advice, flags);
+        long covered = test_backend(pidfd, iov, vlen, advice, flags);
+        if (covered < 0) {
+            /* A ctypes/Python backend cannot set the C errno that survives the
+             * trampoline, so the injected backend reports the number it wants
+             * classified through its own channel. Without this the errno tests
+             * silently exercised the default branch and EPERM looked like a
+             * generic failure. The production path below is untouched: a real
+             * syscall still sets errno itself. */
+            int reported = mr_crossproc_test_backend_errno();
+            if (reported != 0) {
+                mr_crossproc_test_clear_backend_errno();
+                errno = reported; /* the documented contract of the test hook */
+                return -1;
+            }
+        }
+        return covered;
     }
 #endif
 #if __NR_process_madvise < 0
@@ -116,9 +149,13 @@ int64_t mr_crossproc_clear_approval(void)
 
 static void classify_errno(struct mr_crossproc_advise_result *result, int saved_errno)
 {
+
     if (result->error_code == 0) {
         result->error_code = saved_errno;
     }
+    /* A failure always wins over a previous OK: reporting OK because an earlier
+     * batch worked would describe advice that this run did not apply. */
+    result->status = MR_CROSSPROC_ADVISE_FAILED;
     switch (saved_errno) {
         case EPERM:
         case EACCES:
@@ -204,6 +241,10 @@ static void advise_target(struct mr_crossproc_advise_result *result,
     if (count > 0) {
         const struct mr_crossproc_region *last =
             &plan->region_store[target->region_offset + target->region_count - 1];
+        /* The flush path used to discard this result. A failure on the final
+         * batch was therefore invisible: the earlier batches had already set
+         * status to OK, and the caller reported success for advice that never
+         * happened. Report it like the mid-loop path does. */
         (void)issue_batch(result, target->pidfd, batch, count, last->advice);
     }
 }

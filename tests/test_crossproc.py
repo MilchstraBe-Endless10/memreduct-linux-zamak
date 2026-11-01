@@ -62,6 +62,8 @@ A_FAILED = 8
 A_REENTRANT = 9
 A_EMPTY_PLAN = 10
 
+MR_CROSSPROC_PATH_BYTES_PY = 4096  # mirrors MR_CROSSPROC_PATH_BYTES
+
 MAX_TARGETS = 8
 MAX_REGIONS = 16
 
@@ -498,6 +500,267 @@ class TestPathLength(CrossProcessTestCase):
                 os.environ.pop('MEMREDUCT_TEST_PROC_ROOT', None)
             else:
                 os.environ['MEMREDUCT_TEST_PROC_ROOT'] = previous
+
+
+class TestPathBoundaries(CrossProcessTestCase):
+    """The proc path must fit, and must fail loudly when it cannot.
+
+    Issue #12 review asked for 63/64/65/111/PATH_MAX coverage specifically
+    because the original char path[64] truncated "<root>/<pid>/stat" silently
+    and every process came back unreadable.
+    """
+
+    def _root_of_length(self, length):
+        """A directory path whose string length is exactly `length`."""
+        base = str(self.work)
+        prefix = base + '/p-'
+        pad = length - len(prefix)
+        self.assertGreater(pad, 0, f'base temp dir too long for {length}')
+        target = pathlib.Path(prefix + 'x' * pad)
+        target.mkdir(parents=True, exist_ok=True)
+        self.assertEqual(len(str(target)), length)
+        return target
+
+    def _plan_with_root(self, root):
+        proc = MockProc(root)
+        proc.add(1000, mapping(0x10000, 0x20000))
+        library = self.build_library(f'libpb-{self.id()}.so', ('-DMEMREDUCT_TESTING',))
+        self.install_test_hooks(library, proc)
+        previous = os.environ.get('MEMREDUCT_TEST_PROC_ROOT')
+        os.environ['MEMREDUCT_TEST_PROC_ROOT'] = str(root)
+        try:
+            library.mr_crossproc_plan_status.restype = ctypes.c_int64
+            library.mr_crossproc_plan_targets.restype = ctypes.c_int64
+            return library.mr_crossproc_plan_status(), library.mr_crossproc_plan_targets()
+        finally:
+            if previous is None:
+                os.environ.pop('MEMREDUCT_TEST_PROC_ROOT', None)
+            else:
+                os.environ['MEMREDUCT_TEST_PROC_ROOT'] = previous
+
+    def test_roots_around_the_old_64_byte_buffer_all_resolve(self):
+        # "<root>/1000/stat" is root + 10 bytes. Exercise roots that put the
+        # final path at 63, 64, 65 and 111 bytes.
+        for final_len in (63, 64, 65, 111):
+            root_len = final_len - len('/1000/stat')
+            root = self._root_of_length(root_len)
+            status, targets = self._plan_with_root(root)
+            self.assertEqual(status, OK, f'root len {root_len} (final {final_len})')
+            self.assertEqual(targets, 1, f'root len {root_len} (final {final_len})')
+
+    def test_a_path_too_long_for_the_buffer_fails_closed(self):
+        # A root longer than the buffer must not silently read a wrong path: the
+        # process is skipped rather than planned.
+        limits = MR_CROSSPROC_PATH_BYTES_PY
+        base = str(self.work)
+        # Build a root that overflows the 4096-byte buffer.
+        deep = pathlib.Path(base)
+        segment = 'd' * 200
+        for _ in range(limits // 200 + 4):
+            deep = deep / segment
+        try:
+            deep.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            self.skipTest('filesystem will not accept a path that long')
+        if len(str(deep / '1000' / 'stat')) <= limits:
+            self.skipTest('could not build an over-length path on this filesystem')
+        status, targets = self._plan_with_root(deep)
+        self.assertEqual(targets, 0, 'an over-length path must not yield a target')
+        self.assertNotEqual(status, OK)
+
+
+class TestStatParsing(CrossProcessTestCase):
+    """(comm) may contain spaces and parentheses; fields must land exactly."""
+
+    def _status_for_comm(self, comm):
+        proc = MockProc(self.work / f'proc-stat-{self.id()}')
+        proc.add(1000, mapping(0x10000, 0x20000), start_time=4242)
+        (proc.root / '1000' / 'stat').write_text(stat_line(1000, 4242, comm=comm))
+        library = self.build_library(f'libstat-{self.id()}.so', ('-DMEMREDUCT_TESTING',))
+        self.install_test_hooks(library, proc)
+        previous = os.environ.get('MEMREDUCT_TEST_PROC_ROOT')
+        os.environ['MEMREDUCT_TEST_PROC_ROOT'] = str(proc.root)
+        try:
+            library.mr_crossproc_plan_status.restype = ctypes.c_int64
+            library.mr_crossproc_plan_targets.restype = ctypes.c_int64
+            return library.mr_crossproc_plan_status(), library.mr_crossproc_plan_targets()
+        finally:
+            if previous is None:
+                os.environ.pop('MEMREDUCT_TEST_PROC_ROOT', None)
+            else:
+                os.environ['MEMREDUCT_TEST_PROC_ROOT'] = previous
+
+    def test_comm_with_spaces_and_parens_still_parses(self):
+        # The parser finds field 3 with strrchr(buffer, ')'), so these are the
+        # adversarial shapes: an embedded ')' would break a naive first-')'
+        # scan, and spaces would break a naive space count.
+        for comm in ('plain', 'has space', 'has)paren', 'a b)c (d', ''):
+            status, targets = self._status_for_comm(comm)
+            self.assertEqual(status, OK, f'comm={comm!r}')
+            self.assertEqual(targets, 1, f'comm={comm!r}')
+
+    def test_start_time_lands_on_field_22(self):
+        proc = MockProc(self.work / 'proc-f22')
+        proc.add(1000, mapping(0x10000, 0x20000), start_time=987654)
+        text = (proc.root / '1000' / 'stat').read_text()
+        after = text[text.rindex(')') + 1:].split()
+        self.assertEqual(after[0], 'S', 'field 3 is the state')
+        self.assertEqual(after[19], '987654', 'field 22 is start_time')
+
+    def test_a_stat_line_without_parentheses_is_unreadable_not_planned(self):
+        proc = MockProc(self.work / 'proc-noparen')
+        proc.add(1000, mapping(0x10000, 0x20000))
+        (proc.root / '1000' / 'stat').write_text('1000 fake S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1000\n')
+        library = self.build_library('libnoparen.so', ('-DMEMREDUCT_TESTING',))
+        self.install_test_hooks(library, proc)
+        previous = os.environ.get('MEMREDUCT_TEST_PROC_ROOT')
+        os.environ['MEMREDUCT_TEST_PROC_ROOT'] = str(proc.root)
+        try:
+            library.mr_crossproc_plan_status.restype = ctypes.c_int64
+            library.mr_crossproc_plan_skipped.argtypes = [ctypes.c_int64]
+            library.mr_crossproc_plan_skipped.restype = ctypes.c_int64
+            self.assertNotEqual(library.mr_crossproc_plan_status(), OK,
+                                'an unparseable stat line must not become a target')
+        finally:
+            if previous is None:
+                os.environ.pop('MEMREDUCT_TEST_PROC_ROOT', None)
+            else:
+                os.environ['MEMREDUCT_TEST_PROC_ROOT'] = previous
+
+
+class TestErrnoClassification(CrossProcessTestCase):
+    """Every errno the syscall can return must map to a distinct, honest status.
+
+    Issue #12 review: EPERM / ESRCH / EINVAL / ENOSYS / EFAULT / short returns
+    all need their own case, and "bytes advised" is never "bytes freed".
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.proc = MockProc(cls.work / 'proc-errno')
+        cls.proc.add(1000, mapping(0x10000, 0x20000))
+        cls.previous_root = os.environ.get('MEMREDUCT_TEST_PROC_ROOT')
+        os.environ['MEMREDUCT_TEST_PROC_ROOT'] = str(cls.proc.root)
+        target = cls.work / 'liberrno.so'
+        subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic',
+                        '-shared', '-fPIC', '-DMEMREDUCT_TESTING',
+                        '-DMEMREDUCT_ENABLE_PRODUCTION_ADVISE',
+                        str(ROOT / 'native/crossproc_plan.c'),
+                        str(ROOT / 'native/crossproc_advise.c'),
+                        '-o', str(target)], check=True)
+        cls.library = ctypes.CDLL(str(target))
+        cls.library.mr_crossproc_set_pidfd_hook.argtypes = [ctypes.c_void_p]
+        cls.library.mr_crossproc_set_pidfd_hook.restype = None
+        cls.pidfd_hook = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int32)(lambda pid: os.dup(0))
+        cls.library.mr_crossproc_set_pidfd_hook(ctypes.cast(cls.pidfd_hook, ctypes.c_void_p))
+
+        class IOVec(ctypes.Structure):
+            _fields_ = [('iov_base', ctypes.c_void_p), ('iov_len', ctypes.c_size_t)]
+        cls.IOVec = IOVec
+        cls.behavior = None
+        cls.backend_type = ctypes.CFUNCTYPE(
+            ctypes.c_long, ctypes.c_int, ctypes.POINTER(IOVec), ctypes.c_size_t,
+            ctypes.c_int, ctypes.c_uint)
+
+        def _run(pidfd, iov, vlen, advice, flags):
+            return cls.behavior(iov, vlen)
+        cls._run_cb = cls.backend_type(_run)
+        cls.library.mr_crossproc_set_backend.argtypes = [ctypes.c_void_p]
+        cls.library.mr_crossproc_set_backend.restype = None
+        cls.library.mr_crossproc_set_backend(ctypes.cast(cls._run_cb, ctypes.c_void_p))
+        cls.library.mr_crossproc_test_advise_into.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        cls.library.mr_crossproc_test_advise_into.restype = ctypes.c_int
+        cls.library.mr_crossproc_arm_approval.argtypes = [ctypes.c_void_p]
+        cls.library.mr_crossproc_arm_approval.restype = ctypes.c_int64
+        cls.library.mr_crossproc_test_result_status.argtypes = [ctypes.c_void_p]
+        cls.library.mr_crossproc_test_result_status.restype = ctypes.c_int64
+        cls.library.mr_crossproc_test_set_backend_errno.argtypes = [ctypes.c_int]
+        cls.library.mr_crossproc_test_set_backend_errno.restype = None
+
+    def setUp(self):
+        os.environ['MEMREDUCT_TEST_PROC_ROOT'] = str(self.proc.root)
+        self.plan = (ctypes.c_char * 8192)()
+        self.library.mr_crossproc_plan_build.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        self.library.mr_crossproc_plan_build.restype = ctypes.c_int
+        rc = self.library.mr_crossproc_plan_build(None, ctypes.cast(self.plan, ctypes.c_void_p))
+        self.assertEqual(rc, 0)
+        self.library.mr_crossproc_arm_approval(ctypes.cast(self.plan, ctypes.c_void_p))
+
+    def tearDown(self):
+        if self.previous_root is None:
+            os.environ.pop('MEMREDUCT_TEST_PROC_ROOT', None)
+        else:
+            os.environ['MEMREDUCT_TEST_PROC_ROOT'] = self.previous_root
+
+    def _fresh_status_for(self, fn):
+        """Build a new plan and run once, so no earlier status can leak in."""
+        plan = (ctypes.c_char * 8192)()
+        self.library.mr_crossproc_plan_build.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        self.library.mr_crossproc_plan_build.restype = ctypes.c_int
+        self.assertEqual(self.library.mr_crossproc_plan_build(
+            None, ctypes.cast(plan, ctypes.c_void_p)), 0)
+        self.library.mr_crossproc_arm_approval.argtypes = [ctypes.c_void_p]
+        self.library.mr_crossproc_arm_approval.restype = ctypes.c_int64
+        self.assertEqual(self.library.mr_crossproc_arm_approval(
+            ctypes.cast(plan, ctypes.c_void_p)), 1)
+        type(self).behavior = fn
+        out = (ctypes.c_char * 256)()
+        rc = self.library.mr_crossproc_test_advise_into(
+            ctypes.cast(plan, ctypes.c_void_p), ctypes.cast(out, ctypes.c_void_p))
+        self.assertEqual(rc, 0)
+        self.library.mr_crossproc_test_result_status.argtypes = [ctypes.c_void_p]
+        self.library.mr_crossproc_test_result_status.restype = ctypes.c_int64
+        return self.library.mr_crossproc_test_result_status(ctypes.cast(out, ctypes.c_void_p))
+
+    def _status_for(self, fn, want_errno=0):
+        type(self).behavior = fn
+        if want_errno:
+            self.library.mr_crossproc_test_set_backend_errno(want_errno)
+        out = (ctypes.c_char * 256)()
+        rc = self.library.mr_crossproc_test_advise_into(
+            ctypes.cast(self.plan, ctypes.c_void_p), ctypes.cast(out, ctypes.c_void_p))
+        self.assertEqual(rc, 0)
+        return self.library.mr_crossproc_test_result_status(ctypes.cast(out, ctypes.c_void_p))
+
+    def test_each_errno_maps_to_its_own_status(self):
+        """One isolated process per errno: no state can leak between cases."""
+        cases = [
+            (errno.EPERM, A_NO_PERMISSION, 'EPERM'),
+            (errno.EACCES, A_NO_PERMISSION, 'EACCES'),
+            (errno.ESRCH, A_TARGET_GONE, 'ESRCH'),
+            (errno.EINVAL, A_BAD_REQUEST, 'EINVAL'),
+            (errno.ENOSYS, A_UNAVAILABLE, 'ENOSYS'),
+            (errno.EFAULT, A_FAILED, 'EFAULT'),
+            (errno.EIO, A_FAILED, 'EIO'),
+        ]
+        script = ROOT / 'tests' / '_errno_probe.py'
+        for value, expected, name in cases:
+            done = subprocess.run(
+                [sys.executable, str(script), str(self.proc.root), str(value)],
+                capture_output=True, text=True, timeout=120)
+            self.assertEqual(done.returncode, 0,
+                             f'{name}: probe failed\n{done.stdout}\n{done.stderr}')
+            reported = int(done.stdout.strip().splitlines()[-1])
+            self.assertEqual(reported, expected,
+                             f'errno {name} must map to {expected}')
+
+    def test_a_short_return_is_partial_not_ok(self):
+        # The fixture process has exactly one eligible region, so a single
+        # batch carries one iovec. A "short" return therefore has to be less
+        # than that vector -- returning iov[0].iov_len would be full coverage
+        # and AK would be correct.
+        def short(iov, vlen):
+            return max(1, int(iov[0].iov_len) - 1)
+        status = self._fresh_status_for(short)
+        self.assertEqual(status, A_PARTIAL,
+                         'a return below the requested bytes is PARTIAL, never OK')
+
+    def test_zero_return_is_not_reported_as_success(self):
+        def zero(iov, vlen):
+            return 0
+        status = self._fresh_status_for(zero)
+        self.assertNotEqual(status, A_OK, 'advising 0 bytes must not read as success')
 
 
 class TestAdviceIsDoubleGated(CrossProcessTestCase):
