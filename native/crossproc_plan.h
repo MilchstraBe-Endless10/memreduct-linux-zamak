@@ -63,6 +63,11 @@ enum mr_crossproc_skip {
 #define MR_CROSSPROC_MAX_IOVECS 32u       /* one process_madvise batch */
 #define MR_CROSSPROC_TIME_BUDGET_MS 250u
 #define MR_CROSSPROC_MAX_PROC_ENTRIES 256u /* bounded /proc readdir, never a sweep */
+/* Room for "<proc_root>/<pid>/stat". The root is an absolute path and a test
+ * fixture tree alone can exceed 64 bytes, so this must not be a short buffer:
+ * snprintf() would truncate, every open() would fail, and every process would
+ * be classified unreadable while the code still looked correct. */
+#define MR_CROSSPROC_PATH_BYTES 4096u
 
 struct mr_crossproc_limits {
     uint32_t max_targets;    /* clamped to MR_CROSSPROC_MAX_TARGETS */

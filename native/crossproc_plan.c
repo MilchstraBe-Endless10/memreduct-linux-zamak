@@ -153,7 +153,7 @@ static int advice_is_valid(int32_t advice)
  * /proc/<pid>/stat and is stable across kernels. */
 static int read_start_time(int32_t pid, uint64_t *out)
 {
-    char path[64];
+    char path[MR_CROSSPROC_PATH_BYTES];
     char buffer[1024];
     snprintf(path, sizeof(path), "%s/%d/stat", proc_root(), (int)pid);
     FILE *file = fopen(path, "re");
@@ -203,7 +203,7 @@ static int read_start_time(int32_t pid, uint64_t *out)
  * and most reliable kernel-thread test available without privileges. */
 static int is_kernel_thread(int32_t pid)
 {
-    char path[64];
+    char path[MR_CROSSPROC_PATH_BYTES];
     snprintf(path, sizeof(path), "%s/%d/maps", proc_root(), (int)pid);
     return access(path, R_OK) != 0;
 }
@@ -228,7 +228,7 @@ void mr_crossproc_set_uid_hook(mr_crossproc_uid_hook hook)
  * "other": the safe answer when the caller cannot prove ownership. */
 static int uid_relation(int32_t pid)
 {
-    char path[64];
+    char path[MR_CROSSPROC_PATH_BYTES];
     struct stat info;
 #ifdef MEMREDUCT_TESTING
     if (test_uid_hook != NULL) {
@@ -259,6 +259,7 @@ static int mapping_is_eligible(const char *line, uint64_t *start, uint64_t *end,
     int fields = sscanf(line, "%llx-%llx %7s %31s %31s %llu %511s",
                         &begin, &finish, perms, offset, device, &inode, path);
     if (fields < 5) {
+        /* Blank line, or not a maps line at all. */
         *reason = MR_CROSSPROC_SKIP_UNREADABLE;
         return 0;
     }
@@ -309,7 +310,7 @@ static uint32_t collect_regions(int32_t pid, const struct mr_crossproc_limits *l
                                 struct mr_crossproc_region *regions,
                                 struct mr_crossproc_plan *plan)
 {
-    char path[64];
+    char path[MR_CROSSPROC_PATH_BYTES];
     char line[1024];
     uint32_t kept = 0;
     uint64_t total = 0;
@@ -325,10 +326,14 @@ static uint32_t collect_regions(int32_t pid, const struct mr_crossproc_limits *l
         uint64_t end = 0;
         int32_t reason = MR_CROSSPROC_SKIP_NONE;
         if (!mapping_is_eligible(line, &start, &end, &reason)) {
+            /* A blank or unparseable line is not a shared mapping. Counting it
+             * as one made skipped_shared report 7 for a six-line maps file and
+             * turned a diagnosis of "what did we skip" into noise. */
             switch (reason) {
                 case MR_CROSSPROC_SKIP_WRITABLE: plan->skipped_writable++; break;
                 case MR_CROSSPROC_SKIP_SPECIAL: plan->skipped_special++; break;
-                default: plan->skipped_shared++; break;
+                case MR_CROSSPROC_SKIP_SHARED: plan->skipped_shared++; break;
+                default: break;
             }
             continue;
         }

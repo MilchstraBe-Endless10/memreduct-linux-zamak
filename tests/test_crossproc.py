@@ -31,6 +31,20 @@ NO_CANDIDATES = 5
 INVALID_ARGUMENT = 6
 REENTRANT = 7
 
+SKIP_NONE = 0
+SKIP_PID1 = 1
+SKIP_SELF = 2
+SKIP_KERNEL_THREAD = 3
+SKIP_OTHER_UID = 4
+SKIP_EXITED = 5
+SKIP_PID_REUSED = 6
+SKIP_SHARED = 7
+SKIP_WRITABLE = 8
+SKIP_SPECIAL = 9
+SKIP_TOO_LARGE = 10
+SKIP_BUDGET = 11
+SKIP_UNREADABLE = 12
+
 ADVICE_NONE = 0
 ADVICE_COLD = 1
 ADVICE_PAGEOUT = 2
@@ -299,7 +313,7 @@ class TestPlannerSelection(CrossProcessTestCase):
             mapping(0x40000, 0x50000, 'rw-s', '/lib/c.so', inode=9),  # skip: shared
             mapping(0x50000, 0x60000, 'r--p', '[vdso]', inode=0),     # skip: special
             mapping(0x60000, 0x70000, 'r--p', '[stack]', inode=0),    # skip: special
-        ]) + '\n')
+        ]) )
         result = self.library.mr_crossproc_plan_status()
         self.assertEqual(result, OK)
         self.assertEqual(self.library.mr_crossproc_plan_targets(), 1)
@@ -308,30 +322,36 @@ class TestPlannerSelection(CrossProcessTestCase):
         self.assertEqual(self.library.mr_crossproc_plan_bytes(), 2 * 0x10000)
         self.library.mr_crossproc_plan_skipped.argtypes = [ctypes.c_int64]
         self.library.mr_crossproc_plan_skipped.restype = ctypes.c_int64
-        self.assertEqual(self.library.mr_crossproc_plan_skipped(7), 1, 'writable file-backed skipped')
-        self.assertEqual(self.library.mr_crossproc_plan_skipped(2), 2, 'special mappings skipped')
+        # Address the counters by their real enum values, not by guessed
+        # numbers: 7 is SHARED, 8 is WRITABLE and 9 is SPECIAL.
+        self.assertEqual(self.library.mr_crossproc_plan_skipped(SKIP_WRITABLE), 1,
+                         'writable file-backed skipped')
+        self.assertEqual(self.library.mr_crossproc_plan_skipped(SKIP_SHARED), 1,
+                         'shared mapping skipped')
+        self.assertEqual(self.library.mr_crossproc_plan_skipped(SKIP_SPECIAL), 2,
+                         'special mappings skipped')
 
     def test_skips_pid1_self_kernel_threads_and_other_users(self):
-        self.proc.add(1, mapping(0x10000, 0x20000) + '\n')
-        self.proc.add(os.getpid(), mapping(0x10000, 0x20000) + '\n')
+        self.proc.add(1, mapping(0x10000, 0x20000))
+        self.proc.add(os.getpid(), mapping(0x10000, 0x20000))
         self.proc.add_kernel_thread(2)
         other = 100 if os.geteuid() != 100 else 101
         self.proc.add(4242, mapping(0x10000, 0x20000) + '\n', uid=other)
-        self.proc.add(1000, mapping(0x10000, 0x20000) + '\n')
+        self.proc.add(1000, mapping(0x10000, 0x20000))
         self.assertEqual(self.library.mr_crossproc_plan_status(), OK)
         self.assertEqual(self.library.mr_crossproc_plan_targets(), 1)
         self.library.mr_crossproc_plan_skipped.argtypes = [ctypes.c_int64]
         self.library.mr_crossproc_plan_skipped.restype = ctypes.c_int64
-        self.assertEqual(self.library.mr_crossproc_plan_skipped(1), 1, 'PID 1')
-        self.assertEqual(self.library.mr_crossproc_plan_skipped(2), 1, 'self')
-        self.assertEqual(self.library.mr_crossproc_plan_skipped(3), 1, 'kernel thread')
-        self.assertEqual(self.library.mr_crossproc_plan_skipped(4), 1, 'other uid')
+        self.assertEqual(self.library.mr_crossproc_plan_skipped(SKIP_PID1), 1, 'PID 1')
+        self.assertEqual(self.library.mr_crossproc_plan_skipped(SKIP_SELF), 1, 'self')
+        self.assertEqual(self.library.mr_crossproc_plan_skipped(SKIP_KERNEL_THREAD), 1, 'kernel thread')
+        self.assertEqual(self.library.mr_crossproc_plan_skipped(SKIP_OTHER_UID), 1, 'other uid')
 
     def test_non_numeric_proc_entries_are_ignored(self):
         self.proc.add_plain_dir('sys')
         self.proc.add_plain_dir('self')
         self.proc.add_plain_dir('123abc')
-        self.proc.add(1000, mapping(0x10000, 0x20000) + '\n')
+        self.proc.add(1000, mapping(0x10000, 0x20000))
         self.assertEqual(self.library.mr_crossproc_plan_status(), OK)
         self.assertEqual(self.library.mr_crossproc_plan_targets(), 1)
 
@@ -406,6 +426,80 @@ class TestPlannerBudgets(CrossProcessTestCase):
         self.assertLessEqual(self.library.mr_crossproc_plan_targets(), MAX_TARGETS)
 
 
+class TestFixtureIsolation(CrossProcessTestCase):
+    """Regression cover for the leak that made every plan empty.
+
+    The fixture procfs tree used to be built under pathlib.Path(self.work.name),
+    which is a bare basename, so the trees were created in the process cwd and
+    eight tmp* directories leaked into the repository root. Nothing failed
+    loudly; the planner simply saw an empty procfs.
+    """
+
+    def test_fixture_root_lives_inside_the_temporary_directory(self):
+        proc = MockProc(self.work / 'proc-isolation')
+        self.assertTrue(str(proc.root).startswith(str(self.work) + os.sep))
+        self.assertTrue(proc.root.is_dir())
+
+    def test_class_work_root_is_one_source_of_truth(self):
+        # Every fixture must derive from cls.work. If a test re-derives the
+        # root from temp.name the basename bug comes straight back. Scan only
+        # the MockProc construction sites so this assertion cannot match its
+        # own source text.
+        lines = [line for line in pathlib.Path(__file__).read_text().splitlines()
+                 if 'MockProc(' in line and 'def ' not in line and 'class ' not in line]
+        self.assertTrue(lines, 'expected to find MockProc call sites')
+        for line in lines:
+            self.assertNotIn('.name', line,
+                             f'a fixture root must not go through .name: {line.strip()}')
+
+    def test_building_a_plan_does_not_change_the_working_directory(self):
+        proc = MockProc(self.work / 'proc-cwd')
+        proc.add(1000, mapping(0x10000, 0x20000))
+        library = self.build_library('libcwd.so', ('-DMEMREDUCT_TESTING',))
+        self.install_test_hooks(library, proc)
+        previous = os.environ.get('MEMREDUCT_TEST_PROC_ROOT')
+        os.environ['MEMREDUCT_TEST_PROC_ROOT'] = str(proc.root)
+        before = os.getcwd()
+        try:
+            library.mr_crossproc_plan_status.restype = ctypes.c_int64
+            self.assertEqual(library.mr_crossproc_plan_status(), OK)
+            self.assertEqual(os.getcwd(), before,
+                             'the planner must never write to or chdir into cwd')
+        finally:
+            if previous is None:
+                os.environ.pop('MEMREDUCT_TEST_PROC_ROOT', None)
+            else:
+                os.environ['MEMREDUCT_TEST_PROC_ROOT'] = previous
+
+
+class TestPathLength(CrossProcessTestCase):
+    """The fixture path is longer than a naive 64-byte buffer."""
+
+    def test_a_long_proc_root_still_resolves(self):
+        # Build a root long enough to overrun a 64-byte "<root>/<pid>/stat".
+        deep = self.work
+        for index in range(6):
+            deep = deep / f'segment-{index:02d}-abcdefgh'
+        deep.mkdir(parents=True, exist_ok=True)
+        proc = MockProc(deep / 'proc')
+        proc.add(1000, mapping(0x10000, 0x20000))
+        self.assertGreater(len(str(proc.root / '1000' / 'stat')), 64)
+        library = self.build_library('liblong.so', ('-DMEMREDUCT_TESTING',))
+        self.install_test_hooks(library, proc)
+        previous = os.environ.get('MEMREDUCT_TEST_PROC_ROOT')
+        os.environ['MEMREDUCT_TEST_PROC_ROOT'] = str(proc.root)
+        try:
+            library.mr_crossproc_plan_status.restype = ctypes.c_int64
+            library.mr_crossproc_plan_targets.restype = ctypes.c_int64
+            self.assertEqual(library.mr_crossproc_plan_status(), OK)
+            self.assertEqual(library.mr_crossproc_plan_targets(), 1)
+        finally:
+            if previous is None:
+                os.environ.pop('MEMREDUCT_TEST_PROC_ROOT', None)
+            else:
+                os.environ['MEMREDUCT_TEST_PROC_ROOT'] = previous
+
+
 class TestAdviceIsDoubleGated(CrossProcessTestCase):
     """The writable half must be unreachable without both gates."""
 
@@ -470,7 +564,7 @@ class TestBackendInjection(CrossProcessTestCase):
             mapping(0x10000, 0x20000, 'r--p', '', inode=0),
             mapping(0x20000, 0x30000, 'r--p', '/lib/a.so', inode=7),
             mapping(0x30000, 0x40000, 'rw-s', '/lib/b.so', inode=8),
-        ]) + '\n')
+        ]))
         cls.previous_root = os.environ.get('MEMREDUCT_TEST_PROC_ROOT')
         os.environ['MEMREDUCT_TEST_PROC_ROOT'] = str(cls.proc.root)
 
@@ -480,8 +574,16 @@ class TestBackendInjection(CrossProcessTestCase):
         cls.pidfd_hook = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int32)(cls._pidfd)
         cls.library.mr_crossproc_set_pidfd_hook(ctypes.cast(cls.pidfd_hook, ctypes.c_void_p))
 
+        # struct iovec is { void *iov_base; size_t iov_len; }. Declaring the
+        # pointer as POINTER(c_ubyte) only happened to work: the callback then
+        # could not read iov_len, so a real C caller's lengths were invisible
+        # and the recorded byte count was meaningless. Model the real struct.
+        class IOVec(ctypes.Structure):
+            _fields_ = [('iov_base', ctypes.c_void_p), ('iov_len', ctypes.c_size_t)]
+
+        cls.IOVec = IOVec
         cls.backend_type = ctypes.CFUNCTYPE(
-            ctypes.c_long, ctypes.c_int, ctypes.POINTER(ctypes.c_ubyte), ctypes.c_size_t,
+            ctypes.c_long, ctypes.c_int, ctypes.POINTER(IOVec), ctypes.c_size_t,
             ctypes.c_int, ctypes.c_uint)
         cls.calls = []
         cls.backend_behavior = None
@@ -509,26 +611,29 @@ class TestBackendInjection(CrossProcessTestCase):
 
     @classmethod
     def _record(cls, pidfd, iov, vlen, advice, flags):
-        cls.calls.append({'pidfd': pidfd, 'vlen': vlen, 'advice': advice, 'flags': flags})
+        lengths = [int(iov[index].iov_len) for index in range(vlen)]
+        cls.calls.append({'pidfd': pidfd, 'vlen': vlen, 'advice': advice,
+                          'flags': flags, 'lengths': lengths})
         if cls.backend_behavior is not None:
             return cls.backend_behavior(pidfd, iov, vlen, advice, flags)
-        # Default: accept everything, as a permissive kernel would.
-        total = 0
-        for index in range(vlen):
-            total += 0x10000
-        return total
+        # Default: accept everything, as a permissive kernel would. Return the
+        # sum of the lengths actually handed to us, not a guessed page size.
+        return sum(lengths)
 
     def setUp(self):
         type(self).calls = []
         type(self).backend_behavior = None
         os.environ['MEMREDUCT_TEST_PROC_ROOT'] = str(self.proc.root)
-        for name in ('mr_crossproc_plan_build', 'mr_crossproc_arm_approval',
-                     'mr_crossproc_advise_run', 'mr_crossproc_plan_release'):
-            getattr(self.library, name).restype = ctypes.c_int64 if 'arm' not in name else ctypes.c_int64
         self.library.mr_crossproc_plan_build.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        self.library.mr_crossproc_plan_build.restype = ctypes.c_int
         self.library.mr_crossproc_arm_approval.argtypes = [ctypes.c_void_p]
-        self.library.mr_crossproc_advise_run.argtypes = [ctypes.c_void_p]
-        self.library.mr_crossproc_advise_run.restype = ctypes.c_void_p
+        self.library.mr_crossproc_arm_approval.restype = ctypes.c_int64
+        self.library.mr_crossproc_plan_release.argtypes = [ctypes.c_void_p]
+        self.library.mr_crossproc_plan_release.restype = None
+        # Struct-returning C functions cannot be received by ctypes, so the
+        # prototype exposes mr_crossproc_test_advise_into(plan, out) instead.
+        self.library.mr_crossproc_test_advise_into.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        self.library.mr_crossproc_test_advise_into.restype = ctypes.c_int
 
     def tearDown(self):
         if self.previous_root is None:
@@ -545,17 +650,26 @@ class TestBackendInjection(CrossProcessTestCase):
     def test_unapproved_run_records_no_syscall(self):
         plan = self.make_plan()
         self.library.mr_crossproc_clear_approval()
-        result = self.read_result(self.library.mr_crossproc_advise_run(
-            ctypes.cast(plan, ctypes.c_void_p)))
+        result = self.run_advise(plan)
         self.assertEqual(result['status'], A_NOT_APPROVED)
         self.assertEqual(self.calls, [], 'an unapproved run must not issue a syscall')
         self.assertEqual(result['bytes_advised'], 0)
 
     def test_approved_run_uses_the_planned_ranges_and_advice(self):
         plan = self.make_plan()
+        # make_plan() fills a caller-owned buffer, so the scalar bridge
+        # (mr_crossproc_plan_targets) -- which reads the module-level last_plan
+        # -- is not a valid way to inspect it. Use the plan accessors.
+        self.library.mr_crossproc_plan_targets_of.argtypes = [ctypes.c_void_p]
+        self.library.mr_crossproc_plan_targets_of.restype = ctypes.c_int64
+        self.library.mr_crossproc_plan_regions_of.argtypes = [ctypes.c_void_p]
+        self.library.mr_crossproc_plan_regions_of.restype = ctypes.c_int64
+        self.assertEqual(self.library.mr_crossproc_plan_targets_of(
+            ctypes.cast(plan, ctypes.c_void_p)), 1)
+        self.assertEqual(self.library.mr_crossproc_plan_regions_of(
+            ctypes.cast(plan, ctypes.c_void_p)), 2)
         self.assertEqual(self.library.mr_crossproc_arm_approval(ctypes.cast(plan, ctypes.c_void_p)), 1)
-        result = self.read_result(self.library.mr_crossproc_advise_run(
-            ctypes.cast(plan, ctypes.c_void_p)))
+        result = self.run_advise(plan)
         self.assertEqual(result['status'], A_OK)
         self.assertEqual(result['bytes_advised'], 2 * 0x10000)
         self.assertEqual(len(self.calls), 1, 'both regions fit one batch')
@@ -567,14 +681,20 @@ class TestBackendInjection(CrossProcessTestCase):
     def test_second_run_without_rearming_is_refused(self):
         plan = self.make_plan()
         self.library.mr_crossproc_arm_approval(ctypes.cast(plan, ctypes.c_void_p))
-        first = self.read_result(self.library.mr_crossproc_advise_run(
-            ctypes.cast(plan, ctypes.c_void_p)))
+        first = self.run_advise(plan)
         self.assertEqual(first['status'], A_OK)
         calls_after_first = len(self.calls)
-        second = self.read_result(self.library.mr_crossproc_advise_run(
-            ctypes.cast(plan, ctypes.c_void_p)))
+        second = self.run_advise(plan)
         self.assertEqual(second['status'], A_NOT_APPROVED)
         self.assertEqual(len(self.calls), calls_after_first, 'no retry, no second syscall')
+
+    def run_advise(self, plan):
+        """Run through the out-parameter prototype and return the result dict."""
+        out = (ctypes.c_char * 256)()
+        rc = self.library.mr_crossproc_test_advise_into(
+            ctypes.cast(plan, ctypes.c_void_p), ctypes.cast(out, ctypes.c_void_p))
+        self.assertEqual(rc, 0)
+        return self.read_result(out)
 
     def read_result(self, pointer):
         library = self.library
