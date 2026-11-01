@@ -171,7 +171,7 @@ wait_for_marker 'CI_DRAW width='
 wait_for_marker 'CI_WINDOW_SIZE_POLICY fixed=1'
 wait_for_marker 'CI_MAIN_BACKGROUND mode=light applied=1'
 wait_for_marker 'CI_MAIN_CONTENT_INSET old=12 new=0 margins=start:12,end:0,top:0,bottom:12 verified=true'
-wait_for_marker 'CI_WINDOW_SIZE_POLICY main_found=1 main_resizable=1 settings_found=1 settings_resizable=0'
+wait_for_marker 'CI_WINDOW_SIZE_POLICY main_found=1 main_resizable=0 settings_found=1 settings_resizable=0'
 wait_for_marker 'CI_CAPTURE kind=main status=ok'
 wait_for_marker 'CI_CAPTURE kind=settings status=skipped visible=0 mapped=0'
 if grep -Eq 'Gtk-(WARNING|CRITICAL)' "$artifact_dir/client.log"; then

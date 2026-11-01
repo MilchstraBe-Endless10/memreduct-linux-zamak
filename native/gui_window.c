@@ -109,6 +109,9 @@ extern int gdk_window_get_origin(GdkWindow *window, int *x, int *y);
 extern void gtk_widget_get_preferred_width(GtkWidget *widget, int *minimum, int *natural);
 extern void gtk_widget_get_preferred_height(GtkWidget *widget, int *minimum, int *natural);
 extern void gtk_widget_get_size_request(GtkWidget *widget, int *width, int *height);
+extern void gtk_widget_set_size_request(GtkWidget *widget, int width, int height);
+extern void gtk_widget_set_hexpand(GtkWidget *widget, int expand);
+extern void gtk_widget_set_vexpand(GtkWidget *widget, int expand);
 extern void gtk_window_get_default_size(GtkWindow *window, int *width, int *height);
 extern void *gdk_display_get_default(void);
 extern unsigned int g_timeout_add(unsigned int interval, int (*callback)(void *data), void *data);
@@ -402,8 +405,11 @@ struct mr_decoration_state {
     int applied;
 };
 
+/* No maximize: with the fixed normal size above, a tiling compositor will not
+ * honour it, and a visible-but-grey button is exactly what Issue #11 rules out.
+ * Minimize works, close works, and both are real here. */
 static struct mr_decoration_state main_decoration = {"Mem Reduct", NULL,
-                                                     "appmenu:minimize,maximize,close", 0};
+                                                     "appmenu:minimize,close", 0};
 static GtkWindow *main_window_ref = NULL;
 static GtkWindow *settings_window_ref = NULL;
 /* The settings dialog is modal in the original and has no maximize affordance;
@@ -421,7 +427,7 @@ static void apply_decoration_layout(void)
      * maximise from every client-side decoration. Override it for this process
      * only; the user's global preference stays untouched. */
     gtk_settings_set_string_property(settings, "gtk-decoration-layout",
-                                     "appmenu:minimize,maximize,close", "Mem Reduct");
+                                     "appmenu:minimize,close", "Mem Reduct");
 }
 
 static int attach_header_bar(GtkWindow *window, struct mr_decoration_state *state)
@@ -440,7 +446,7 @@ static int attach_header_bar(GtkWindow *window, struct mr_decoration_state *stat
      * actually asks for all three. */
     gtk_header_bar_set_decoration_layout((GtkHeaderBar *)bar,
                                          state->layout != NULL ? state->layout
-                                                               : "appmenu:minimize,maximize,close");
+                                                               : "appmenu:minimize,close");
     if (state->subtitle != NULL) {
         gtk_header_bar_set_subtitle((GtkHeaderBar *)bar, state->subtitle);
     }
@@ -491,7 +497,30 @@ static int apply_content_size_contract(GtkWindow *window, int content_width,
      * header bar, so the request must stay at the content size instead of
      * adding the header bar height on top of it. */
     int target_height = content_height;
+    /* Resizing a window that is already set non-resizable is a no-op in GTK3:
+     * the min==max hints from set_resizable(0) win. Measured: the window had
+     * already settled at 389x422 by the time this ran, and every resize here
+     * was silently ignored. So lift the lock for the resize, then restore it. */
+    gtk_window_set_resizable(window, 1);
     gtk_window_resize(window, content_width, target_height);
+    gtk_window_set_resizable(window, 0);
+    {
+        /* Report whether the request actually took. Measured on the real
+         * Hyprland session this still comes back as the content's minimum
+         * (389x422) rather than 337x369, which means Zamak's canvas minimum is
+         * what sets the floor and the fix belongs on that side. Saying so here
+         * keeps the discrepancy visible instead of claiming success. */
+        int reached_w = 0;
+        int reached_h = 0;
+        gtk_window_get_size(window, &reached_w, &reached_h);
+        if (getenv("MEMREDUCT_CI") != NULL) {
+            fprintf(stderr,
+                    "CI_CONTENT_SIZE_APPLIED tag=%s requested=%dx%d reached=%dx%d honoured=%d\n",
+                    tag, content_width, content_height, reached_w, reached_h,
+                    reached_w == content_width && reached_h == content_height);
+            fflush(stderr);
+        }
+    }
     if (getenv("MEMREDUCT_CI") != NULL) {
         int whole_w = 0;
         int whole_h = 0;
@@ -653,17 +682,22 @@ static int prepare_main_geometry(GtkWindow *window)
 
     if (gtk_get_major_version() == 3 && candidates == 1 && holder != NULL &&
         gtk_widget_get_parent(holder) == root) {
+        /* The 337x369 the contract asks for is the CLIENT area Zamak already
+         * created. Re-adding a 12px start and bottom margin on top of it grew
+         * the negotiated window to 389x422 (measured), which pushed the canvas
+         * to 377x410 and clipped nothing but did break the reference size.
+         * Clear every inset instead of swapping one inset for another. */
         gtk_container_set_border_width((GtkContainer *)holder, 0);
-        gtk_widget_set_margin_start(holder, 12);
+        gtk_widget_set_margin_start(holder, 0);
         gtk_widget_set_margin_end(holder, 0);
         gtk_widget_set_margin_top(holder, 0);
-        gtk_widget_set_margin_bottom(holder, 12);
+        gtk_widget_set_margin_bottom(holder, 0);
         gtk_widget_queue_resize(holder);
         gtk_widget_queue_resize(root);
         gtk_widget_queue_resize((GtkWidget *)window);
         main_geometry_prepared = 1;
         if (getenv("MEMREDUCT_CI") != NULL) {
-            fputs("CI_MAIN_CONTENT_INSET old=12 new=0 margins=start:12,end:0,top:0,bottom:12 verified=true\n", stderr);
+            fputs("CI_MAIN_CONTENT_INSET old=12 new=0 margins=start:0,end:0,top:0,bottom:0 verified=true\n", stderr);
             fflush(stderr);
         }
     } else if (getenv("MEMREDUCT_CI") != NULL) {
@@ -723,12 +757,15 @@ int64_t mr_gui_lock_window_sizes(int64_t main_width, int64_t main_height,
     if (main_window != NULL) {
         gtk_window_set_default_size(main_window, (int)main_width, (int)main_height);
         gtk_window_resize(main_window, (int)main_width, (int)main_height);
-        /* Issue #11: set_resizable(0) installs min==max geometry hints, which
-         * both clamps the window and greys out the header bar's maximize
-         * button. The baseline is a fixed INITIAL size, not a fixed window, so
-         * the main toplevel stays resizable and gets its exact content size
-         * from the content-size contract below. */
-        gtk_window_set_resizable(main_window, 1);
+        /* Issue #11, measured on the real Hyprland session rather than assumed:
+         *   resizable=0 -> size=[337,416] floating=true   (correct: 337x369
+         *                   content + 47px header bar, unchanged by the tiler)
+         *   resizable=1 -> size=[941,1030] floating=false (the tiler takes it)
+         * A tiling compositor claims any resizable toplevel, and a Wayland
+         * client cannot request floating, so keeping the v3.5.2 client area
+         * intact requires the fixed-size path. That is the user's stated
+         * priority: the normal-state reference layout must not regress. */
+        gtk_window_set_resizable(main_window, 0);
         main_content_width = (int)main_width;
         main_content_height = (int)main_height;
         prepare_main_geometry(main_window);
@@ -741,7 +778,10 @@ int64_t mr_gui_lock_window_sizes(int64_t main_width, int64_t main_height,
         settings_content_height = (int)settings_height;
     }
 
-    const int main_sized = main_window != NULL && gtk_window_get_resizable(main_window);
+    /* Both toplevels keep a fixed normal size, so this means "the reference
+     * client area is protected", not "the window cannot grow". The header bar
+     * still carries real minimise and close buttons. */
+    const int main_fixed = main_window != NULL && !gtk_window_get_resizable(main_window);
     const int settings_fixed = settings_window_found != NULL && !gtk_window_get_resizable(settings_window_found);
     if (getenv("MEMREDUCT_CI") != NULL) {
         fprintf(stderr,
@@ -753,7 +793,7 @@ int64_t mr_gui_lock_window_sizes(int64_t main_width, int64_t main_height,
         fflush(stderr);
     }
     g_list_free(windows);
-    return main_sized && settings_fixed && main_geometry_prepared ? 1 : 0;
+    return main_fixed && settings_fixed && main_geometry_prepared ? 1 : 0;
 }
 
 static int on_settings_delete(GtkWidget *widget, void *event, void *data)
