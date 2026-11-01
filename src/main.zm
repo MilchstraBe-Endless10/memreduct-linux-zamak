@@ -22,6 +22,15 @@ extern fn mr_gui_test_clean_simulation_enabled() -> i64
 extern fn mr_ci_emit(line: &string)
 extern fn mr_production_clean_enabled() -> i64
 extern fn mr_self_reclaim() -> i64
+# Read-only cross-process planner (ADR-0007): scans procfs, pins pidfds, and
+# reports what a later advise WOULD touch. It never writes and never advises;
+# the writable half is a separate gated translation unit.
+extern fn mr_crossproc_plan_status() -> i64
+extern fn mr_crossproc_plan_targets() -> i64
+extern fn mr_crossproc_plan_regions() -> i64
+extern fn mr_crossproc_plan_bytes() -> i64
+extern fn mr_crossproc_plan_error() -> i64
+extern fn mr_crossproc_plan_skipped(reason: i64) -> i64
 extern fn mr_self_reclaim_bytes() -> i64
 extern fn mr_self_reclaim_failed_batches() -> i64
 extern fn mr_self_reclaim_error() -> i64
@@ -305,9 +314,34 @@ fn run_self_reclaim(s: &mut MainWindow):
     let result = mr_self_reclaim()
     let state = clean_self_state_for(result)
     s.clean_state = state
-    s.status = clean_self_status_text(s.zh, state)
+    # The self trim never touches another process, so it is also the natural
+    # moment to run the read-only cross-process planner (ADR-0007): same
+    # unprivileged context, no advice issued, output purely observational. The
+    # status line reports what a FUTURE gated advise would have considered,
+    # which is the review-required visibility the cross-process work must show
+    # before any writable path is ever enabled.
+    let plan_status = mr_crossproc_plan_status()
+    let preview = label(s.zh, " cross-process preview: ", " 跨进程预览：")
+    # 0 OK and 5 NO_CANDIDATES are both completed scans -- 5 is the honest
+    # answer when every process belongs to another user. 3 stops at a budget
+    # but the plan is still usable. Only a genuinely failed scan (procfs
+    # unreadable, reentrant call, bad argument) shows "unavailable".
+    if plan_status == 0 or plan_status == 5 or plan_status == 3:
+        let bytes = mr_crossproc_plan_bytes()
+        let mb = bytes / 1048576
+        let targets = mr_crossproc_plan_targets()
+        let regions = mr_crossproc_plan_regions()
+        let detail_en = f"{targets} processes / {regions} regions / ~{mb} MiB candidate (read-only)"
+        let detail_zh = f"{targets} 进程 / {regions} 区域 / 约 {mb} MiB 候选（只读）"
+        let body = label(s.zh, detail_en, detail_zh)
+        s.status = clean_self_status_text(s.zh, state) + preview + body
+    else:
+        # The scan itself failed; say so instead of showing a stale count.
+        let body = label(s.zh, "scan unavailable", "扫描不可用")
+        s.status = clean_self_status_text(s.zh, state) + preview + body
     if s.test_mode:
         mr_ci_emit(f"CI_CLEAN_SELF result={clean_self_status_name(state)} result_state={state} status={result} accepted_bytes={mr_self_reclaim_bytes()} failed_batches={mr_self_reclaim_failed_batches()} error={mr_self_reclaim_error()} target=self only other_processes=false no_privilege=true")
+        mr_ci_emit(f"CI_CROSSPROC_PREVIEW status={plan_status} targets={mr_crossproc_plan_targets()} regions={mr_crossproc_plan_regions()} bytes={mr_crossproc_plan_bytes()} error={mr_crossproc_plan_error()} skipped_shared={mr_crossproc_plan_skipped(7)} skipped_writable={mr_crossproc_plan_skipped(8)} readonly=true no_advice_issued=true")
     s.canvas.redraw()
 
 fn clean_simulation_can_start(state: i64) -> bool:
