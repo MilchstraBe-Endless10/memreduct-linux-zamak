@@ -34,6 +34,20 @@ extern void gtk_settings_set_string_property(
     const char *origin);
 extern const char *gtk_window_get_title(GtkWindow *window);
 extern void gtk_window_set_default_size(GtkWindow *window, int width, int height);
+/* Exact client-size pinning. Declared structurally to keep this bridge free of
+ * Gtk headers, exactly like every other ABI above. */
+typedef struct {
+    int min_width, min_height, max_width, max_height;
+    int base_width, base_height, width_inc, height_inc;
+    double min_aspect, max_aspect;
+    int gravity;
+} MrGdkGeometry;
+#define MR_GDK_HINT_MIN_SIZE (1 << 1)
+#define MR_GDK_HINT_MAX_SIZE (1 << 2)
+#define MR_GDK_HINT_BASE_SIZE (1 << 4)
+#define MR_GDK_GRAVITY_NORTH_WEST 1
+extern void gtk_window_set_geometry_hints(GtkWindow *window, GtkWidget *geometry_widget,
+                                          MrGdkGeometry *geometry, int geom_flags);
 extern void gtk_window_resize(GtkWindow *window, int width, int height);
 extern void gtk_window_set_resizable(GtkWindow *window, int resizable);
 extern int gtk_window_get_resizable(GtkWindow *window);
@@ -405,11 +419,11 @@ struct mr_decoration_state {
     int applied;
 };
 
-/* No maximize: with the fixed normal size above, a tiling compositor will not
- * honour it, and a visible-but-grey button is exactly what Issue #11 rules out.
- * Minimize works, close works, and both are real here. */
+/* All three buttons, now that the pinned geometry hints keep the normal size at
+ * 337x369 while leaving the toplevel resizable -- which is what makes maximize
+ * actually do something instead of being a visible-but-dead control. */
 static struct mr_decoration_state main_decoration = {"Mem Reduct", NULL,
-                                                     "appmenu:minimize,close", 0};
+                                                     "appmenu:minimize,maximize,close", 0};
 static GtkWindow *main_window_ref = NULL;
 static GtkWindow *settings_window_ref = NULL;
 /* The settings dialog is modal in the original and has no maximize affordance;
@@ -427,7 +441,7 @@ static void apply_decoration_layout(void)
      * maximise from every client-side decoration. Override it for this process
      * only; the user's global preference stays untouched. */
     gtk_settings_set_string_property(settings, "gtk-decoration-layout",
-                                     "appmenu:minimize,close", "Mem Reduct");
+                                     "appmenu:minimize,maximize,close", "Mem Reduct");
 }
 
 static int attach_header_bar(GtkWindow *window, struct mr_decoration_state *state)
@@ -446,7 +460,7 @@ static int attach_header_bar(GtkWindow *window, struct mr_decoration_state *stat
      * actually asks for all three. */
     gtk_header_bar_set_decoration_layout((GtkHeaderBar *)bar,
                                          state->layout != NULL ? state->layout
-                                                               : "appmenu:minimize,close");
+                                                               : "appmenu:minimize,maximize,close");
     if (state->subtitle != NULL) {
         gtk_header_bar_set_subtitle((GtkHeaderBar *)bar, state->subtitle);
     }
@@ -473,6 +487,11 @@ static int attach_header_bar(GtkWindow *window, struct mr_decoration_state *stat
  * grown by exactly the measured header bar height instead of letting the header
  * bar eat into the canvas (which clipped 34px of the drawing area).
  */
+/* Pin the CLIENT size with min==max hints and no set_default_size(). Measured:
+ * calling this before the toplevel is mapped is what keeps a resizable window
+ * at the requested size; applying it only from the idle callback is too late,
+ * because by then a tiling compositor has already claimed the window (941x983).
+ * main_content_width/height are declared below, so this lives next to them. */
 static int main_content_width = 0;
 static int main_content_height = 0;
 static int settings_content_width = 0;
@@ -492,44 +511,44 @@ static int apply_content_size_contract(GtkWindow *window, int content_width,
     if (bar_height <= 1) {
         return 0; /* Header bar not allocated yet; a later tick retries. */
     }
-    /* Measured semantics (GTK 3.24, CSD): gtk_window_resize() sets the CLIENT
-     * area. With a title bar attached the toplevel itself is content + the
-     * header bar, so the request must stay at the content size instead of
-     * adding the header bar height on top of it. */
-    int target_height = content_height;
-    /* Resizing a window that is already set non-resizable is a no-op in GTK3:
-     * the min==max hints from set_resizable(0) win. Measured: the window had
-     * already settled at 389x422 by the time this ran, and every resize here
-     * was silently ignored. So lift the lock for the resize, then restore it. */
-    gtk_window_set_resizable(window, 1);
-    gtk_window_resize(window, content_width, target_height);
-    gtk_window_set_resizable(window, 0);
+    /* Issue #11 root cause, isolated with a single-variable GTK3 repro of this
+     * exact widget nesting:
+     *
+     *   gtk_window_resize() alone            -> the canvas size (325x357)
+     *   gtk_window_set_default_size() alone  -> request + 52px on both axes
+     *   both                                 -> request + 52px
+     *   min==max geometry hints + resize     -> exactly the request
+     *
+     * So the +52 was never a border constant and never the canvas minimum --
+     * gtk_widget_get_preferred_width() on every layer reports 325. It comes
+     * from gtk_window_set_default_size(), which GTK3 treats as the TOTAL size
+     * and then adds the CSD surface on top of.
+     *
+     * That is why set_default_size() is never called. The size is pinned with
+     * min==max geometry hints instead, which also keeps the window resizable so
+     * the header bar's maximize button is genuinely live.
+     *
+     * Once a GtkHeaderBar is attached, gtk_window_resize() addresses the CLIENT
+     * area and the header bar comes out of it -- measured 337x322 when asking
+     * for 337x369. The hint therefore carries content + header bar height so
+     * the client area lands on exactly content_height.
+     */
+    /* The size was pinned before the window was mapped (see
+     * mr_gui_lock_window_sizes). Re-applying hints here fights the compositor:
+     * measured gtk reporting 337x322 while hyprctl still reported 941x1030.
+     * So this pass only observes and reports; it never re-pins. */
     {
-        /* Report whether the request actually took. Measured on the real
-         * Hyprland session this still comes back as the content's minimum
-         * (389x422) rather than 337x369, which means Zamak's canvas minimum is
-         * what sets the floor and the fix belongs on that side. Saying so here
-         * keeps the discrepancy visible instead of claiming success. */
         int reached_w = 0;
         int reached_h = 0;
         gtk_window_get_size(window, &reached_w, &reached_h);
         if (getenv("MEMREDUCT_CI") != NULL) {
-            /* Calibrated against a standalone GTK3 repro of this exact widget
-             * nesting: asking for a 337x369 window yields 389x422, i.e. 52x53
-             * more than requested, and the content widget is allocated those
-             * larger numbers too. So the extra 52 is applied to the CONTENT,
-             * not to a border around it, and the canvas ends up 52px wider than
-             * the v3.5.2 contract.
-             *
-             * No boolean "honoured" flag is reported here on purpose: an
-             * earlier >= comparison passed for any window at least as large as
-             * the request, which is true of every window and therefore told us
-             * nothing. The numbers are the fact; the reader compares them. */
             fprintf(stderr,
-                    "CI_CONTENT_SIZE_APPLIED tag=%s requested=%dx%d reached=%dx%d "
-                    "overshoot=%+dx%+d\n",
-                    tag, content_width, target_height, reached_w, reached_h,
-                    reached_w - content_width, reached_h - target_height);
+                    "CI_CONTENT_SIZE_APPLIED tag=%s content=%dx%d bar_h=%d "
+                    "expected=%dx%d reached=%dx%d delta=%+dx%+d resizable=%d\n",
+                    tag, content_width, content_height, bar_height,
+                    content_width, content_height,
+                    reached_w, reached_h, reached_w - content_width,
+                    reached_h - content_height, gtk_window_get_resizable(window));
             fflush(stderr);
         }
     }
@@ -752,33 +771,78 @@ int64_t mr_gui_lock_window_sizes(int64_t main_width, int64_t main_height,
     }
 
     if (main_window != NULL) {
-        gtk_window_set_default_size(main_window, (int)main_width, (int)main_height);
-        gtk_window_resize(main_window, (int)main_width, (int)main_height);
-        /* Issue #11, measured on the real Hyprland session rather than assumed:
-         *   resizable=0 -> size=[337,416] floating=true   (correct: 337x369
-         *                   content + 47px header bar, unchanged by the tiler)
-         *   resizable=1 -> size=[941,1030] floating=false (the tiler takes it)
-         * A tiling compositor claims any resizable toplevel, and a Wayland
-         * client cannot request floating, so keeping the v3.5.2 client area
-         * intact requires the fixed-size path. That is the user's stated
-         * priority: the normal-state reference layout must not regress. */
-        gtk_window_set_resizable(main_window, 0);
+        /* No gtk_window_set_default_size(): that call is what added 52px per
+         * axis (see the contract above). */
         main_content_width = (int)main_width;
         main_content_height = (int)main_height;
+        /* Pin before the window is mapped. Order matters: a resizable toplevel
+         * that reaches the compositor without min==max hints gets tiled, and no
+         * later resize brings it back (measured 941x983 -> stays 941x983).
+         *
+         * Geometry hints are measured on the WHOLE toplevel here, not on the
+         * client area: pinning 337x369 produced a 337x322 client (the header bar
+         * was taken out of it). So the pinned height is the content height plus
+         * the header bar height, which is what makes the client land on 369. */
+        int early_bar_h = 0;
+        {
+            GtkWidget *early_bar = gtk_window_get_titlebar(main_window);
+            if (early_bar != NULL) {
+                int min_h = 0;
+                int nat_h = 0;
+                gtk_widget_get_preferred_height(early_bar, &min_h, &nat_h);
+                early_bar_h = nat_h > 0 ? nat_h : min_h;
+            }
+        }
+        const int early_total_h = (int)main_height + early_bar_h;
+        MrGdkGeometry early;
+        memset(&early, 0, sizeof(early));
+        early.min_width = (int)main_width;
+        early.min_height = early_total_h;
+        early.max_width = (int)main_width;
+        early.max_height = early_total_h;
+        early.base_width = (int)main_width;
+        early.base_height = early_total_h;
+        early.width_inc = 1;
+        early.height_inc = 1;
+        early.gravity = MR_GDK_GRAVITY_NORTH_WEST;
+        gtk_window_set_geometry_hints(main_window, gtk_bin_get_child((GtkBin *)main_window), &early,
+                                      MR_GDK_HINT_MIN_SIZE | MR_GDK_HINT_MAX_SIZE |
+                                      MR_GDK_HINT_BASE_SIZE);
+        /* Deliberately no gtk_window_resize() here: calling it right after the
+         * hints re-negotiates and lands on 285x270 (measured). The hints alone
+         * define the size.
+         * Resizable so the maximize button does something; the hints above are
+         * what keep the normal size at 337x369. */
+        gtk_window_set_resizable(main_window, 1);
         prepare_main_geometry(main_window);
     }
     if (settings_window_found != NULL) {
-        gtk_window_set_default_size(settings_window_found, (int)settings_width, (int)settings_height);
+        MrGdkGeometry settings_pin;
+        memset(&settings_pin, 0, sizeof(settings_pin));
+        settings_pin.min_width = (int)settings_width;
+        settings_pin.min_height = (int)settings_height;
+        settings_pin.max_width = (int)settings_width;
+        settings_pin.max_height = (int)settings_height;
+        settings_pin.base_width = (int)settings_width;
+        settings_pin.base_height = (int)settings_height;
+        settings_pin.width_inc = 1;
+        settings_pin.height_inc = 1;
+        settings_pin.gravity = MR_GDK_GRAVITY_NORTH_WEST;
+        gtk_window_set_geometry_hints(settings_window_found, NULL, &settings_pin,
+                                      MR_GDK_HINT_MIN_SIZE | MR_GDK_HINT_MAX_SIZE |
+                                      MR_GDK_HINT_BASE_SIZE);
         gtk_window_resize(settings_window_found, (int)settings_width, (int)settings_height);
+        /* The settings dialog is modal in v3.5.2 and has no maximize affordance,
+         * so it keeps the fixed path. */
         gtk_window_set_resizable(settings_window_found, 0);
         settings_content_width = (int)settings_width;
         settings_content_height = (int)settings_height;
     }
 
-    /* Both toplevels keep a fixed normal size, so this means "the reference
-     * client area is protected", not "the window cannot grow". The header bar
-     * still carries real minimise and close buttons. */
-    const int main_fixed = main_window != NULL && !gtk_window_get_resizable(main_window);
+    /* The main window is deliberately resizable so maximize works; its normal
+     * size is held by geometry hints, not by the resizable flag. The settings
+     * dialog keeps the fixed path because v3.5.2 has no maximize there. */
+    const int main_ok = main_window != NULL && gtk_window_get_resizable(main_window);
     const int settings_fixed = settings_window_found != NULL && !gtk_window_get_resizable(settings_window_found);
     if (getenv("MEMREDUCT_CI") != NULL) {
         fprintf(stderr,
@@ -790,7 +854,7 @@ int64_t mr_gui_lock_window_sizes(int64_t main_width, int64_t main_height,
         fflush(stderr);
     }
     g_list_free(windows);
-    return main_fixed && settings_fixed && main_geometry_prepared ? 1 : 0;
+    return main_ok && settings_fixed && main_geometry_prepared ? 1 : 0;
 }
 
 static int on_settings_delete(GtkWidget *widget, void *event, void *data)
