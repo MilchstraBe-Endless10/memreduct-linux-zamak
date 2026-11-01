@@ -2,42 +2,44 @@
 <!DOCTYPE policyconfig PUBLIC
  "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
-<!--
-  Mem Reduct Linux — Zamak Native: manual page-cache reclaim.
-
-  This policy gates exactly one fixed request: writing "1\n" to
-  /proc/sys/vm/drop_caches (clean page cache and reclaimable slab) through
-  the root-owned helper at /usr/libexec/memreduct-zamak-helper.
-
-  Design notes (see docs/ADR/0005-manual-page-cache-reclaim.md):
-  - The annotation binds the authorization to that helper path only. A caller
-    cannot reuse the action id to run an arbitrary program through pkexec.
-  - The action is never "yes" by default: every request needs an explicit
-    answer from the user's authentication agent.
-  - Approval is per-invocation (no retained authorization), so a repeated
-    request must be authorized again.
-  - The GUI stays unprivileged; only this fixed action can be requested.
--->
 <policyconfig>
 
-  <vendor>Mem Reduct Linux (unofficial Zamak port)</vendor>
+  <!-- Mem Reduct Zamak: the only privileged surface.
+       One action, one fixed root-owned helper path, one fixed argument.
+       The GUI cannot pass a PID, a path, or a shell command through this
+       action: pkexec is invoked with a literal argv, and the helper rejects
+       anything but "pagecache".
+
+       Defaults are "no" everywhere on purpose: the shipped policy grants
+       nothing. An administrator who wants the one-shot page-cache action to
+       be usable without editing this file can allow the action id through a
+       polkit rules file (50-local.d style); the helper still enforces its
+       own fixed argument and root checks regardless of how it was reached.
+       There is deliberately no retain_authorization / require_active
+       annotation: every request must be authorized again. -->
+  <vendor>Mem Reduct Zamak</vendor>
   <vendor_url>https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak</vendor_url>
 
   <action id="io.github.milchstrasse_endless10.memreduct.zamak.pagecache">
-    <description>Drop clean page cache and reclaimable slab</description>
-    <description xml:lang="zh_CN">丢弃干净的页缓存与可回收的 slab</description>
-    <message>Authentication is required to request clean page-cache reclaim. Cached files may need to be re-read from disk, dirty pages are kept, and the kernel may ignore the request.</message>
-    <message xml:lang="zh_CN">请求清理页缓存需要验证身份。缓存文件可能需要重新从磁盘读取，脏页会被保留，内核也可能忽略该请求。</message>
-    <icon_name>utilities-system-monitor</icon_name>
+    <description>Drop the file page cache once (Mem Reduct Zamak)</description>
+    <description xml:lang="zh_CN">一次性清理文件页缓存（Mem Reduct Zamak）</description>
+    <message>Authentication is required to drop the file page cache.
 
+Dropping the cache discards cached file data. Programs will have to read it
+back from disk, which can be slower until the cache refills. There is no
+guarantee how much memory this returns, and it is a one-shot diagnostic
+action, not an optimisation.</message>
+    <message xml:lang="zh_CN">清理文件页缓存需要认证。
+
+清理会丢弃已缓存的文件数据，程序需要重新从磁盘读取，缓存回填前系统可能变慢。
+无法保证能释放多少内存。这是一次性诊断操作，不是日常优化手段。</message>
+    <icon_name>memreduct-zamak</icon_name>
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>
       <allow_active>no</allow_active>
     </defaults>
-
     <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/memreduct-zamak-helper</annotate>
-    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 
 </policyconfig>

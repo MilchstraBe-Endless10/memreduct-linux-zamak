@@ -511,7 +511,7 @@ fn draw_clean_confirmation(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, second
     # path keeps its own wording so a test string can never stand in for a
     # production warning.
     let body_a = if s.clean_simulation: label(s.zh, "Mock helper only; writes a temp file.", "仅使用模拟 helper，只写临时文件。") else: label(s.zh, "Drops clean page cache only.", "仅丢弃干净页缓存。")
-    let body_b = if s.clean_simulation: label(s.zh, "No system memory is changed.", "不会改动系统内存。") else: label(s.zh, "Files re-read slower; no free amount promised.", "文件将变慢重读；不保证释放量。")
+    let body_b = if s.clean_simulation: label(s.zh, "No system memory is changed.", "不会改动系统内存。") else: label(s.zh, "Re-reads slower; no amount guaranteed.", "重读变慢；不保证释放量。")
     p.text(panel.x + 10.0, panel.y + 9.0, title_text, fg, size=8.0)
     p.text(panel.x + 10.0, panel.y + 26.0, body_a, secondary, size=8.0)
     p.text(panel.x + 10.0, panel.y + 40.0, body_b, secondary, size=8.0)
@@ -882,8 +882,12 @@ fn activate(s: &mut MainWindow, target: f64):
                 let confirm_mode = if s.clean_simulation: "simulation" else: "production"
                 mr_ci_emit(f"CI_CLEAN_CONFIRM open=true mode={confirm_mode}")
         else:
-            s.status = if clean_operation_busy(s.clean_state): clean_result_status(s.zh, s.clean_state) else: label(s.zh, "Cleaning is disabled pending safety review", "安全验收完成前，清理操作保持禁用")
-            if s.test_mode: mr_ci_emit("CI_CLEAN_DISABLED action=none")
+            # The wording has to say WHY the click did nothing. A busy state
+            # carries its own explanation; a build without the capability gate
+            # compiled in never had a clean action to run, which is what the
+            # user is actually looking at in a default build.
+            s.status = if clean_operation_busy(s.clean_state): clean_result_status(s.zh, s.clean_state) else: label(s.zh, "Page cache cleaning is not compiled into this build", "当前构建未编译页缓存清理功能")
+            if s.test_mode: mr_ci_emit("CI_CLEAN_DISABLED action=none production_bridge_connected=false")
     elif target == 710.0 and s.clean_state == 1:
         if not s.sample_ok:
             s.clean_state = 12

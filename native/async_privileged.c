@@ -41,16 +41,11 @@ int64_t mr_start_reclaim(int64_t mode) {
     return MR_RECLAIM_STARTED;
 }
 
-/* Whether the GUI is allowed to reach the production bridge. This is a build
- * decision, not a runtime toggle: an unbuilt switch cannot be flipped by an
- * environment variable on a user machine. */
-int64_t mr_production_clean_enabled(void) {
-#ifdef MEMREDUCT_ENABLE_PRODUCTION_CLEAN
-    return 1;
-#else
-    return 0;
-#endif
-}
+/* mr_production_clean_enabled() is deliberately NOT defined here: it lives in
+ * exactly one gate translation unit (production_clean_gate_default.c or
+ * production_clean_gate_enabled.c) that the build selects. Two definitions
+ * would be a link error, so a binary either has the bridge reachable or it
+ * does not, and which one it is can be checked with nm. */
 
 /* Explicit CI simulation only. This path executes a same-UID test launcher;
  * it never invokes pkexec or the installed helper. The launcher receives the

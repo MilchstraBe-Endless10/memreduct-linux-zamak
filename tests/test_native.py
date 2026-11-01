@@ -188,21 +188,35 @@ class TestNativeBackend(unittest.TestCase):
             time.sleep(0.01)
         self.fail('bridge child did not finish within 3 seconds')
 
-    def _build_bridge(self, name, defines=()):
+    def _build_bridge(self, name, gate='default'):
+        """Compile the bridge plus one gate translation unit.
+
+        The capability switch is a translation-unit choice in the real build
+        (zam's [native] table has no defines field), so the test mirrors that
+        exactly: 'default' links production_clean_gate_default.c (enabled -> 0)
+        and 'enabled' links production_clean_gate_enabled.c (enabled -> 1).
+        A binary therefore either contains the reachable bridge or it does
+        not, and this test is what proves both halves of that claim.
+        """
+        gate_file = {
+            'default': 'native/production_clean_gate_default.c',
+            'enabled': 'native/production_clean_gate_enabled.c',
+        }[gate]
         target = self.work / name
         subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic', '-shared', '-fPIC',
-                        '-DMEMREDUCT_TESTING'] + list(defines) +
-                       [str(ROOT / 'native/async_privileged.c'), str(ROOT / 'tests/native_waitpid_shim.c'),
+                        '-DMEMREDUCT_TESTING'] +
+                       [str(ROOT / 'native/async_privileged.c'), str(ROOT / gate_file),
+                        str(ROOT / 'tests/native_waitpid_shim.c'),
                         '-Wl,--wrap=waitpid', '-o', str(target)], check=True)
         library = ctypes.CDLL(str(target))
         library.mr_production_clean_enabled.restype = ctypes.c_int64
         return library
 
     def test_production_clean_is_a_compile_time_gate(self):
-        off = self._build_bridge('libnative-gate-off.so')
+        off = self._build_bridge('libnative-gate-off.so', gate='default')
         self.assertEqual(off.mr_production_clean_enabled(), 0,
                          'default builds must not expose the privileged path')
-        on = self._build_bridge('libnative-gate-on.so', ('-DMEMREDUCT_ENABLE_PRODUCTION_CLEAN',))
+        on = self._build_bridge('libnative-gate-on.so', gate='enabled')
         self.assertEqual(on.mr_production_clean_enabled(), 1)
         # The opt-in build compiles the bridge in, but it still refuses to do
         # anything unless the packaged helper path is actually installed.
@@ -475,9 +489,13 @@ class TestConfirmationWording(unittest.TestCase):
 
     def test_production_warning_states_cost_and_promises_nothing(self):
         block = self._dialog_block()
-        self.assertIn('Files re-read slower; no free amount promised.', block)
-        self.assertIn('文件将变慢重读；不保证释放量。', block)
-        self.assertIn('只丢弃干净页缓存' if False else '仅丢弃干净页缓存。', block)
+        # The warning must keep both kernel-documented costs (slower re-reads,
+        # no guaranteed amount) while fitting the fixed panel: the measured
+        # line widths come back in CI_CLEAN_CONFIRM_TEXT and the E2E run fails
+        # on fits=false, which is what forced the shorter wording here.
+        self.assertIn('Re-reads slower; no amount guaranteed.', block)
+        self.assertIn('重读变慢；不保证释放量。', block)
+        self.assertIn('仅丢弃干净页缓存。', block)
 
     def test_production_warning_does_not_reuse_simulation_sentences(self):
         block = self._dialog_block()
