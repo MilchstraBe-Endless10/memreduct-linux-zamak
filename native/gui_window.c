@@ -6,6 +6,7 @@
 
 /* Stable GTK3/GLib ABI declarations keep this bridge independent of Gtk headers. */
 typedef struct _GtkWidget GtkWidget;
+typedef struct _GtkHeaderBar GtkHeaderBar;
 typedef struct _GtkWindow GtkWindow;
 typedef struct _GtkSettings GtkSettings;
 typedef struct _GtkBin GtkBin;
@@ -43,6 +44,21 @@ extern GList *gtk_container_get_children(GtkContainer *container);
 extern unsigned int gtk_container_get_border_width(GtkContainer *container);
 extern void gtk_container_set_border_width(GtkContainer *container, unsigned int border_width);
 extern void gtk_widget_queue_resize(GtkWidget *widget);
+extern unsigned int g_idle_add(int (*callback)(void *data), void *data);
+extern void gtk_window_get_size(GtkWindow *window, int *width, int *height);
+extern int gtk_window_get_decorated(GtkWindow *window);
+extern GtkWidget *gtk_window_get_titlebar(GtkWindow *window);
+extern GtkWidget *gtk_header_bar_new(void);
+extern void gtk_header_bar_set_title(GtkHeaderBar *bar, const char *title);
+extern void gtk_header_bar_set_subtitle(GtkHeaderBar *bar, const char *subtitle);
+extern void gtk_header_bar_set_show_close_button(GtkHeaderBar *bar, int setting);
+extern void gtk_header_bar_set_decoration_layout(GtkHeaderBar *bar, const char *layout);
+extern void gtk_window_set_titlebar(GtkWindow *window, GtkWidget *titlebar);
+extern void gtk_widget_show_all(GtkWidget *widget);
+extern int gtk_widget_get_realized(GtkWidget *widget);
+extern int gtk_widget_get_mapped(GtkWidget *widget);
+extern int gtk_widget_get_allocated_width(GtkWidget *widget);
+extern int gtk_widget_get_allocated_height(GtkWidget *widget);
 extern void gtk_widget_queue_draw(GtkWidget *widget);
 extern void gtk_widget_add_events(GtkWidget *widget, int events);
 extern GdkWindow *gtk_widget_get_window(GtkWidget *widget);
@@ -52,6 +68,12 @@ extern void gtk_widget_set_margin_end(GtkWidget *widget, int margin);
 extern void gtk_widget_set_margin_top(GtkWidget *widget, int margin);
 extern void gtk_widget_set_margin_bottom(GtkWidget *widget, int margin);
 extern void gtk_window_present(GtkWindow *window);
+void gtk_window_iconify(GtkWindow *window);
+void gtk_window_deiconify(GtkWindow *window);
+void gtk_window_maximize(GtkWindow *window);
+void gtk_window_unmaximize(GtkWindow *window);
+int gtk_window_is_maximized(GtkWindow *window);
+
 extern unsigned long gtk_widget_get_type(void);
 extern unsigned int g_signal_lookup(const char *name, unsigned long type);
 extern unsigned long gtk_container_get_type(void);
@@ -84,6 +106,12 @@ extern int gdk_event_get_root_coords(const void *event, double *x_root, double *
 extern int gdk_event_get_scroll_direction(const void *event, int *direction);
 extern int gdk_event_get_scroll_deltas(const void *event, double *delta_x, double *delta_y);
 extern int gdk_window_get_origin(GdkWindow *window, int *x, int *y);
+extern void gtk_widget_get_preferred_width(GtkWidget *widget, int *minimum, int *natural);
+extern void gtk_widget_get_preferred_height(GtkWidget *widget, int *minimum, int *natural);
+extern void gtk_widget_get_size_request(GtkWidget *widget, int *width, int *height);
+extern void gtk_window_get_default_size(GtkWindow *window, int *width, int *height);
+extern void *gdk_display_get_default(void);
+extern unsigned int g_timeout_add(unsigned int interval, int (*callback)(void *data), void *data);
 
 static int settings_close_requested;
 static GtkWindow *settings_window;
@@ -273,6 +301,333 @@ int64_t mr_gui_set_compat_font(void)
 }
 
 /* Keep the main canvas at the client top edge while preserving its source x inset. */
+/* One-shot structural dump of a toplevel, gated on MEMREDUCT_CI. The probe that
+ * worked standalone did not work here, and guessing at the tree twice already
+ * cost a rebuild each time; this prints what is actually there. */
+/* Requirement for issue #11: report the real GtkWidget hierarchy of the production
+ * window instead of guessing child indices. Every node prints its class, the pointer
+ * identity of the holder/canvas, the GTK size request (preferred min/natural) next to
+ * the actual allocation, its resize policy and whether it is realized/mapped. */
+static void dump_window_node(GtkWidget *widget, const char *tag, unsigned int depth,
+                             unsigned int index, unsigned int parent_index,
+                             unsigned int max_depth)
+{
+    if (widget == NULL) {
+        return;
+    }
+    const char *type = g_type_name_from_instance(widget);
+    int req_min_w = -1, req_nat_w = -1, req_min_h = -1, req_nat_h = -1;
+    int explicit_w = -1, explicit_h = -1;
+    gtk_widget_get_preferred_width(widget, &req_min_w, &req_nat_w);
+    gtk_widget_get_preferred_height(widget, &req_min_h, &req_nat_h);
+    gtk_widget_get_size_request(widget, &explicit_w, &explicit_h);
+    const int is_container = g_type_check_instance_is_a(widget, gtk_container_get_type()) != 0;
+    unsigned int border = is_container ? gtk_container_get_border_width((GtkContainer *)widget) : 0;
+    const char *name = gtk_widget_get_name(widget);
+    GtkWidget *parent = gtk_widget_get_parent(widget);
+    const char *parent_type = parent == NULL ? NULL : g_type_name_from_instance(parent);
+    fprintf(stderr,
+            "CI_TREE_DEPTH tag=%s depth=%u index=%u parent=%u type=%s name=%s ptr=%p "
+            "alloc=%dx%d requested=%dx%d preferred=%dx%d..%dx%d border=%u "
+            "realized=%d mapped=%d responsive=%d is_canvas=%d parent_type=%s\n",
+            tag, depth, index, parent_index, type != NULL ? type : "(null)",
+            name != NULL ? name : "(null)", (void *)widget,
+            gtk_widget_get_allocated_width(widget), gtk_widget_get_allocated_height(widget),
+            explicit_w, explicit_h, req_min_w, req_min_h, req_nat_w, req_nat_h,
+            border, gtk_widget_get_realized(widget), gtk_widget_get_mapped(widget),
+            gtk_widget_get_mapped(widget) && gtk_widget_get_realized(widget),
+            type != NULL && (strcmp(type, "GtkDrawingArea") == 0 ||
+                             (name != NULL && strcmp(name, "areaWidget") == 0)),
+            parent_type != NULL ? parent_type : "(null)");
+    if (!is_container || depth >= max_depth) {
+        return;
+    }
+    GList *children = gtk_container_get_children((GtkContainer *)widget);
+    unsigned int child_index = 0;
+    for (GList *item = children; item != NULL; item = item->next) {
+        dump_window_node((GtkWidget *)item->data, tag, depth + 1, child_index, index, max_depth);
+        child_index++;
+    }
+    g_list_free(children);
+}
+
+static void dump_window_tree(GtkWindow *window, const char *tag)
+{
+    if (window == NULL || getenv("MEMREDUCT_CI") == NULL) {
+        return;
+    }
+    int client_w = -1, client_h = -1;
+    int default_w = -1, default_h = -1;
+    gtk_window_get_size(window, &client_w, &client_h);
+    gtk_window_get_default_size(window, &default_w, &default_h);
+    void *display = gdk_display_get_default();
+    const char *backend = display == NULL ? "(none)" : g_type_name_from_instance(display);
+    GtkWidget *titlebar = gtk_window_get_titlebar(window);
+    const char *titlebar_type = titlebar == NULL ? "(none)" : g_type_name_from_instance(titlebar);
+    /* gtk_window_get_size() returns the CLIENT area (title bar excluded). The toplevel
+     * allocation is that plus the measured header bar; both are printed, never conflated. */
+    int titlebar_h = titlebar == NULL ? 0 : gtk_widget_get_allocated_height(titlebar);
+    GtkWidget *root = gtk_bin_get_child((GtkBin *)window);
+    fprintf(stderr,
+            "CI_TREE tag=%s window=%p title=\"%s\" size=%dx%d default=%dx%d "
+            "client=%dx%d titlebar_h=%d toplevel_expect=%dx%d backend=%s decorated=%d resizable=%d "
+            "realized=%d mapped=%d has_titlebar=%d titlebar_type=%s\n",
+            tag, (void *)window, gtk_window_get_title(window), client_w, client_h,
+            default_w, default_h, client_w, client_h, titlebar_h,
+            client_w, client_h >= 0 ? client_h + titlebar_h : -1, backend, gtk_window_get_decorated(window),
+            gtk_window_get_resizable(window), gtk_widget_get_realized((GtkWidget *)window),
+            gtk_widget_get_mapped((GtkWidget *)window), titlebar != NULL, titlebar_type);
+    if (root == NULL) {
+        fprintf(stderr, "CI_TREE_DEPTH tag=%s depth=0 root=none\n", tag);
+        fflush(stderr);
+        return;
+    }
+    dump_window_node(root, tag, 0, 0, 0, 6);
+    fflush(stderr);
+}
+
+/* Wayland compositors draw no server-side decorations, so a GTK3 toplevel has no
+ * title bar unless the client supplies one. The Windows original is an ordinary
+ * captioned dialog that merely lacks a resize frame, so this build draws the
+ * caption to keep minimise, maximise and close reachable.
+ *
+ * The tree dump showed mapped=0 when this file first touches the window, which is
+ * why attaching a header bar directly was overridden: the size set before map is
+ * replaced by the map pass. The bar is therefore attached on the first map event,
+ * once and only once. */
+struct mr_decoration_state {
+    const char *title;
+    const char *subtitle;
+    const char *layout;
+    int applied;
+};
+
+static struct mr_decoration_state main_decoration = {"Mem Reduct", NULL,
+                                                     "appmenu:minimize,maximize,close", 0};
+static GtkWindow *main_window_ref = NULL;
+static GtkWindow *settings_window_ref = NULL;
+/* The settings dialog is modal in the original and has no maximize affordance;
+ * asking for one would surface a visible-but-disabled button (Issue #11). */
+static struct mr_decoration_state settings_decoration = {"Settings - Mem Reduct", "Mem Reduct",
+                                                         "appmenu:minimize,close", 0};
+
+static void apply_decoration_layout(void)
+{
+    GtkSettings *settings = gtk_settings_get_default();
+    if (settings == NULL) {
+        return;
+    }
+    /* The desktop default here is "appmenu:close", which removes minimise and
+     * maximise from every client-side decoration. Override it for this process
+     * only; the user's global preference stays untouched. */
+    gtk_settings_set_string_property(settings, "gtk-decoration-layout",
+                                     "appmenu:minimize,maximize,close", "Mem Reduct");
+}
+
+static int attach_header_bar(GtkWindow *window, struct mr_decoration_state *state)
+{
+    if (window == NULL || state == NULL || state->applied) {
+        return 0;
+    }
+    if (gtk_window_get_titlebar(window) != NULL) {
+        state->applied = 1;
+        return 0;
+    }
+    GtkWidget *bar = gtk_header_bar_new();
+    gtk_header_bar_set_title((GtkHeaderBar *)bar, state->title);
+    gtk_header_bar_set_show_close_button((GtkHeaderBar *)bar, 1);
+    /* show_close_button alone yields only a close button; this layout is what
+     * actually asks for all three. */
+    gtk_header_bar_set_decoration_layout((GtkHeaderBar *)bar,
+                                         state->layout != NULL ? state->layout
+                                                               : "appmenu:minimize,maximize,close");
+    if (state->subtitle != NULL) {
+        gtk_header_bar_set_subtitle((GtkHeaderBar *)bar, state->subtitle);
+    }
+    gtk_window_set_titlebar(window, bar);
+    gtk_widget_show_all(bar);
+    state->applied = 1;
+    if (getenv("MEMREDUCT_CI") != NULL) {
+        fprintf(stderr, "CI_TITLEBAR attached=true title=%s layout=%s\n", state->title,
+                state->layout != NULL ? state->layout : "default");
+        fflush(stderr);
+    }
+    return 1;
+}
+
+/* Runs once from the main loop. The map signal did not fire for these toplevels,
+ * so this defers the attach to the first idle turn after the loop starts: by then
+ * GTK has mapped the windows and a header bar accepted here is not overwritten. */
+/*
+ * Content-size contract (Issue #11).
+ *
+ * Once a GtkHeaderBar is attached, GtkWindow's size is the WHOLE window: the
+ * header bar height is subtracted from the content area. The v3.5.2 IDD_MAIN
+ * baseline of 337x369 describes the CLIENT area, so the toplevel has to be
+ * grown by exactly the measured header bar height instead of letting the header
+ * bar eat into the canvas (which clipped 34px of the drawing area).
+ */
+static int main_content_width = 0;
+static int main_content_height = 0;
+static int settings_content_width = 0;
+static int settings_content_height = 0;
+
+static int apply_content_size_contract(GtkWindow *window, int content_width,
+                                       int content_height, const char *tag)
+{
+    if (window == NULL || content_width <= 0 || content_height <= 0) {
+        return 0;
+    }
+    GtkWidget *bar = gtk_window_get_titlebar(window);
+    if (bar == NULL) {
+        return 0;
+    }
+    int bar_height = gtk_widget_get_allocated_height(bar);
+    if (bar_height <= 1) {
+        return 0; /* Header bar not allocated yet; a later tick retries. */
+    }
+    /* Measured semantics (GTK 3.24, CSD): gtk_window_resize() sets the CLIENT
+     * area. With a title bar attached the toplevel itself is content + the
+     * header bar, so the request must stay at the content size instead of
+     * adding the header bar height on top of it. */
+    int target_height = content_height;
+    gtk_window_resize(window, content_width, target_height);
+    if (getenv("MEMREDUCT_CI") != NULL) {
+        int whole_w = 0;
+        int whole_h = 0;
+        int client_w = 0;
+        int client_h = 0;
+        gtk_window_get_size(window, &whole_w, &whole_h);
+        gtk_window_get_size(window, &client_w, &client_h);
+        fprintf(stderr,
+                "CI_CONTENT_SIZE tag=%s content=%dx%d titlebar_h=%d client_target=%dx%d "
+                "toplevel_expect=%dx%d client_now=%dx%d\n",
+                tag, content_width, content_height, bar_height, content_width,
+                target_height, content_width, content_height + bar_height,
+                whole_w, whole_h);
+        fflush(stderr);
+    }
+    return 1;
+}
+
+static int on_content_size_settle(void *data)
+{
+    (void)data;
+    apply_content_size_contract(main_window_ref, main_content_width,
+                                main_content_height, "main");
+    apply_content_size_contract(settings_window_ref, settings_content_width,
+                                settings_content_height, "settings");
+    dump_window_tree(main_window_ref, "main_content_fixed");
+    dump_window_tree(settings_window_ref, "settings_content_fixed");
+    return 0;
+}
+
+static int on_settle_dump(void *data)
+{
+    (void)data;
+    if (getenv("MEMREDUCT_CI") != NULL) {
+        dump_window_tree(main_window_ref, "main_settled");
+        dump_window_tree(settings_window_ref, "settings_settled");
+    }
+    return 0;
+}
+
+/*
+ * Issue #11 requirement 3: the header bar buttons must reach real window-manager
+ * operations. GtkHeaderBar's minimize/maximize buttons only emit gtk-window-iconify /
+ * gtk-window-toggle-maximized, which need a resizable window and a live WM. This probe
+ * drives the same GTK entry points the buttons use, so the CI log proves the plumbing
+ * works instead of only proving that a button is painted.
+ */
+struct mr_control_step {
+    int step;
+    GtkWindow *window;
+};
+
+static int on_control_step(void *data)
+{
+    struct mr_control_step *state = (struct mr_control_step *)data;
+    if (state == NULL || state->window == NULL) {
+        return 0;
+    }
+    int w = -1, h = -1;
+    gtk_window_get_size(state->window, &w, &h);
+    switch (state->step) {
+    case 0:
+        gtk_window_iconify(state->window);
+        fprintf(stderr, "CI_WINDOW_CONTROL step=iconify requested=true client=%dx%d\n", w, h);
+        break;
+    case 1:
+        fprintf(stderr, "CI_WINDOW_CONTROL step=iconified mapped=%d\n",
+                gtk_widget_get_mapped((GtkWidget *)state->window));
+        gtk_window_deiconify(state->window);
+        break;
+    case 2:
+        fprintf(stderr, "CI_WINDOW_CONTROL step=deiconified mapped=%d\n",
+                gtk_widget_get_mapped((GtkWidget *)state->window));
+        gtk_window_maximize(state->window);
+        break;
+    case 3:
+        gtk_window_get_size(state->window, &w, &h);
+        fprintf(stderr, "CI_WINDOW_CONTROL step=maximize is_maximized=%d client=%dx%d\n",
+                gtk_window_is_maximized(state->window), w, h);
+        gtk_window_unmaximize(state->window);
+        break;
+    case 4:
+        gtk_window_get_size(state->window, &w, &h);
+        fprintf(stderr, "CI_WINDOW_CONTROL step=unmaximize is_maximized=%d client=%dx%d\n",
+                gtk_window_is_maximized(state->window), w, h);
+        gtk_window_present(state->window);
+        break;
+    default:
+        gtk_window_get_size(state->window, &w, &h);
+        fprintf(stderr, "CI_WINDOW_CONTROL step=done is_maximized=%d client=%dx%d resizable=%d\n",
+                gtk_window_is_maximized(state->window), w, h,
+                gtk_window_get_resizable(state->window));
+        free(state);
+        return 0;
+    }
+    fflush(stderr);
+    state->step++;
+    return 1;
+}
+
+static void schedule_control_probe(GtkWindow *window)
+{
+    if (window == NULL || getenv("MEMREDUCT_CI_CONTROLS") == NULL) {
+        return;
+    }
+    struct mr_control_step *state = calloc(1, sizeof(*state));
+    if (state == NULL) {
+        return;
+    }
+    state->window = window;
+    g_timeout_add(1200, on_control_step, state);
+}
+
+static int on_first_idle(void *data)
+{
+    (void)data;
+    attach_header_bar(main_window_ref, &main_decoration);
+    attach_header_bar(settings_window_ref, &settings_decoration);
+    if (getenv("MEMREDUCT_CI") != NULL) {
+        fprintf(stderr, "CI_TITLEBAR idle_run=true main_titlebar=%d settings_titlebar=%d\n",
+                main_window_ref != NULL && gtk_window_get_titlebar(main_window_ref) != NULL,
+                settings_window_ref != NULL && gtk_window_get_titlebar(settings_window_ref) != NULL);
+        fflush(stderr);
+    }
+    /* Re-measure once the compositor/WM has allocated the decorated window: the
+     * first dump happens before map, when the title bar does not exist yet. */
+    dump_window_tree(main_window_ref, "main_post_titlebar");
+    dump_window_tree(settings_window_ref, "settings_post_titlebar");
+    g_timeout_add(400, on_content_size_settle, NULL);
+    g_timeout_add(700, on_content_size_settle, NULL);
+    g_timeout_add(1500, on_content_size_settle, NULL);
+    g_timeout_add(2200, on_settle_dump, NULL);
+    schedule_control_probe(main_window_ref);
+    return 0;
+}
+
 static int prepare_main_geometry(GtkWindow *window)
 {
     GtkWidget *root = gtk_bin_get_child((GtkBin *)window);
@@ -346,19 +701,47 @@ int64_t mr_gui_lock_window_sizes(int64_t main_width, int64_t main_height,
         }
     }
 
+    dump_window_tree(main_window, "main");
+    dump_window_tree(settings_window_found, "settings");
+
+    apply_decoration_layout();
+    main_window_ref = main_window;
+    settings_window_ref = settings_window_found;
+    /* Attach the header bars here, before the main loop realizes either
+     * toplevel. gtk_window_set_titlebar() emits
+     * "gtk_window_set_titlebar() called on a realized window" once the window
+     * is realized, and a title bar attached that late does not take part in
+     * the first size negotiation, which is exactly the "probe passes but the
+     * real container ignores it" symptom from Issue #11. attach_header_bar()
+     * is idempotent, so the idle pass below stays as a safety net. */
+    attach_header_bar(main_window, &main_decoration);
+    attach_header_bar(settings_window_found, &settings_decoration);
+    if (main_window != NULL || settings_window_found != NULL) {
+        g_idle_add(on_first_idle, NULL);
+    }
+
     if (main_window != NULL) {
         gtk_window_set_default_size(main_window, (int)main_width, (int)main_height);
         gtk_window_resize(main_window, (int)main_width, (int)main_height);
-        gtk_window_set_resizable(main_window, 0);
+        /* Issue #11: set_resizable(0) installs min==max geometry hints, which
+         * both clamps the window and greys out the header bar's maximize
+         * button. The baseline is a fixed INITIAL size, not a fixed window, so
+         * the main toplevel stays resizable and gets its exact content size
+         * from the content-size contract below. */
+        gtk_window_set_resizable(main_window, 1);
+        main_content_width = (int)main_width;
+        main_content_height = (int)main_height;
         prepare_main_geometry(main_window);
     }
     if (settings_window_found != NULL) {
         gtk_window_set_default_size(settings_window_found, (int)settings_width, (int)settings_height);
         gtk_window_resize(settings_window_found, (int)settings_width, (int)settings_height);
         gtk_window_set_resizable(settings_window_found, 0);
+        settings_content_width = (int)settings_width;
+        settings_content_height = (int)settings_height;
     }
 
-    const int main_fixed = main_window != NULL && !gtk_window_get_resizable(main_window);
+    const int main_sized = main_window != NULL && gtk_window_get_resizable(main_window);
     const int settings_fixed = settings_window_found != NULL && !gtk_window_get_resizable(settings_window_found);
     if (getenv("MEMREDUCT_CI") != NULL) {
         fprintf(stderr,
@@ -370,7 +753,7 @@ int64_t mr_gui_lock_window_sizes(int64_t main_width, int64_t main_height,
         fflush(stderr);
     }
     g_list_free(windows);
-    return main_fixed && settings_fixed && main_geometry_prepared ? 1 : 0;
+    return main_sized && settings_fixed && main_geometry_prepared ? 1 : 0;
 }
 
 static int on_settings_delete(GtkWidget *widget, void *event, void *data)
