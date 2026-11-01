@@ -36,16 +36,20 @@ zam build .                            -> build/memreduct_zamak-6784c8a3...
 CI_TITLEBAR attached=true title=Mem Reduct layout=appmenu:minimize,close
 CI_MAIN_CONTENT_INSET old=12 new=0 margins=start:0,end:0,top:0,bottom:0 verified=true
 CI_WINDOW_SIZE_POLICY main_found=1 main_resizable=0 settings_found=1 settings_resizable=0
-CI_CONTENT_SIZE_APPLIED tag=main requested=337x369 reached=389x422 honoured=0
+CI_CONTENT_SIZE_APPLIED tag=main requested=337x369 reached=389x422 overshoot=+52x+53
 hyprctl: size=[389,469] floating=true
 ```
 
 ## 仍然未闭合
 
-1. 窗口尺寸：请求 337×369 客户区，实际 389×422（honoured=0）。多出的 52×53 是
-   Zamak canvas 的最小尺寸。`gtk_window_resize` 无法低于它；对 holder/root 调
-   `set_size_request` 反而把它推大。修复点在 Zamak 侧（`src/main.zm` / `ui_geometry`），
-   本轮未动。
+1. 窗口尺寸：横向多出 52px。用独立 GTK3 程序（与产品完全相同的控件嵌套）标定：
+   请求 337×369 得到 389×421，且 canvas 被分配到 389×357——即这 52px 加在**内容**上，
+   不是包在外面的边框。三种窗口侧手段（lift resizable lock、pin holder、pin root）
+   与 geometry hints 都无法改变它。所以这不是 C 侧能修的，需要在 Zamak 侧
+   （`src/main.zm` / `ui_geometry`）处理，本轮未动。
+   纵向 357 是正确的（canvas 高度未变）。
+   注意：之前报告里写的「honoured=0」用 `>=` 做判定——任何不比请求小的窗口都会通过，
+   那是个恒真检查，已删除；现在只打印请求值、实测值与带符号的超出量。
 2. 三按钮的真实点击（最小化→恢复、关闭→退出并清理）未在用户实时会话中点击验证；
    没有向该会话注入合成输入。按钮存在且非灰已由截图与 CI 标记证实。
 3. 最大化已从装饰布局中移除（`appmenu:minimize,close`）。固定尺寸窗口在平铺
