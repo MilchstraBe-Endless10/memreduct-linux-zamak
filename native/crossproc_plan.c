@@ -147,6 +147,17 @@ static int advice_is_valid(int32_t advice)
     return advice == MR_CROSSPROC_ADVICE_COLD || advice == MR_CROSSPROC_ADVICE_PAGEOUT;
 }
 
+
+/* Build "<root>/<pid><suffix>" and refuse anything that does not fit.
+ * snprintf() truncates silently and returns the length it wanted, so a long
+ * proc root would otherwise read a path that names a different file. The
+ * caller treats a short buffer as a hard failure, never as "process gone". */
+static int proc_path(char *out, size_t out_size, int32_t pid, const char *suffix)
+{
+    int written = snprintf(out, out_size, "%s/%d%s", proc_root(), (int)pid, suffix);
+    return written > 0 && (size_t)written < out_size;
+}
+
 /* /proc/<pid>/stat field 22 is the process start time in clock ticks. It only
  * changes when a different process is created, which is exactly the condition
  * that makes an old pidfd unusable. Parsing it avoids depending on a synced
@@ -155,7 +166,9 @@ static int read_start_time(int32_t pid, uint64_t *out)
 {
     char path[MR_CROSSPROC_PATH_BYTES];
     char buffer[1024];
-    snprintf(path, sizeof(path), "%s/%d/stat", proc_root(), (int)pid);
+    if (!proc_path(path, sizeof(path), pid, "/stat")) {
+        return -1;
+    }
     FILE *file = fopen(path, "re");
     if (file == NULL) {
         return errno == ENOENT ? 1 : -1; /* 1 = gone */
@@ -204,7 +217,9 @@ static int read_start_time(int32_t pid, uint64_t *out)
 static int is_kernel_thread(int32_t pid)
 {
     char path[MR_CROSSPROC_PATH_BYTES];
-    snprintf(path, sizeof(path), "%s/%d/maps", proc_root(), (int)pid);
+    if (!proc_path(path, sizeof(path), pid, "/maps")) {
+        return 0;
+    }
     return access(path, R_OK) != 0;
 }
 
@@ -239,7 +254,9 @@ static int uid_relation(int32_t pid)
         return owner == (int32_t)geteuid() ? 0 : 1;
     }
 #endif
-    snprintf(path, sizeof(path), "%s/%d", proc_root(), (int)pid);
+    if (!proc_path(path, sizeof(path), pid, "")) {
+        return -1;
+    }
     if (stat(path, &info) != 0) {
         return -1;
     }
@@ -315,7 +332,9 @@ static uint32_t collect_regions(int32_t pid, const struct mr_crossproc_limits *l
     uint32_t kept = 0;
     uint64_t total = 0;
 
-    snprintf(path, sizeof(path), "%s/%d/maps", proc_root(), (int)pid);
+    if (!proc_path(path, sizeof(path), pid, "/maps")) {
+        return 0;
+    }
     FILE *maps = fopen(path, "re");
     if (maps == NULL) {
         return 0;

@@ -64,6 +64,12 @@ int64_t mr_crossproc_advise_enabled(void);
 typedef long (*mr_crossproc_backend)(int pidfd, struct iovec *iov, size_t vlen,
                                      int advice, unsigned int flags);
 void mr_crossproc_set_backend(mr_crossproc_backend backend);
+/* Test-only: the errno the injected backend wants classified, or 0 to leave
+ * the C errno alone. Never compiled into a release build. */
+int mr_crossproc_test_backend_errno(void);
+void mr_crossproc_test_clear_backend_errno(void);
+void mr_crossproc_test_set_backend_errno(int value);
+void mr_crossproc_test_clear_backend_errno(void);
 int mr_crossproc_test_advise_into(struct mr_crossproc_plan *plan,
                                   struct mr_crossproc_advise_result *out);
 int64_t mr_crossproc_test_result_status(const struct mr_crossproc_advise_result *result);
