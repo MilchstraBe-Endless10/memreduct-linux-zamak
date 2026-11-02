@@ -50,12 +50,13 @@ static void cand_test_root(void) { }
  * accept is merely conservative. */
 static const char *const protected_names[] = {
     "polkitd",
-    "polkit-gnome-au",
-    "polkit-kde-auth",
+    "polkit-gnome-authentication-agent-1",
+    "polkit-kde-authentication-agent-1",
     "hyprpolkitagent",
     "systemd",
     "dbus-daemon",
     "dbus-broker",
+    "dbus-broker-launch",
     "Hyprland",
     "hyprland",
     "Xorg",
@@ -70,13 +71,24 @@ static const char *const protected_names[] = {
     NULL
 };
 
+/* Truncation-aware on purpose: see the note in crossproc_helper.c. The comm
+ * field is capped at 15 characters, so "dbus-broker-launch" arrives as
+ * "dbus-broker-lau" and an exact comparison alone misses it. */
+#define MR_CAND_COMM_TRUNCATED 15u
+
 int mr_cand_name_is_protected(const char *name)
 {
     if (name == NULL || name[0] == '\0') {
         return 0;
     }
+    size_t name_len = strlen(name);
     for (size_t index = 0; protected_names[index] != NULL; index++) {
-        if (strcmp(name, protected_names[index]) == 0) {
+        const char *protected = protected_names[index];
+        if (strcmp(name, protected) == 0) {
+            return 1;
+        }
+        if (name_len == MR_CAND_COMM_TRUNCATED && strlen(protected) > MR_CAND_COMM_TRUNCATED &&
+            strncmp(name, protected, MR_CAND_COMM_TRUNCATED) == 0) {
             return 1;
         }
     }
@@ -237,6 +249,31 @@ static void read_exe(int32_t pid, char *out, size_t size)
         return;
     }
     out[got] = '\0';
+}
+
+/* Same truncation problem the helper documents: the comm field in
+ * /proc/<pid>/stat is capped at 15 characters, so "dbus-broker-launcher"
+ * arrives as "dbus-broker-lau" and a naive name comparison misses it — this was
+ * observed on the live machine. The exe symlink is not truncated, so its
+ * basename is checked too. Keeping this in step with the helper matters: a row
+ * this enumeration offers and the helper then refuses is a confusing product. */
+static int pid_is_protected(int32_t pid, const char *comm)
+{
+    if (mr_cand_name_is_protected(comm)) {
+        return 1;
+    }
+    char exe[MR_CAND_PATH_BYTES];
+    read_exe(pid, exe, sizeof(exe));
+    if (exe[0] == '\0') {
+        return 0;
+    }
+    char *suffix = strstr(exe, " (deleted)");
+    if (suffix != NULL && suffix[10] == '\0') {
+        *suffix = '\0';
+    }
+    const char *base = strrchr(exe, '/');
+    base = base == NULL ? exe : base + 1;
+    return mr_cand_name_is_protected(base);
 }
 
 /* Sum the mapping lengths the helper would also consider. Same filter, so the
@@ -406,7 +443,7 @@ int mr_cand_scan(struct mr_cand_list *out)
             out->skipped_other_uid++;
             continue;
         }
-        if (mr_cand_name_is_protected(status.name)) {
+        if (pid_is_protected(pid, status.name)) {
             out->skipped_protected++;
             continue;
         }
@@ -461,4 +498,82 @@ int mr_cand_at(const struct mr_cand_list *list, uint32_t index,
     }
     *out = list->entries[index];
     return 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Scalar bridge for Zamak.
+ *
+ * Zamak 0.2 has no struct return, so the scan result is held in one static slot
+ * and read field by field — the same shape self_reclaim.c and crossproc_plan.c
+ * already use. One scan at a time; a second call replaces the previous slot,
+ * which the GUI does between redraws anyway.
+ * ------------------------------------------------------------------------- */
+
+static struct mr_cand_list scan_slot;
+
+int64_t mr_cand_scan_run(void)
+{
+    int result = mr_cand_scan(&scan_slot);
+    return result == 0 ? 0 : 1;
+}
+
+int64_t mr_cand_count(void) { return (int64_t)scan_slot.count; }
+int64_t mr_cand_scanned(void) { return (int64_t)scan_slot.scanned; }
+
+int64_t mr_cand_skipped(int64_t reason)
+{
+    switch (reason) {
+        case MR_CAND_SKIP_SELF: return (int64_t)scan_slot.skipped_self;
+        case MR_CAND_SKIP_KERNEL_THREAD: return (int64_t)scan_slot.skipped_kernel_thread;
+        case MR_CAND_SKIP_OTHER_UID: return (int64_t)scan_slot.skipped_other_uid;
+        case MR_CAND_SKIP_UNREADABLE: return (int64_t)scan_slot.skipped_unreadable;
+        case MR_CAND_SKIP_PROTECTED: return (int64_t)scan_slot.skipped_protected;
+        case MR_CAND_SKIP_ANCESTOR: return (int64_t)scan_slot.skipped_ancestor;
+        case MR_CAND_SKIP_NO_REGIONS: return (int64_t)scan_slot.skipped_no_regions;
+        case MR_CAND_SKIP_ZOMBIE: return (int64_t)scan_slot.skipped_zombie;
+        default: return 0;
+    }
+}
+
+int64_t mr_cand_pid(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return -1;
+    }
+    return (int64_t)scan_slot.entries[index].pid;
+}
+
+int64_t mr_cand_start_time(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return -1;
+    }
+    return (int64_t)scan_slot.entries[index].start_time;
+}
+
+int64_t mr_cand_reclaimable_bytes(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return -1;
+    }
+    return (int64_t)scan_slot.entries[index].reclaimable_bytes;
+}
+
+int64_t mr_cand_regions(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return -1;
+    }
+    return (int64_t)scan_slot.entries[index].regions;
+}
+
+/* The per-index name. Zamak can read it through the same pointer the status line
+ * uses; the buffer belongs to the scan slot, so it stays valid until the next
+ * scan and must not be freed by the caller. */
+const char *mr_cand_name(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return "";
+    }
+    return scan_slot.entries[index].name;
 }

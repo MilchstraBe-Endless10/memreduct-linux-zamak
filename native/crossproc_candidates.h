@@ -82,4 +82,25 @@ int mr_cand_at(const struct mr_cand_list *list, uint32_t index,
  * would have to authorize the action itself. */
 int mr_cand_name_is_protected(const char *name);
 
+/* ---- Scalar bridge for Zamak -------------------------------------------
+ *
+ * A scan fills one static slot; these read it field by field. Call
+ * mr_cand_scan_run() first, then index 0..mr_cand_count()-1.
+ *
+ * Nothing here is a promise about reclaim: mr_cand_reclaimable_bytes() is the
+ * sum of mapping lengths a request could cover, and the helper may still refuse
+ * the target or cover less.
+ * ------------------------------------------------------------------------- */
+int64_t mr_cand_scan_run(void);   /* 0 = scan completed, 1 = procfs unreadable */
+int64_t mr_cand_count(void);
+int64_t mr_cand_scanned(void);
+/* reason is an enum mr_cand_skip value; 0 for an unknown one. */
+int64_t mr_cand_skipped(int64_t reason);
+int64_t mr_cand_pid(int64_t index);
+int64_t mr_cand_start_time(int64_t index);
+int64_t mr_cand_reclaimable_bytes(int64_t index);
+int64_t mr_cand_regions(int64_t index);
+/* Owned by the scan slot: valid until the next scan, never freed by the caller. */
+const char *mr_cand_name(int64_t index);
+
 #endif /* MEMREDUCT_CROSSPROC_CANDIDATES_H */

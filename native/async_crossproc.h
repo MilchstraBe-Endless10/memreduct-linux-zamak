@@ -106,6 +106,9 @@ int64_t mr_xproc_result_uid(void);
 const char *mr_xproc_result_reason(void);
 /* The local refusal reason, for MR_XPROC_POLL_REFUSED_LOCAL. */
 int64_t mr_xproc_local_refusal(void);
+/* The same reason as a stable token, e.g. "not_installed". "none" means no
+ * local refusal was recorded, which must never accompany a refusal result. */
+const char *mr_xproc_local_refusal_name(void);
 
 /* Test-only: run the parser over a synthetic helper output and one exit code,
  * so the classification of every reason string can be asserted without pkexec

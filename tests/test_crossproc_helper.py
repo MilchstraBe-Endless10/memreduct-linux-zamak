@@ -271,6 +271,26 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
                 result = self.run_helper(4242, 777, 1048576)
                 self.assert_refused(result, "target_is_protected_process")
 
+    def test_truncated_comm_name_still_matches_a_protected_program(self):
+        """The kernel caps comm at 15 bytes, so the name arrives shortened.
+
+        This was a real bypass found by running the enumeration against the live
+        machine: pid 1188 reports comm "dbus-broker-lau" for
+        /usr/bin/dbus-broker-launch, and an exact comparison let it through.
+        Both the helper and the enumeration must reject the truncated form.
+        """
+        self.tree.add(4242, "dbus-broker-lau", 1000, 777)
+        result = self.run_helper(4242, 777, 1048576)
+        self.assert_refused(result, "target_is_protected_process")
+
+    def test_a_15_byte_unrelated_name_is_not_treated_as_protected(self):
+        """Truncation matching must not become a wildcard on short names."""
+        self.tree.add(4242, "pipewire-pulse", 1000, 777)
+        result = self.run_helper(4242, 777, 1048576)
+        fields = self.parse(result.stdout)
+        self.assertIsNotNone(fields)
+        self.assertNotEqual(fields.get("reason"), "target_is_protected_process")
+
     def test_missing_status_is_refused(self):
         # No fixture at all: the PID does not exist in this tree.
         result = self.run_helper(999999, 777, 1048576)
@@ -651,6 +671,95 @@ class DriverTest(unittest.TestCase):
         self.assertEqual(fields["verdict"], "0")
 
 
+class BridgeRefusalTest(unittest.TestCase):
+    """Every local refusal must name itself.
+
+    Found by probing the bridge directly: a start refused because the gate was
+    off reported local reason 0, which is also the value meaning "no refusal".
+    A caller could not tell a refusal from an unset field.
+    """
+
+    PROBE_SOURCE = """\
+#include <stdio.h>
+#include <stdint.h>
+#include "async_crossproc.h"
+
+static void show(const char *label, int64_t rc)
+{
+    printf("%s %lld %lld %s\\n", label, (long long)rc,
+           (long long)mr_xproc_local_refusal(),
+           mr_xproc_local_refusal_name());
+}
+
+int main(void)
+{
+    show("gate_off", mr_xproc_start(1192, 11338, 16 * 1024 * 1024));
+    show("bad_pid", mr_xproc_start(0, 11338, 16 * 1024 * 1024));
+    show("bad_start", mr_xproc_start(1192, 0, 16 * 1024 * 1024));
+    show("bad_budget", mr_xproc_start(1192, 11338, 0));
+    show("over_ceiling", mr_xproc_start(1192, 11338, 64 * 1024 * 1024 + 1));
+    printf("idle %lld\\n", (long long)mr_xproc_poll());
+    return 0;
+}
+"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="memreduct-xproc-bridge-")
+        source = os.path.join(cls.tmp, "probe.c")
+        with open(source, "w", encoding="utf-8") as handle:
+            handle.write(cls.PROBE_SOURCE)
+        cls.probe = os.path.join(cls.tmp, "probe")
+        subprocess.run(
+            BASE_FLAGS + ["-I", NATIVE, source,
+                          os.path.join(NATIVE, "async_crossproc.c"),
+                          os.path.join(NATIVE, "production_crossproc_gate_default.c"),
+                          "-o", cls.probe],
+            check=True, capture_output=True, text=True,
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def rows(self):
+        result = subprocess.run([self.probe], capture_output=True, text=True, check=True)
+        rows = {}
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            # show() prints four fields; the idle line prints two.
+            if len(parts) == 4:
+                rows[parts[0]] = (parts[1], parts[2], parts[3])
+            elif len(parts) == 2:
+                rows[parts[0]] = (parts[1], "", "")
+        return rows
+
+    def test_every_refusal_reports_a_distinct_named_reason(self):
+        rows = self.rows()
+        expected = {
+            "gate_off": ("5", "not_enabled"),
+            "bad_pid": ("1", "bad_pid"),
+            "bad_start": ("2", "bad_start_time"),
+            "bad_budget": ("3", "bad_budget"),
+            "over_ceiling": ("3", "bad_budget"),
+        }
+        for label, (reason, token) in expected.items():
+            with self.subTest(case=label):
+                self.assertEqual(rows[label][1], reason)
+                self.assertEqual(rows[label][2], token)
+        for label in expected:
+            self.assertNotEqual(rows[label][2], "none", f"{label} lost its reason")
+
+    def test_a_refused_start_never_reports_a_success_code(self):
+        rows = self.rows()
+        for label in ("gate_off", "bad_pid", "bad_start", "bad_budget", "over_ceiling"):
+            with self.subTest(case=label):
+                self.assertEqual(rows[label][0], "2")
+
+    def test_poll_is_idle_before_anything_starts(self):
+        self.assertEqual(self.rows()["idle"][0], "-2")
+
+
 class PolicyTest(unittest.TestCase):
     """The cross-process action must be its own object, fully separated."""
 
@@ -761,6 +870,21 @@ class SourceContractTest(unittest.TestCase):
             if "MEMREDUCT_TEST_" in line and "getenv" in line:
                 self.assertTrue(in_testing,
                                 f"test switch outside the testing block: {line.strip()}")
+
+    def test_protected_matching_is_truncation_aware_in_both_files(self):
+        """The 15-byte truncation rule must exist on both sides, not one.
+
+        If the helper learns it and the enumeration does not, the enumeration
+        offers a row the helper then refuses; if only the enumeration learns it,
+        the helper is the one that can be bypassed.
+        """
+        with open(os.path.join(NATIVE, "crossproc_candidates.c"), encoding="utf-8") as handle:
+            candidates = handle.read()
+        for text, label in ((self.source, "helper"), (candidates, "candidates")):
+            with self.subTest(file=label):
+                self.assertIn("15", text)
+                self.assertIn("dbus-broker-launch", text,
+                              f"{label}: the long form must be listed explicitly")
 
     def test_advice_is_pageout_only(self):
         self.assertIn("MADV_PAGEOUT", self.source)

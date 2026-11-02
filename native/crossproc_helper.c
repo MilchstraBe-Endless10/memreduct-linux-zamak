@@ -438,12 +438,13 @@ static int is_ancestor_of(int32_t ancestor, int32_t pid)
  * refuses would be a confusing product, so the two must not drift. */
 static const char *const protected_names[] = {
     "polkitd",
-    "polkit-gnome-au",
-    "polkit-kde-auth",
+    "polkit-gnome-authentication-agent-1",
+    "polkit-kde-authentication-agent-1",
     "hyprpolkitagent",
     "systemd",
     "dbus-daemon",
     "dbus-broker",
+    "dbus-broker-launch",
     "Hyprland",
     "hyprland",
     "Xorg",
@@ -458,17 +459,69 @@ static const char *const protected_names[] = {
     NULL
 };
 
+/* The kernel truncates /proc/<pid>/stat's comm field to 15 characters, so a
+ * protected program whose own name is longer arrives shortened:
+ * "dbus-broker-launch" is reported as "dbus-broker-lau". Exact comparison alone
+ * therefore misses it — this was found by running the enumeration against the
+ * live machine, not by reasoning about it.
+ *
+ * The rule below accepts an exact match, or the name being exactly the first 15
+ * bytes of a protected entry. It is applied to both the comm field and the
+ * untruncated exe basename, so either source identifies the program. */
+#define MR_COMM_TRUNCATED 15u
+
 static int name_is_protected(const char *name)
 {
     if (name == NULL || name[0] == '\0') {
         return 0;
     }
+    size_t name_len = strlen(name);
     for (size_t index = 0; protected_names[index] != NULL; index++) {
-        if (strcmp(name, protected_names[index]) == 0) {
+        const char *protected = protected_names[index];
+        if (strcmp(name, protected) == 0) {
+            return 1;
+        }
+        if (name_len == MR_COMM_TRUNCATED && strlen(protected) > MR_COMM_TRUNCATED &&
+            strncmp(name, protected, MR_COMM_TRUNCATED) == 0) {
             return 1;
         }
     }
     return 0;
+}
+
+/* The kernel truncates the comm field to 15 characters, so a name comparison
+ * alone lets "dbus-broker-launcher" through as "dbus-broker-lau". This was a
+ * real bypass, found by running the enumeration against the live machine.
+ *
+ * /proc/<pid>/exe is a symlink to the real binary and is not truncated, so its
+ * last path component is the authoritative program name. It is checked after
+ * the comm name. An unreadable exe is not treated as protection: kernel threads
+ * have none and they are already refused for lacking an address space. */
+static int exe_name_is_protected(int32_t pid)
+{
+    char path[MR_XPROC_PATH_BYTES];
+    char target[MR_XPROC_PATH_BYTES];
+    if (proc_path(path, sizeof(path), pid, "exe") != 0) {
+        return 0;
+    }
+    ssize_t got = readlink(path, target, sizeof(target) - 1u);
+    if (got <= 0) {
+        return 0;
+    }
+    target[got] = '\0';
+
+    /* Strip a " (deleted)" suffix the kernel appends for unlinked binaries. */
+    char *suffix = strstr(target, " (deleted)");
+    if (suffix != NULL && suffix[10] == '\0') {
+        *suffix = '\0';
+    }
+
+    const char *base = strrchr(target, '/');
+    base = base == NULL ? target : base + 1;
+    if (base[0] == '\0') {
+        return 0;
+    }
+    return name_is_protected(base);
 }
 
 /* Effective capability set, read from the kernel. Not from argv, not from the
@@ -923,7 +976,7 @@ int main(int argc, char **argv)
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
-    if (name_is_protected(target_name)) {
+    if (name_is_protected(target_name) || exe_name_is_protected(outcome.pid)) {
         refuse(&outcome, "target_is_protected_process");
         print_outcome(&outcome);
         return status_exit_code(outcome.status);

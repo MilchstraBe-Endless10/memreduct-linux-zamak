@@ -35,6 +35,21 @@ extern fn mr_crossproc_plan_regions() -> i64
 extern fn mr_crossproc_plan_bytes() -> i64
 extern fn mr_crossproc_plan_error() -> i64
 extern fn mr_crossproc_plan_skipped(reason: i64) -> i64
+# Read-only enumeration of the user's own processes (Issue #12, M1.1). It lists
+# what a reclaim COULD cover; it never touches any process. The helper re-derives
+# all of it independently from the kernel and may still refuse.
+extern fn mr_cand_scan_run() -> i64
+extern fn mr_cand_count() -> i64
+extern fn mr_cand_scanned() -> i64
+extern fn mr_cand_skipped(reason: i64) -> i64
+extern fn mr_cand_pid(index: i64) -> i64
+extern fn mr_cand_start_time(index: i64) -> i64
+extern fn mr_cand_reclaimable_bytes(index: i64) -> i64
+extern fn mr_cand_regions(index: i64) -> i64
+# Whether this build may reach the privileged cross-process path at all, and
+# whether the chain is actually installed right now.
+extern fn mr_xproc_enabled() -> i64
+extern fn mr_xproc_preflight() -> i64
 extern fn mr_self_reclaim_bytes() -> i64
 extern fn mr_self_reclaim_failed_batches() -> i64
 extern fn mr_self_reclaim_error() -> i64
@@ -354,6 +369,23 @@ fn run_self_reclaim(s: &mut MainWindow):
     if s.test_mode:
         mr_ci_emit(f"CI_CLEAN_SELF result={clean_self_status_name(state)} result_state={state} status={result} accepted_bytes={mr_self_reclaim_bytes()} failed_batches={mr_self_reclaim_failed_batches()} error={mr_self_reclaim_error()} target=self only other_processes=false no_privilege=true")
         mr_ci_emit(f"CI_CROSSPROC_PREVIEW status={plan_status} targets={mr_crossproc_plan_targets()} regions={mr_crossproc_plan_regions()} bytes={mr_crossproc_plan_bytes()} error={mr_crossproc_plan_error()} skipped_shared={mr_crossproc_plan_skipped(7)} skipped_writable={mr_crossproc_plan_skipped(8)} readonly=true no_advice_issued=true")
+    # Issue #12 M1.1: enumerate the user's own processes so the surface can name
+    # a target instead of showing a count. Still strictly read-only: no pidfd, no
+    # advice, no signal. Reported separately from the planner above because the
+    # two use different selection policies and must not be conflated.
+    let scan_ok = mr_cand_scan_run() == 0
+    let cands = mr_cand_count()
+    let xproc_built = mr_xproc_enabled()
+    let xproc_ready = mr_xproc_preflight()
+    if s.test_mode:
+        # One row per candidate (bounded to 8) plus a summary. The row carries
+        # the start_time the helper will verify, so a reviewer can see that the
+        # GUI is passing an identity, not just a number.
+        mr_ci_emit(f"CI_CROSSPROC_CANDIDATES scan_ok={scan_ok} count={cands} scanned={mr_cand_scanned()} skipped_other_uid={mr_cand_skipped(4)} skipped_protected={mr_cand_skipped(6)} skipped_no_regions={mr_cand_skipped(8)} built={xproc_built} preflight={xproc_ready} readonly=true no_advice_issued=true")
+        let mut row = 0
+        while row < cands and row < 8:
+            mr_ci_emit(f"CI_CROSSPROC_CANDIDATE row={row} pid={mr_cand_pid(row)} start_time={mr_cand_start_time(row)} regions={mr_cand_regions(row)} bytes={mr_cand_reclaimable_bytes(row)}")
+            row = row + 1
     s.canvas.redraw()
 
 fn clean_simulation_can_start(state: i64) -> bool:

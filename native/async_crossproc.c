@@ -411,6 +411,20 @@ int64_t mr_xproc_enabled(void)
     return mr_xproc_capability_enabled();
 }
 
+/* The reason a start was refused locally, as a stable token the GUI can show
+ * without inventing an explanation. */
+const char *mr_xproc_local_refusal_name(void)
+{
+    switch (local_refusal) {
+        case MR_XPROC_LOCAL_BAD_PID: return "bad_pid";
+        case MR_XPROC_LOCAL_BAD_START_TIME: return "bad_start_time";
+        case MR_XPROC_LOCAL_BAD_BUDGET: return "bad_budget";
+        case MR_XPROC_LOCAL_NOT_INSTALLED: return "not_installed";
+        case MR_XPROC_LOCAL_NOT_ENABLED: return "not_enabled";
+        default: return "none";
+    }
+}
+
 static void close_child_stdout(void)
 {
     if (child_stdout >= 0) {
@@ -454,6 +468,10 @@ static void drain_output(void)
 
 int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t max_bytes)
 {
+    /* Cleared on entry but set on every refusal path below: a caller that reads
+     * mr_xproc_local_refusal() after a refusal must never see "none" (0), which
+     * is also the value that means "no refusal". Found by probing the bridge:
+     * a start request refused for an unbuilt gate reported reason 0. */
     local_refusal = MR_XPROC_LOCAL_NONE;
 
     if (child_pid > 0) {
