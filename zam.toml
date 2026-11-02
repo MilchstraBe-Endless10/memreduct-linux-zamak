@@ -8,11 +8,21 @@ modules = "src"
 [native]
 # crossproc_plan.c is the unprivileged planner (ADR-0007) and is always built.
 # crossproc_advise.c is the writable half: it compiles to a refusing stub unless
-# production_clean_gate_default.c is the default-build capability gate: it
-# makes mr_production_clean_enabled() answer 0, so the shipped binary cannot
-# reach the pkexec bridge. The production build script swaps in
-# production_clean_gate_enabled.c instead; see ADR-0005 and
+# MEMREDUCT_ENABLE_PRODUCTION_ADVISE is defined.
+#
+# Cross-process reclaim (Issue #12, M1.1) adds three more units, none of which
+# gives the GUI any privilege:
+#   - crossproc_candidates.c  enumerates the user's own processes (read-only);
+#   - async_crossproc.c       spawns the separate privileged helper via pkexec;
+#   - production_crossproc_gate_default.c makes mr_xproc_capability_enabled()
+#     answer 0, so a default build cannot reach that bridge at all.
+# The production build script swaps in production_crossproc_gate_enabled.c.
+# This gate is deliberately separate from the page-cache gate: enabling one must
+# never silently enable the other.
+#
+# production_clean_gate_default.c is the default-build capability gate for the
+# page-cache action: it makes mr_production_clean_enabled() answer 0, so the
+# shipped binary cannot reach the pkexec bridge. The production build script
+# swaps in production_clean_gate_enabled.c instead; see ADR-0005 and
 # scripts/ci/build-production-clean-gui.sh.
-# MEMREDUCT_ENABLE_PRODUCTION_ADVISE is defined, so listing it here does not
-# enable anything. Enabling it is a deliberate build decision.
-sources = ["native/async_privileged.c", "native/production_clean_gate_default.c", "native/crossproc_advise.c", "native/crossproc_plan.c", "native/gui_test.c", "native/gui_window.c", "native/preferences_store.c", "native/self_reclaim.c"]
+sources = ["native/async_privileged.c", "native/async_crossproc.c", "native/production_clean_gate_default.c", "native/production_crossproc_gate_default.c", "native/crossproc_advise.c", "native/crossproc_candidates.c", "native/crossproc_plan.c", "native/gui_test.c", "native/gui_window.c", "native/preferences_store.c", "native/self_reclaim.c"]

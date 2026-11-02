@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+  <!-- Mem Reduct Zamak: cross-process reclaim (Issue #12, M1.1).
+       This is a SEPARATE action from the page-cache action
+       (io.github.milchstrasse_endless10.memreduct.zamak.pagecache). It names a
+       different helper binary and a different program contract, so a Polkit
+       rules file that allows one of them never allows the other by accident.
+
+       What this action authorizes: one shot of process_madvise(MADV_PAGEOUT)
+       against one process the requesting user owns. Not a batch, not a sweep,
+       not a timer, not a persistent service.
+
+       The helper re-verifies everything itself: it will refuse unless it was
+       really launched through pkexec, unless the target's kernel-reported real
+       UID equals the requester's, unless the caller's claimed start_time still
+       matches the live process, unless the target's ancestry can be proven, and
+       unless a private mapping worth advising actually exists. This file grants
+       no privilege the helper does not already re-check. -->
+  <vendor>Mem Reduct Zamak</vendor>
+  <vendor_url>https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak</vendor_url>
+
+  <action id="io.github.milchstrasse_endless10.memreduct.zamak.crossproc">
+    <description>Push one application's memory pages out to disk (Mem Reduct Zamak)</description>
+    <description xml:lang="zh_CN">将某个应用的内存页换出到磁盘（Mem Reduct Zamak）</description>
+    <message>Authentication is required to reclaim memory from another process.
+
+This asks the kernel to page out part of ONE process that you own. That program
+may have to read those pages back from disk or from swap memory the next time
+it uses them, which can make it slow down for a moment. Nothing is terminated
+and nothing is paused.
+
+The kernel decides what it will actually reclaim. There is no guarantee that it
+frees any particular amount, and the byte count reported afterwards is the
+amount the kernel accepted, not the amount that was released.</message>
+    <message xml:lang="zh_CN">回收其他进程的内存需要认证。
+
+本操作请求内核把属于你的某一个进程的部分内存页换出。该程序下次访问这些页时
+可能需要从磁盘或 swap 读回，因此可能短暂变慢。不会终止任何进程，也不会暂停任何进程。
+
+实际回收多少由内核决定。不保证释放任何特定数量；操作后报告的字节数是内核
+接受的请求长度，不是真正释放的内存量。</message>
+    <icon_name>memreduct-zamak</icon_name>
+    <defaults>
+      <!-- Same shape as the page-cache action, for the same reasons:
+           - allow_any=no: a remote session can never authorize it;
+           - allow_inactive=no: a background session can never authorize it;
+           - allow_active=auth_admin: the local user types an admin password
+             for THIS request;
+           - no *_keep variant: an approval is never reused, so each reclaim is
+             authorized separately.
+           An administrator who wants it usable without a prompt can allow the
+           action id through a rules file; the helper still re-checks the target
+           regardless of how it was reached. -->
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/memreduct-zamak-crossproc-helper</annotate>
+  </action>
+
+</policyconfig>
