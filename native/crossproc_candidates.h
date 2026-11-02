@@ -24,6 +24,7 @@
 #define MR_CAND_MAX 32u
 #define MR_CAND_NAME_BYTES 64u
 #define MR_CAND_PATH_BYTES 256u
+#define MR_CAND_PROC_PATH_BYTES 4096u
 #define MR_CAND_MAX_PROC_ENTRIES 512u
 
 /* Why a process was not offered as a candidate. Reported, never silently

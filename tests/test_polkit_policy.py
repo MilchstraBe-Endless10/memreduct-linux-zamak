@@ -162,6 +162,7 @@ class InstallScriptTest(unittest.TestCase):
                 for path in re.findall(r"/usr/(?:bin|libexec|share)/[A-Za-z0-9/._-]+", text)
                 if path.startswith(("/usr/bin/memreduct", "/usr/libexec/", "/usr/share/applications/",
                                     "/usr/share/polkit-1/", "/usr/share/licenses/", "/usr/share/doc/"))
+                and path != "/usr/share/polkit-1/actions"
             }
 
         installed = targets(self.install)

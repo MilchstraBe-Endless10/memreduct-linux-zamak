@@ -16,6 +16,7 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
+import ctypes
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NATIVE = os.path.join(ROOT, "native")
@@ -50,8 +51,21 @@ class BuildMixin:
         cls.tmp = tempfile.mkdtemp(prefix="memreduct-xproc-")
         cls.prod = os.path.join(cls.tmp, "helper-prod")
         cls.test = os.path.join(cls.tmp, "helper-test")
+        cls.credentials_probe = os.path.join(cls.tmp, "helper-credentials.so")
         _build(cls.prod, [], [HELPER_SRC])
         _build(cls.test, ["-DMEMREDUCT_TESTING"], [HELPER_SRC])
+        subprocess.run(
+            BASE_FLAGS + ["-DMEMREDUCT_TESTING", "-shared", "-fPIC",
+                          "-Dmain=mr_xproc_test_program_main", "-I", NATIVE,
+                          HELPER_SRC, "-o", cls.credentials_probe],
+            check=True, capture_output=True, text=True,
+        )
+        cls.credentials = ctypes.CDLL(cls.credentials_probe)
+        cls.credentials.mr_xproc_test_validate_helper_credentials.argtypes = [
+            ctypes.c_uint64, ctypes.c_uint64, ctypes.c_int, ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_uint64),
+        ]
+        cls.credentials.mr_xproc_test_validate_helper_credentials.restype = ctypes.c_char_p
 
     @classmethod
     def tearDownClass(cls):
@@ -145,6 +159,7 @@ class ProductionBinaryTest(BuildMixin, unittest.TestCase):
             b"MEMREDUCT_TEST_SKIP_PRIVILEGE",
             b"MEMREDUCT_TEST_SKIP_REQUESTER",
             b"MEMREDUCT_TEST_BACKEND",
+            b"mr_xproc_test_validate_helper_credentials",
         ):
             self.assertNotIn(marker, blob, f"{marker!r} leaking into the production binary")
 
@@ -185,9 +200,18 @@ class FixtureProc:
             handle.write(f"Uid:\t{uid}\t{uid}\t{uid}\t{uid}\n")
         # stat: pid (comm) state ppid ... field 22 = start_time.
         # Fields after ')' are: state, ppid, then 17 more before start_time.
-        rest = ["S", str(ppid)] + ["0"] * 17 + [str(start_time)]
+        rest = [state, str(ppid)] + ["0"] * 17 + [str(start_time)]
         with open(os.path.join(directory, "stat"), "w", encoding="utf-8") as handle:
             handle.write(f"{pid} ({name}) " + " ".join(rest) + "\n")
+        exe_path = os.path.join(directory, "exe")
+        if os.path.lexists(exe_path):
+            os.unlink(exe_path)
+        os.symlink(f"/usr/bin/{name}", exe_path)
+        with open(os.path.join(directory, "cgroup"), "w", encoding="utf-8") as handle:
+            handle.write(
+                f"0::/user.slice/user-{uid}.slice/user@{uid}.service/"
+                f"app.slice/app-{name}.scope\n"
+            )
         if maps is not None:
             with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
                 handle.write(maps)
@@ -271,6 +295,48 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
                 result = self.run_helper(4242, 777, 1048576)
                 self.assert_refused(result, "target_is_protected_process")
 
+    def test_protected_executable_is_refused_even_with_unrelated_comm(self):
+        directory = self.tree.add(4242, "ordinary-client", 1000, 777)
+        os.unlink(os.path.join(directory, "exe"))
+        os.symlink("/usr/bin/Hyprland", os.path.join(directory, "exe"))
+        self.assert_refused(self.run_helper(4242, 777, 1048576),
+                            "target_is_protected_process")
+
+    def test_unreadable_executable_is_refused_closed(self):
+        directory = self.tree.add(4242, "ordinary-client", 1000, 777)
+        os.unlink(os.path.join(directory, "exe"))
+        self.assert_refused(self.run_helper(4242, 777, 1048576),
+                            "target_exe_unverifiable")
+
+    def test_system_and_login_session_cgroups_are_refused(self):
+        directory = self.tree.add(4242, "ordinary-client", 1000, 777)
+        for cgroup in (
+            "0::/system.slice/user-manager.service\n",
+            "0::/user.slice/user-1000.slice/session-3.scope\n",
+        ):
+            with self.subTest(cgroup=cgroup):
+                with open(os.path.join(directory, "cgroup"), "w", encoding="utf-8") as handle:
+                    handle.write(cgroup)
+                self.assert_refused(self.run_helper(4242, 777, 1048576),
+                                    "target_in_protected_cgroup")
+
+    def test_missing_or_unknown_cgroup_is_refused_closed(self):
+        directory = self.tree.add(4242, "ordinary-client", 1000, 777)
+        os.unlink(os.path.join(directory, "cgroup"))
+        self.assert_refused(self.run_helper(4242, 777, 1048576),
+                            "target_cgroup_unverifiable")
+
+    def test_target_uid_real_effective_saved_and_fs_must_match(self):
+        directory = self.tree.add(4242, "ordinary-client", 1000, 777)
+        with open(os.path.join(directory, "status"), "w", encoding="utf-8") as handle:
+            handle.write("Name:\tordinary-client\nState:\tS\nUid:\t1000\t1001\t1000\t1000\n")
+        self.assert_refused(self.run_helper(4242, 777, 1048576),
+                            "target_uid_credentials_mismatch")
+
+    def test_exited_target_state_is_refused(self):
+        self.tree.add(4242, "ordinary-client", 1000, 777, state="Z")
+        self.assert_refused(self.run_helper(4242, 777, 1048576), "target_not_running")
+
     def test_truncated_comm_name_still_matches_a_protected_program(self):
         """The kernel caps comm at 15 bytes, so the name arrives shortened.
 
@@ -285,7 +351,7 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
 
     def test_a_15_byte_unrelated_name_is_not_treated_as_protected(self):
         """Truncation matching must not become a wildcard on short names."""
-        self.tree.add(4242, "pipewire-pulse", 1000, 777)
+        self.tree.add(4242, "ordinary-client", 1000, 777)
         result = self.run_helper(4242, 777, 1048576)
         fields = self.parse(result.stdout)
         self.assertIsNotNone(fields)
@@ -317,29 +383,52 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         result = self.run_helper(4242, 777, 1048576, env_extra=env, uid_env=None)
         self.assert_refused(result, "not_launched_via_pkexec")
 
-    def test_requester_uid_mismatch_is_refused(self):
-        """PKEXEC_UID is a claim; the real UID disproves a false one.
-
-        The fixture target is owned by whatever this test process's real UID is,
-        so a deliberately wrong PKEXEC_UID must be caught by the cross-check
-        before the target is even considered.
-        """
-        real_uid = os.getuid()
+    def test_pkexec_requester_claim_must_match_kernel_target_uid(self):
+        """PKEXEC_UID alone is insufficient; the target's kernel UIDs must match it."""
+        real_uid = 1000
         self.tree.add(4242, "demo", real_uid, 777)
         env = {"MEMREDUCT_TEST_SKIP_REQUESTER": "0"}
         claimed = real_uid + 1
         result = self.run_helper(4242, 777, 1048576, env_extra=env, uid_env=str(claimed))
-        self.assert_refused(result, "requester_uid_mismatch")
+        self.assert_refused(result, "target_other_uid")
 
     def test_matching_requester_uid_passes_the_cross_check(self):
         """The same invocation with an honest PKEXEC_UID must get past it."""
-        real_uid = os.getuid()
+        real_uid = 1000
         self.tree.add(4242, "demo", real_uid, 777)
         env = {"MEMREDUCT_TEST_SKIP_REQUESTER": "0"}
         result = self.run_helper(4242, 777, 1048576, env_extra=env, uid_env=str(real_uid))
         fields = self.parse(result.stdout)
         self.assertIsNotNone(fields)
-        self.assertNotEqual(fields.get("reason"), "requester_uid_mismatch")
+        self.assertNotEqual(fields.get("reason"), "target_other_uid")
+
+    def test_pkexec_uses_root_for_both_real_and_effective_uid(self):
+        requester = ctypes.c_uint64()
+        reason = self.credentials.mr_xproc_test_validate_helper_credentials(
+            0, 0, 1, b"1000", ctypes.byref(requester)
+        )
+        self.assertIsNone(reason)
+        self.assertEqual(requester.value, 1000)
+
+    def test_invalid_credentials_and_pkexec_uid_claims_are_rejected(self):
+        cases = (
+            (1000, 0, 1, b"1000", "invalid_pkexec_root_credentials"),
+            (0, 1000, 1, b"1000", "not_root"),
+            (0, 0, 0, b"1000", "missing_cap_sys_nice"),
+            (0, 0, -1, b"1000", "capget_failed"),
+            (0, 0, 1, None, "not_launched_via_pkexec"),
+            (0, 0, 1, b"", "not_launched_via_pkexec"),
+            (0, 0, 1, b"abc", "malformed_requester_uid"),
+            (0, 0, 1, b"4294967296", "malformed_requester_uid"),
+            (0, 0, 1, b"0", "invalid_requester_uid"),
+        )
+        for real_uid, effective_uid, capability, claim, expected in cases:
+            with self.subTest(real_uid=real_uid, effective_uid=effective_uid, claim=claim):
+                requester = ctypes.c_uint64()
+                reason = self.credentials.mr_xproc_test_validate_helper_credentials(
+                    real_uid, effective_uid, capability, claim, ctypes.byref(requester)
+                )
+                self.assertEqual(reason.decode() if reason else None, expected)
 
     def test_ancestry_walk_refuses_an_unprovable_chain(self):
         """The walk starts at the helper's own PID, which the fixture lacks.
@@ -791,6 +880,15 @@ class PolicyTest(unittest.TestCase):
             page_cache = handle.read()
         self.assertNotIn("/usr/libexec/memreduct-zamak-crossproc-helper", page_cache)
 
+    def test_installer_checks_the_installed_action_and_fixed_path(self):
+        with open(os.path.join(ROOT, "scripts", "install-arch.sh"),
+                  encoding="utf-8") as handle:
+            script = handle.read()
+        self.assertIn('cmp -s "$xproc_policy_source" "$xproc_policy_target"', script)
+        self.assertIn('pkaction --action-id "$xproc_action_id"', script)
+        self.assertIn('"$xproc_policy_target"', script)
+        self.assertIn("org.freedesktop.policykit.exec.path", script)
+
     def test_defaults_require_interactive_admin_every_time(self):
         defaults = self.actions[0].find("defaults")
         self.assertEqual((defaults.findtext("allow_any") or "").strip(), "no")
@@ -820,6 +918,85 @@ class PolicyTest(unittest.TestCase):
         for forbidden in ("guaranteed", "will free", "GB", "freed bytes="):
             self.assertNotIn(forbidden, text)
         self.assertIn("not the amount that was released", text)
+
+
+class PolicyPreflightFileTest(unittest.TestCase):
+    """The bridge opens policy files without symlinks and checks exact binding."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="memreduct-policy-preflight-")
+        cls.library_path = os.path.join(cls.tmp, "libpreflight.so")
+        subprocess.run(
+            BASE_FLAGS + ["-DMEMREDUCT_TESTING", "-shared", "-fPIC", "-I", NATIVE,
+                          os.path.join(NATIVE, "async_crossproc.c"),
+                          os.path.join(NATIVE, "production_crossproc_gate_default.c"),
+                          "-o", cls.library_path],
+            check=True, capture_output=True, text=True,
+        )
+        cls.library = ctypes.CDLL(cls.library_path)
+        cls.library.mr_xproc_test_policy_file_matches.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint, ctypes.c_uint,
+        ]
+        cls.library.mr_xproc_test_policy_file_matches.restype = ctypes.c_int
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp(prefix="policy-fixture-")
+        self.policy_path = os.path.join(self.directory, "action.policy")
+        with open(POLICY, encoding="utf-8") as source:
+            self.valid_policy = source.read()
+        self.write_policy(self.valid_policy)
+
+    def tearDown(self):
+        shutil.rmtree(self.directory, ignore_errors=True)
+
+    def write_policy(self, text, mode=0o644):
+        with open(self.policy_path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.chmod(self.policy_path, mode)
+
+    def matches(self, path=None, owner=None, group=None):
+        return self.library.mr_xproc_test_policy_file_matches(
+            os.fsencode(path or self.policy_path),
+            os.getuid() if owner is None else owner,
+            os.getgid() if group is None else group,
+        ) == 1
+
+    def test_valid_policy_is_bound_to_the_dedicated_action_and_helper(self):
+        self.assertTrue(self.matches())
+
+    def test_wrong_action_or_helper_path_fails_preflight(self):
+        self.write_policy(self.valid_policy.replace(
+            "io.github.milchstrasse_endless10.memreduct.zamak.crossproc",
+            "io.github.milchstrasse_endless10.memreduct.zamak.other", 1))
+        self.assertFalse(self.matches())
+        self.write_policy(self.valid_policy.replace(
+            "/usr/libexec/memreduct-zamak-crossproc-helper",
+            "/usr/libexec/other-helper"))
+        self.assertFalse(self.matches())
+
+    def test_symlink_writable_file_and_wrong_owner_are_rejected(self):
+        link_path = os.path.join(self.directory, "policy-link")
+        os.symlink(self.policy_path, link_path)
+        self.assertFalse(self.matches(path=link_path))
+        self.write_policy(self.valid_policy, mode=0o666)
+        self.assertFalse(self.matches())
+        self.write_policy(self.valid_policy)
+        self.assertFalse(self.matches(owner=os.getuid() + 1))
+
+    def test_symlinked_parent_is_rejected(self):
+        real_dir = os.path.join(self.directory, "real")
+        os.mkdir(real_dir)
+        real_policy = os.path.join(real_dir, "action.policy")
+        shutil.copyfile(self.policy_path, real_policy)
+        os.chmod(real_policy, 0o644)
+        link_dir = os.path.join(self.directory, "linked")
+        os.symlink(real_dir, link_dir)
+        self.assertFalse(self.matches(path=os.path.join(link_dir, "action.policy")))
 
 
 class SourceContractTest(unittest.TestCase):
@@ -871,46 +1048,31 @@ class SourceContractTest(unittest.TestCase):
                 self.assertTrue(in_testing,
                                 f"test switch outside the testing block: {line.strip()}")
 
-    def test_protected_matching_is_truncation_aware_in_both_files(self):
-        """The 15-byte truncation rule must exist on both sides, not one.
-
-        If the helper learns it and the enumeration does not, the enumeration
-        offers a row the helper then refuses; if only the enumeration learns it,
-        the helper is the one that can be bypassed.
-        """
+    def test_helper_and_scanner_share_fail_closed_identity_policy(self):
         with open(os.path.join(NATIVE, "crossproc_candidates.c"), encoding="utf-8") as handle:
             candidates = handle.read()
-        for text, label in ((self.source, "helper"), (candidates, "candidates")):
-            with self.subTest(file=label):
-                self.assertIn("15", text)
-                self.assertIn("dbus-broker-launch", text,
-                              f"{label}: the long form must be listed explicitly")
+        with open(os.path.join(NATIVE, "crossproc_protection.h"), encoding="utf-8") as handle:
+            policy = handle.read()
+        self.assertIn('#include "crossproc_protection.h"', self.source)
+        self.assertIn('#include "crossproc_protection.h"', candidates)
+        self.assertIn("MR_XPROC_COMM_TRUNCATED 15u", policy)
+        self.assertIn('"dbus-broker-launch"', policy)
+        self.assertIn("target_exe_unverifiable", self.source)
+        self.assertIn("target_cgroup_unverifiable", self.source)
 
     def test_advice_is_pageout_only(self):
         self.assertIn("MADV_PAGEOUT", self.source)
         self.assertNotIn("MADV_COLD", self.source)
         self.assertNotIn("MADV_DONTNEED", self.source)
 
-    def test_protected_names_match_the_enumeration_exactly(self):
-        """The two lists must not drift.
-
-        The enumeration hides a row, the helper refuses it: confusing. The
-        helper refuses a name the enumeration offers, the user authorizes an
-        action that then fails: worse. Both lists are compared literally.
-        """
-        import re as _re
-
-        def extract(text, marker):
-            start = text.index(marker)
-            end = text.index("NULL", start)
-            return set(_re.findall(r'"([^"]+)"', text[start:end]))
-
-        helper_names = extract(self.source, "static const char *const protected_names[] = {")
+    def test_protected_names_have_one_authoritative_definition(self):
         with open(os.path.join(NATIVE, "crossproc_candidates.c"), encoding="utf-8") as handle:
             candidates = handle.read()
-        candidate_names = extract(candidates, "static const char *const protected_names[] = {")
-        self.assertEqual(helper_names, candidate_names,
-                         "the helper and the enumeration disagree about protected names")
+        with open(os.path.join(NATIVE, "crossproc_protection.h"), encoding="utf-8") as handle:
+            policy = handle.read()
+        self.assertNotIn("mr_xproc_protected_names", self.source)
+        self.assertNotIn("mr_xproc_protected_names", candidates)
+        self.assertEqual(policy.count("mr_xproc_protected_names[]"), 1)
 
 
 class InstallSurfaceTest(unittest.TestCase):
@@ -929,14 +1091,11 @@ class InstallSurfaceTest(unittest.TestCase):
 
     def test_install_forces_root_ownership_on_the_new_helper(self):
         text = self.read("scripts", "install-arch.sh")
-        self.assertRegex(
-            text,
-            r"chown 0:0 /usr/libexec/memreduct-zamak-crossproc-helper",
-        )
-        self.assertRegex(
-            text,
-            r"chmod 0755 /usr/libexec/memreduct-zamak-crossproc-helper",
-        )
+        self.assertIn("xproc_helper_target='/usr/libexec/memreduct-zamak-crossproc-helper'", text)
+        self.assertIn('chown 0:0 "$xproc_helper_target"', text)
+        self.assertIn('chmod 0755 "$xproc_helper_target"', text)
+        self.assertIn('chown 0:0 "$xproc_policy_target"', text)
+        self.assertIn('chmod 0644 "$xproc_policy_target"', text)
 
     def test_uninstall_removes_every_new_file(self):
         text = self.read("scripts", "uninstall-arch.sh")

@@ -147,7 +147,7 @@ Residual risk: `MADV_PAGEOUT` on another process with `CAP_SYS_NICE` can force w
 
 ### The helper re-derives every decision
 
-The PID the GUI sends is an untrusted candidate. Before anything is touched the helper checks, all from the kernel: effective UID is 0; the real UID differs from the effective UID (so it really came through `pkexec`, not from a root shell); `PKEXEC_UID` matches the real UID the kernel holds; `CAP_SYS_NICE` is effective; the target's `start_time` still matches; the target is not PID 1, not the helper, and not an ancestor; the target's real UID matches the requester's and is not 0; the target has an address space. Only then does it read the target's maps itself, choose ranges itself, pin a pidfd, re-read the identity through it, and issue **one** `process_madvise(MADV_PAGEOUT)` call. No retry, no signal, no shell, no path argument, no address range from outside.
+The PID the GUI sends is an untrusted candidate. For a root-target action, `pkexec` calls `setreuid(0, 0)` before executing the helper, so the expected real and effective UIDs are both 0; requiring them to differ would reject a valid `pkexec` launch. The helper requires `ruid=0`, `euid=0`, effective `CAP_SYS_NICE`, and a strictly parsed, nonzero `PKEXEC_UID`. That environment value identifies the claimed requester but is not treated by itself as proof that a target is safe. The helper independently reads the target's kernel `Uid:` tuple and requires real/effective/saved/filesystem UIDs to agree, be non-root, and match the requester claim. It also verifies `start_time`, pins the process with a pidfd and rechecks its identity, rejects PID 1, itself, and its own ancestors, reads `/proc/<pid>/exe` without accepting a truncated or unknown path, checks the shared protected executable/name rules, and accepts only a matching user's supported application cgroup. Missing, malformed, protected, or unsupported process identity data fails closed. Only then does it read the target's maps itself, choose ranges itself, and issue **one** `process_madvise(MADV_PAGEOUT)` call. No retry, no signal, no shell, no path argument, no address range from outside.
 
 ### Two defects this round found by running it
 
@@ -158,13 +158,21 @@ Both were found by exercising the code against this machine, and both are now re
 
 A third issue is a design correction rather than a bug: `mr_xproc_test_classify()` had been exported from every build. It is now compiled only under `MEMREDUCT_TESTING`, and a symbol scan asserts its absence, because a GUI-reachable classify entry point would let a caller decide what the privileged side "said".
 
+### Owner security review correction (2026-11-02)
+
+- The first credential predicate incorrectly required real and effective UIDs to differ as evidence of `pkexec`. For a root target, `pkexec` calls `setreuid(0, 0)`, so the helper now accepts only the expected root/root model, requires effective `CAP_SYS_NICE`, and strictly parses a nonzero `PKEXEC_UID` requester claim. The claim alone is not authorization evidence: the helper independently requires the target's real/effective/saved/filesystem UIDs to agree, be non-root, and match that claim.
+- A 15-byte `comm` match is not a sufficient target boundary. Both enumeration and helper now require a complete `/proc/<pid>/exe` path, apply the shared protected-name rules, validate the target UID tuple and accept only a supported application scope for the same user. Missing, truncated, malformed, protected, or unsupported identity data is skipped/refused. The helper repeats these checks after opening the pidfd and verifies the PID start time.
+- The Arch installer checks the source policy's dedicated action ID and fixed helper path before staging, then verifies the installed policy is byte-for-byte the checked source, repeats the action/path checks against the installed file, and requires `pkaction --action-id` to recognize the dedicated action. The installer was not run in this review because installation is not approved yet.
+- Regression coverage models `ruid=0/euid=0`, rejects mismatched requester/target UIDs and missing capability, and exercises protected, missing, and unsupported process identity/cgroup cases. All tests use fixtures or a stub syscall backend; no real cross-process syscall is issued.
+- **Post-correction local verification:** governance 34/34; Python suite 186 passed, 1 existing filesystem-length case skipped; Zamak 0.2.0 `check` passed, `test` 76/76, `build` passed; Arch native build and all shell syntax checks passed. The installed cross-process action is not present in this host's `pkaction` registry because installation was not run; no installed Polkit behavior is claimed.
+
 ### Honesty invariants kept
 
 - The result block prints `bytes_advised_is_not_bytes_freed=true`, and no status token contains the word "freed".
 - `advised == 0` cannot be reported as accepted; more than one call, a truncated block, a duplicate key, an unknown token, or an exit code disagreeing with the report all resolve to `OUTCOME_UNKNOWN`.
 - A build without the gate enabled refuses locally with `not_enabled` rather than spawning anything.
 
-### Verified on this machine
+### Initial M1.1 verification before owner review correction (historical snapshot)
 
 167 Python tests (1 skipped: a >PATH_MAX path the filesystem rejects), 76 Zamak tests, `zam check`, GUI build, all shell syntax. Live enumeration against this host: 512 procfs entries scanned, 32 candidates, 7 protected skipped. The production binary contains no `MEMREDUCT_TEST_*` switch and no `mr_xproc_test_*` symbol.
 

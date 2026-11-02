@@ -14,12 +14,12 @@
        against one process the requesting user owns. Not a batch, not a sweep,
        not a timer, not a persistent service.
 
-       The helper re-verifies everything itself: it will refuse unless it was
-       really launched through pkexec, unless the target's kernel-reported real
-       UID equals the requester's, unless the caller's claimed start_time still
-       matches the live process, unless the target's ancestry can be proven, and
-       unless a private mapping worth advising actually exists. This file grants
-       no privilege the helper does not already re-check. -->
+       pkexec's root target runs with real/effective UID 0; PKEXEC_UID names the
+       original requester and is only a claim. The helper independently checks
+       the root credentials and CAP_SYS_NICE, all four kernel-reported target
+       UIDs, pinned start_time, executable identity, a supported user-app
+       cgroup, target ancestry, and private mappings. This file grants no
+       privilege the helper does not already constrain. -->
   <vendor>Mem Reduct Zamak</vendor>
   <vendor_url>https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak</vendor_url>
 
@@ -28,7 +28,7 @@
     <description xml:lang="zh_CN">将某个应用的内存页换出到磁盘（Mem Reduct Zamak）</description>
     <message>Authentication is required to reclaim memory from another process.
 
-This asks the kernel to page out part of ONE process that you own. That program
+This asks the kernel to page out part of ONE selected application that you own. That program
 may have to read those pages back from disk or from swap memory the next time
 it uses them, which can make it slow down for a moment. Nothing is terminated
 and nothing is paused.
@@ -38,7 +38,7 @@ frees any particular amount, and the byte count reported afterwards is the
 amount the kernel accepted, not the amount that was released.</message>
     <message xml:lang="zh_CN">回收其他进程的内存需要认证。
 
-本操作请求内核把属于你的某一个进程的部分内存页换出。该程序下次访问这些页时
+本操作请求内核把属于你的一个已选应用的部分内存页换出。该程序下次访问这些页时
 可能需要从磁盘或 swap 读回，因此可能短暂变慢。不会终止任何进程，也不会暂停任何进程。
 
 实际回收多少由内核决定。不保证释放任何特定数量；操作后报告的字节数是内核

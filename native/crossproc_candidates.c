@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include "crossproc_candidates.h"
+#include "crossproc_protection.h"
 
 #ifndef MR_CAND_PROC_ROOT
 #  define MR_CAND_PROC_ROOT "/proc"
@@ -39,60 +40,34 @@ static void cand_test_root(void)
         cand_proc_root = value;
     }
 }
+
+static uint64_t cand_own_uid(void)
+{
+    const char *value = getenv("MEMREDUCT_TEST_UID");
+    if (value != NULL && value[0] != '\0') {
+        uint64_t parsed = 0;
+        for (const char *cursor = value; *cursor != '\0'; cursor++) {
+            if (*cursor < '0' || *cursor > '9') {
+                return (uint64_t)geteuid();
+            }
+            unsigned int digit = (unsigned int)(*cursor - '0');
+            if (parsed > (UINT32_MAX - digit) / 10u) {
+                return (uint64_t)geteuid();
+            }
+            parsed = parsed * 10u + digit;
+        }
+        return parsed;
+    }
+    return (uint64_t)geteuid();
+}
 #else
 static void cand_test_root(void) { }
+static uint64_t cand_own_uid(void) { return (uint64_t)geteuid(); }
 #endif
-
-/* Exactly the names the helper refuses, plus the desktop services whose
- * paging out would visibly degrade the session the user is working in. Keeping
- * the two lists in step matters: a row this list offers and the helper then
- * refuses is a confusing product, and a row it hides that the helper would
- * accept is merely conservative. */
-static const char *const protected_names[] = {
-    "polkitd",
-    "polkit-gnome-authentication-agent-1",
-    "polkit-kde-authentication-agent-1",
-    "hyprpolkitagent",
-    "systemd",
-    "dbus-daemon",
-    "dbus-broker",
-    "dbus-broker-launch",
-    "Hyprland",
-    "hyprland",
-    "Xorg",
-    "Xwayland",
-    "gnome-shell",
-    "kwin_wayland",
-    "kwin_x11",
-    "plasmashell",
-    "mutter",
-    "sway",
-    "wayfire",
-    NULL
-};
-
-/* Truncation-aware on purpose: see the note in crossproc_helper.c. The comm
- * field is capped at 15 characters, so "dbus-broker-launch" arrives as
- * "dbus-broker-lau" and an exact comparison alone misses it. */
-#define MR_CAND_COMM_TRUNCATED 15u
 
 int mr_cand_name_is_protected(const char *name)
 {
-    if (name == NULL || name[0] == '\0') {
-        return 0;
-    }
-    size_t name_len = strlen(name);
-    for (size_t index = 0; protected_names[index] != NULL; index++) {
-        const char *protected = protected_names[index];
-        if (strcmp(name, protected) == 0) {
-            return 1;
-        }
-        if (name_len == MR_CAND_COMM_TRUNCATED && strlen(protected) > MR_CAND_COMM_TRUNCATED &&
-            strncmp(name, protected, MR_CAND_COMM_TRUNCATED) == 0) {
-            return 1;
-        }
-    }
-    return 0;
+    return mr_xproc_name_is_protected(name);
 }
 
 static int read_text(const char *path, char *buffer, size_t size)
@@ -124,7 +99,7 @@ static int read_text(const char *path, char *buffer, size_t size)
 /* Field 22 (start_time) from /proc/<pid>/stat, anchored on the last ')'. */
 static int read_start_time(int32_t pid, uint64_t *out)
 {
-    char path[64];
+    char path[MR_CAND_PROC_PATH_BYTES];
     char line[4096];
     if (snprintf(path, sizeof(path), "%s/%d/stat", cand_proc_root, (int)pid) >= (int)sizeof(path)) {
         return -1;
@@ -180,7 +155,7 @@ struct cand_status {
 
 static int read_status(int32_t pid, struct cand_status *out)
 {
-    char path[64];
+    char path[MR_CAND_PROC_PATH_BYTES];
     char buffer[8192];
     memset(out, 0, sizeof(*out));
     if (snprintf(path, sizeof(path), "%s/%d/status", cand_proc_root, (int)pid) >= (int)sizeof(path)) {
@@ -209,15 +184,42 @@ static int read_status(int32_t pid, struct cand_status *out)
             while (*value == ' ' || *value == '\t') {
                 value++;
             }
-            uint64_t parsed = 0;
-            int digits = 0;
-            while (*value >= '0' && *value <= '9') {
-                parsed = parsed * 10u + (uint64_t)(*value - '0');
-                value++;
-                digits++;
+            uint64_t parsed[4] = {0, 0, 0, 0};
+            int valid = 1;
+            for (size_t index = 0; index < 4u; index++) {
+                if (*value < '0' || *value > '9') {
+                    valid = 0;
+                    break;
+                }
+                do {
+                    unsigned int digit = (unsigned int)(*value - '0');
+                    if (parsed[index] > (UINT32_MAX - digit) / 10u) {
+                        valid = 0;
+                        break;
+                    }
+                    parsed[index] = parsed[index] * 10u + digit;
+                    value++;
+                } while (*value >= '0' && *value <= '9');
+                if (!valid) {
+                    break;
+                }
+                if (index < 3u) {
+                    if (*value != ' ' && *value != '\t') {
+                        valid = 0;
+                        break;
+                    }
+                    while (*value == ' ' || *value == '\t') {
+                        value++;
+                    }
+                }
             }
-            if (digits > 0) {
-                out->uid = parsed;
+            while (valid && (*value == ' ' || *value == '\t')) {
+                value++;
+            }
+            if (valid && (*value == '\n' || *value == '\0') &&
+                parsed[0] == parsed[1] && parsed[0] == parsed[2] &&
+                parsed[0] == parsed[3]) {
+                out->uid = parsed[0];
                 out->have_uid = 1;
             }
         } else if (strncmp(line, "State:", 6) == 0) {
@@ -236,19 +238,21 @@ static int read_status(int32_t pid, struct cand_status *out)
     return (out->have_name && out->have_uid) ? 0 : -1;
 }
 
-static void read_exe(int32_t pid, char *out, size_t size)
+static int read_exe(int32_t pid, char *out, size_t size)
 {
-    char path[64];
+    char path[MR_CAND_PROC_PATH_BYTES];
     out[0] = '\0';
-    if (snprintf(path, sizeof(path), "%s/%d/exe", cand_proc_root, (int)pid) >= (int)sizeof(path)) {
-        return;
+    if (size < 2u ||
+        snprintf(path, sizeof(path), "%s/%d/exe", cand_proc_root, (int)pid) >= (int)sizeof(path)) {
+        return -1;
     }
     ssize_t got = readlink(path, out, size - 1u);
-    if (got <= 0) {
+    if (got <= 0 || (size_t)got >= size - 1u || out[0] != '/') {
         out[0] = '\0';
-        return;
+        return -1;
     }
     out[got] = '\0';
+    return 0;
 }
 
 /* Same truncation problem the helper documents: the comm field in
@@ -257,23 +261,28 @@ static void read_exe(int32_t pid, char *out, size_t size)
  * observed on the live machine. The exe symlink is not truncated, so its
  * basename is checked too. Keeping this in step with the helper matters: a row
  * this enumeration offers and the helper then refuses is a confusing product. */
-static int pid_is_protected(int32_t pid, const char *comm)
+static int pid_safety(int32_t pid, const char *comm, uint64_t uid,
+                      char *exe_out, size_t exe_size)
 {
     if (mr_cand_name_is_protected(comm)) {
         return 1;
     }
-    char exe[MR_CAND_PATH_BYTES];
-    read_exe(pid, exe, sizeof(exe));
-    if (exe[0] == '\0') {
-        return 0;
+    if (read_exe(pid, exe_out, exe_size) != 0) {
+        return -1;
     }
-    char *suffix = strstr(exe, " (deleted)");
-    if (suffix != NULL && suffix[10] == '\0') {
-        *suffix = '\0';
+    int exe_protected = mr_xproc_exe_is_protected(exe_out);
+    if (exe_protected != 0) {
+        return exe_protected;
     }
-    const char *base = strrchr(exe, '/');
-    base = base == NULL ? exe : base + 1;
-    return mr_cand_name_is_protected(base);
+
+    char path[MR_CAND_PROC_PATH_BYTES];
+    char cgroup[4096];
+    if (snprintf(path, sizeof(path), "%s/%d/cgroup", cand_proc_root, (int)pid) >= (int)sizeof(path) ||
+        read_text(path, cgroup, sizeof(cgroup)) != 0) {
+        return -1;
+    }
+    int cgroup_result = mr_xproc_cgroup_text_is_user_app(cgroup, (uint32_t)uid);
+    return cgroup_result == 1 ? 0 : cgroup_result == 0 ? 1 : -1;
 }
 
 /* Sum the mapping lengths the helper would also consider. Same filter, so the
@@ -281,7 +290,7 @@ static int pid_is_protected(int32_t pid, const char *comm)
  * with — not a larger, more flattering one. */
 static int sum_reclaimable(int32_t pid, uint64_t *bytes_out, uint32_t *regions_out)
 {
-    char path[64];
+    char path[MR_CAND_PROC_PATH_BYTES];
     char line[4096];
     uint64_t total = 0;
     uint32_t count = 0;
@@ -342,7 +351,7 @@ static int is_own_ancestor(int32_t pid)
         if (cursor == pid) {
             return 1;
         }
-        char path[64];
+        char path[MR_CAND_PROC_PATH_BYTES];
         char line[4096];
         if (snprintf(path, sizeof(path), "%s/%d/stat", cand_proc_root, (int)cursor) >= (int)sizeof(path)) {
             return 1; /* cannot prove it is safe: treat as ancestor */
@@ -407,7 +416,7 @@ int mr_cand_scan(struct mr_cand_list *out)
         return -1;
     }
 
-    const uint64_t own_uid = (uint64_t)geteuid();
+    const uint64_t own_uid = cand_own_uid();
     const int32_t own_pid = (int32_t)getpid();
     struct dirent *entry;
 
@@ -443,8 +452,14 @@ int mr_cand_scan(struct mr_cand_list *out)
             out->skipped_other_uid++;
             continue;
         }
-        if (pid_is_protected(pid, status.name)) {
-            out->skipped_protected++;
+        char exe[MR_CAND_PATH_BYTES];
+        int safety = pid_safety(pid, status.name, status.uid, exe, sizeof(exe));
+        if (safety != 0) {
+            if (safety > 0) {
+                out->skipped_protected++;
+            } else {
+                out->skipped_unreadable++;
+            }
             continue;
         }
         if (is_own_ancestor(pid)) {
@@ -483,7 +498,7 @@ int mr_cand_scan(struct mr_cand_list *out)
             out->skipped_unreadable++;
             continue;
         }
-        read_exe(pid, slot->exe, sizeof(slot->exe));
+        memcpy(slot->exe, exe, strlen(exe) + 1u);
         out->count++;
     }
     (void)closedir(dir);

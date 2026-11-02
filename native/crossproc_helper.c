@@ -43,6 +43,7 @@
 #include <linux/capability.h>
 
 #include "crossproc_helper.h"
+#include "crossproc_protection.h"
 
 /* Install path. Fixed; never derived from input. The Polkit action pins this
  * exact path with org.freedesktop.policykit.exec.path. */
@@ -234,37 +235,54 @@ static ssize_t read_proc_file(const char *path, char *buffer, size_t size)
 }
 
 /* Pull a "Key:\tvalue" line out of /proc/<pid>/status. */
-static int status_value_u64(const char *status, const char *key, uint64_t *out)
+static int status_uid_values(const char *status, uint64_t out[4])
 {
-    size_t key_len = strlen(key);
+    int found = 0;
     const char *line = status;
     while (line != NULL && *line != '\0') {
-        if (strncmp(line, key, key_len) == 0 && line[key_len] == ':') {
-            const char *value = line + key_len + 1;
+        if (strncmp(line, "Uid:", 4) == 0) {
+            if ((line[4] != ' ' && line[4] != '\t') || found) {
+                return -1;
+            }
+            found = 1;
+            const char *value = line + 4;
             while (*value == ' ' || *value == '\t') {
                 value++;
             }
-            uint64_t parsed = 0;
-            int digits = 0;
-            while (*value >= '0' && *value <= '9') {
-                uint64_t next = parsed * 10u + (uint64_t)(*value - '0');
-                if (next < parsed) {
+            for (size_t index = 0; index < 4u; index++) {
+                if (*value < '0' || *value > '9') {
                     return -1;
                 }
-                parsed = next;
-                value++;
-                digits++;
+                uint64_t parsed = 0;
+                do {
+                    unsigned int digit = (unsigned int)(*value - '0');
+                    if (parsed > (UINT32_MAX - digit) / 10u) {
+                        return -1;
+                    }
+                    parsed = parsed * 10u + digit;
+                    value++;
+                } while (*value >= '0' && *value <= '9');
+                out[index] = parsed;
+                if (index < 3u) {
+                    if (*value != ' ' && *value != '\t') {
+                        return -1;
+                    }
+                    while (*value == ' ' || *value == '\t') {
+                        value++;
+                    }
+                }
             }
-            if (digits == 0) {
+            while (*value == ' ' || *value == '\t') {
+                value++;
+            }
+            if (*value != '\n' && *value != '\0') {
                 return -1;
             }
-            *out = parsed;
-            return 0;
         }
         const char *next = strchr(line, '\n');
         line = next == NULL ? NULL : next + 1;
     }
-    return -1;
+    return found ? 0 : -1;
 }
 
 /* Copy the process name from /proc/<pid>/status (the "Name:" line). */
@@ -302,6 +320,7 @@ static int status_name(const char *status, char *out, size_t size)
 #define MR_STAT_STARTTIME_INDEX 19
 
 struct mr_proc_stat {
+    char state;
     int32_t ppid;
     uint64_t start_time;
 };
@@ -318,6 +337,10 @@ static int parse_stat(const char *stat_line, struct mr_proc_stat *out)
         return -1;
     }
     cursor++;
+    if (*cursor == '\0' || *cursor == ' ') {
+        return -1;
+    }
+    out->state = *cursor;
 
     /* field 3 is the state character; walk to the start_time index. */
     int index = 0;
@@ -428,100 +451,92 @@ static int is_ancestor_of(int32_t ancestor, int32_t pid)
     return -1;
 }
 
-/* Processes this helper refuses regardless of who asks. Two groups:
- *   - the authentication agents that would have to authorize this very action,
- *     because stalling them stalls the authorization itself;
- *   - the session and compositor processes, because reclaiming their pages
- *     degrades the desktop the user is working in.
- * This list is deliberately identical to mr_cand_name_is_protected() in
- * crossproc_candidates.c. A row the enumeration offers and the helper then
- * refuses would be a confusing product, so the two must not drift. */
-static const char *const protected_names[] = {
-    "polkitd",
-    "polkit-gnome-authentication-agent-1",
-    "polkit-kde-authentication-agent-1",
-    "hyprpolkitagent",
-    "systemd",
-    "dbus-daemon",
-    "dbus-broker",
-    "dbus-broker-launch",
-    "Hyprland",
-    "hyprland",
-    "Xorg",
-    "Xwayland",
-    "gnome-shell",
-    "kwin_wayland",
-    "kwin_x11",
-    "plasmashell",
-    "mutter",
-    "sway",
-    "wayfire",
-    NULL
-};
-
-/* The kernel truncates /proc/<pid>/stat's comm field to 15 characters, so a
- * protected program whose own name is longer arrives shortened:
- * "dbus-broker-launch" is reported as "dbus-broker-lau". Exact comparison alone
- * therefore misses it — this was found by running the enumeration against the
- * live machine, not by reasoning about it.
- *
- * The rule below accepts an exact match, or the name being exactly the first 15
- * bytes of a protected entry. It is applied to both the comm field and the
- * untruncated exe basename, so either source identifies the program. */
-#define MR_COMM_TRUNCATED 15u
-
-static int name_is_protected(const char *name)
+static int read_target_exe(int32_t pid, char *target, size_t size)
 {
-    if (name == NULL || name[0] == '\0') {
-        return 0;
+    char path[MR_XPROC_PATH_BYTES];
+    if (target == NULL || size < 2u || proc_path(path, sizeof(path), pid, "exe") != 0) {
+        return -1;
     }
-    size_t name_len = strlen(name);
-    for (size_t index = 0; protected_names[index] != NULL; index++) {
-        const char *protected = protected_names[index];
-        if (strcmp(name, protected) == 0) {
-            return 1;
-        }
-        if (name_len == MR_COMM_TRUNCATED && strlen(protected) > MR_COMM_TRUNCATED &&
-            strncmp(name, protected, MR_COMM_TRUNCATED) == 0) {
-            return 1;
-        }
+    ssize_t got = readlink(path, target, size - 1u);
+    if (got <= 0 || (size_t)got >= size - 1u) {
+        target[0] = '\0';
+        return -1;
+    }
+    target[got] = '\0';
+    return target[0] == '/' ? 0 : -1;
+}
+
+static int read_target_cgroup(int32_t pid, char *buffer, size_t size)
+{
+    char path[MR_XPROC_PATH_BYTES];
+    if (proc_path(path, sizeof(path), pid, "cgroup") != 0 ||
+        read_proc_file(path, buffer, size) < 0) {
+        return -1;
     }
     return 0;
 }
 
-/* The kernel truncates the comm field to 15 characters, so a name comparison
- * alone lets "dbus-broker-launcher" through as "dbus-broker-lau". This was a
- * real bypass, found by running the enumeration against the live machine.
- *
- * /proc/<pid>/exe is a symlink to the real binary and is not truncated, so its
- * last path component is the authoritative program name. It is checked after
- * the comm name. An unreadable exe is not treated as protection: kernel threads
- * have none and they are already refused for lacking an address space. */
-static int exe_name_is_protected(int32_t pid)
+/* Fail closed unless the process is a same-UID user application whose kernel
+ * identity can be re-derived from status, exe, and cgroup. `enforce_requester`
+ * is false only in fixture tests; even there all four target UIDs must agree. */
+static const char *inspect_target(int32_t pid, uint64_t requester_uid,
+                                  int enforce_requester, uint64_t *target_uid_out)
 {
-    char path[MR_XPROC_PATH_BYTES];
-    char target[MR_XPROC_PATH_BYTES];
-    if (proc_path(path, sizeof(path), pid, "exe") != 0) {
-        return 0;
-    }
-    ssize_t got = readlink(path, target, sizeof(target) - 1u);
-    if (got <= 0) {
-        return 0;
-    }
-    target[got] = '\0';
-
-    /* Strip a " (deleted)" suffix the kernel appends for unlinked binaries. */
-    char *suffix = strstr(target, " (deleted)");
-    if (suffix != NULL && suffix[10] == '\0') {
-        *suffix = '\0';
+    char status[MR_XPROC_LINE_BYTES];
+    if (read_status(pid, status, sizeof(status)) != 0) {
+        return "target_not_readable";
     }
 
-    const char *base = strrchr(target, '/');
-    base = base == NULL ? target : base + 1;
-    if (base[0] == '\0') {
-        return 0;
+    uint64_t uids[4] = {0, 0, 0, 0};
+    if (status_uid_values(status, uids) != 0) {
+        return "target_uid_unreadable";
     }
-    return name_is_protected(base);
+    if (uids[0] != uids[1] || uids[0] != uids[2] || uids[0] != uids[3]) {
+        return "target_uid_credentials_mismatch";
+    }
+    if (target_uid_out != NULL) {
+        *target_uid_out = uids[0];
+    }
+    if (uids[0] == 0) {
+        return "target_is_root_owned";
+    }
+    if (enforce_requester && uids[0] != requester_uid) {
+        return "target_other_uid";
+    }
+
+    char name[MR_XPROC_COMM_BYTES];
+    if (status_name(status, name, sizeof(name)) != 0) {
+        return "target_name_unreadable";
+    }
+    if (mr_xproc_name_is_protected(name)) {
+        return "target_is_protected_process";
+    }
+
+    char exe[MR_XPROC_PATH_BYTES];
+    if (read_target_exe(pid, exe, sizeof(exe)) != 0) {
+        return "target_exe_unverifiable";
+    }
+    int exe_protected = mr_xproc_exe_is_protected(exe);
+    if (exe_protected < 0) {
+        return "target_exe_unverifiable";
+    }
+    if (exe_protected != 0) {
+        return "target_is_protected_process";
+    }
+
+    char cgroup[MR_XPROC_LINE_BYTES];
+    if (read_target_cgroup(pid, cgroup, sizeof(cgroup)) != 0) {
+        return "target_cgroup_unverifiable";
+    }
+    uint64_t cgroup_uid = enforce_requester ? requester_uid : uids[0];
+    int user_app = mr_xproc_cgroup_text_is_user_app(cgroup, (uint32_t)cgroup_uid);
+    if (user_app < 0) {
+        return "target_cgroup_unverifiable";
+    }
+    if (user_app == 0) {
+        return "target_in_protected_cgroup";
+    }
+    return NULL;
 }
 
 /* Effective capability set, read from the kernel. Not from argv, not from the
@@ -544,6 +559,56 @@ static int has_effective_cap(int capability)
     unsigned int bit = (unsigned int)capability % 32u;
     return (data[word].effective >> bit) & 1u;
 }
+
+/* pkexec executes a root target after setreuid(0, 0), so the correct helper
+ * credentials are ruid=0/euid=0. PKEXEC_UID is only a caller declaration; the
+ * target's kernel-reported UIDs are independently checked below. */
+static const char *validate_helper_credentials(uint64_t real_uid,
+                                               uint64_t effective_uid,
+                                               int cap_sys_nice,
+                                               const char *pkexec_uid,
+                                               uint64_t *requester_uid)
+{
+    if (effective_uid != 0) {
+        return "not_root";
+    }
+    if (real_uid != 0) {
+        return "invalid_pkexec_root_credentials";
+    }
+    if (cap_sys_nice < 0) {
+        return "capget_failed";
+    }
+    if (cap_sys_nice != 1) {
+        return "missing_cap_sys_nice";
+    }
+    if (pkexec_uid == NULL || pkexec_uid[0] == '\0') {
+        return "not_launched_via_pkexec";
+    }
+    uint64_t parsed = 0;
+    if (parse_u64(pkexec_uid, UINT32_MAX, &parsed) != 0) {
+        return "malformed_requester_uid";
+    }
+    if (parsed == 0) {
+        return "invalid_requester_uid";
+    }
+    if (requester_uid != NULL) {
+        *requester_uid = parsed;
+    }
+    return NULL;
+}
+
+#ifdef MEMREDUCT_TESTING
+/* Pure credential-model probe. It is compiled out of the installed helper. */
+const char *mr_xproc_test_validate_helper_credentials(uint64_t real_uid,
+                                                       uint64_t effective_uid,
+                                                       int cap_sys_nice,
+                                                       const char *pkexec_uid,
+                                                       uint64_t *requester_uid)
+{
+    return validate_helper_credentials(real_uid, effective_uid, cap_sys_nice,
+                                       pkexec_uid, requester_uid);
+}
+#endif
 
 /* ---------------------------------------------------------------------------
  * Region selection.
@@ -866,69 +931,24 @@ int main(int argc, char **argv)
     outcome.start_time_verified = 0;
     outcome.uid = -1;
 
-    /* ---- 1. This really is the privileged helper. ---- */
-    if (!test_skip_privilege()) {
-        if (geteuid() != 0) {
-            refuse(&outcome, "not_root");
-            print_outcome(&outcome);
-            return status_exit_code(outcome.status);
-        }
-        if (getuid() == 0) {
-            /* pkexec sets the real UID to the caller and the effective UID to
-             * 0. Both being 0 means this was launched by root directly, which
-             * is not the contract: the requester identity would be unknown and
-             * unverifiable. Refuse instead of guessing. */
-            refuse(&outcome, "no_requester_identity");
-            print_outcome(&outcome);
-            return status_exit_code(outcome.status);
-        }
-    }
-
-    /* ---- 2. The kernel says we hold the capability this needs. ---- */
-    if (!test_skip_capability()) {
-        int capability = has_effective_cap(CAP_SYS_NICE);
-        if (capability < 0) {
-            refuse(&outcome, "capget_failed");
-            print_outcome(&outcome);
-            return status_exit_code(outcome.status);
-        }
-        if (capability != 1) {
-            /* Without CAP_SYS_NICE the syscall can only return EPERM for a
-             * target that is not this process. Refuse here, before touching the
-             * target, and name the actual missing thing. */
-            refuse(&outcome, "missing_cap_sys_nice");
-            print_outcome(&outcome);
-            return status_exit_code(outcome.status);
-        }
-    }
-
-    /* ---- 3. The requester identity, cross-checked two ways. ---- */
+    /* ---- 1. Validate the root target credentials used by pkexec. ---- */
     uint64_t requester_uid = 0;
-    if (!test_skip_requester()) {
-        const char *pkexec_uid = getenv("PKEXEC_UID");
-        if (pkexec_uid == NULL || pkexec_uid[0] == '\0') {
-            refuse(&outcome, "not_launched_via_pkexec");
-            print_outcome(&outcome);
-            return status_exit_code(outcome.status);
-        }
-        if (parse_u64(pkexec_uid, UINT32_MAX, &requester_uid) != 0) {
-            refuse(&outcome, "malformed_requester_uid");
-            print_outcome(&outcome);
-            return status_exit_code(outcome.status);
-        }
-        /* PKEXEC_UID is an environment variable: a caller that can set the
-         * environment could lie. It is only a claim. The disproof is the real
-         * UID the kernel actually holds for this process, which pkexec sets to
-         * the invoker. Both must agree. */
-        uint64_t real_uid = (uint64_t)getuid();
-        if (real_uid != requester_uid) {
-            refuse(&outcome, "requester_uid_mismatch");
-            print_outcome(&outcome);
-            return status_exit_code(outcome.status);
-        }
+    uint64_t real_uid = test_skip_privilege() ? 0u : (uint64_t)getuid();
+    uint64_t effective_uid = test_skip_privilege() ? 0u : (uint64_t)geteuid();
+    int capability = test_skip_capability() ? 1 : -2;
+    if (!test_skip_capability() && real_uid == 0 && effective_uid == 0) {
+        capability = has_effective_cap(CAP_SYS_NICE);
+    }
+    const char *pkexec_uid = test_skip_requester() ? "1" : getenv("PKEXEC_UID");
+    const char *credential_error = validate_helper_credentials(
+        real_uid, effective_uid, capability, pkexec_uid, &requester_uid);
+    if (credential_error != NULL) {
+        refuse(&outcome, credential_error);
+        print_outcome(&outcome);
+        return status_exit_code(outcome.status);
     }
 
-    /* ---- 4. Target identity, re-derived from the kernel. ---- */
+    /* ---- 2. Target identity, re-derived from the kernel. ---- */
     if (outcome.pid == 1) {
         refuse(&outcome, "target_is_pid1");
         print_outcome(&outcome);
@@ -952,49 +972,20 @@ int main(int argc, char **argv)
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
-
-    char status_buffer[MR_XPROC_LINE_BYTES];
-    if (read_status(outcome.pid, status_buffer, sizeof(status_buffer)) != 0) {
-        refuse(&outcome, "target_not_readable");
+    if (stat_before.state == 'Z' || stat_before.state == 'X' || stat_before.state == 'x') {
+        refuse(&outcome, "target_not_running");
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
-
-    /* The UID below is the kernel's answer about the target, not the caller's
-     * claim. Record it before it can influence any refusal. */
     uint64_t target_uid = 0;
-    if (status_value_u64(status_buffer, "Uid", &target_uid) != 0) {
-        refuse(&outcome, "target_uid_unreadable");
+    const char *target_error = inspect_target(outcome.pid, requester_uid,
+                                              !test_skip_requester(), &target_uid);
+    if (target_error != NULL) {
+        refuse(&outcome, target_error);
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
     outcome.uid = (int64_t)target_uid;
-
-    char target_name[MR_XPROC_COMM_BYTES];
-    if (status_name(status_buffer, target_name, sizeof(target_name)) != 0) {
-        refuse(&outcome, "target_name_unreadable");
-        print_outcome(&outcome);
-        return status_exit_code(outcome.status);
-    }
-    if (name_is_protected(target_name) || exe_name_is_protected(outcome.pid)) {
-        refuse(&outcome, "target_is_protected_process");
-        print_outcome(&outcome);
-        return status_exit_code(outcome.status);
-    }
-
-    if (!test_skip_requester()) {
-        if (target_uid != requester_uid) {
-            /* Never touch another account's memory, whatever the caller says. */
-            refuse(&outcome, "target_other_uid");
-            print_outcome(&outcome);
-            return status_exit_code(outcome.status);
-        }
-    }
-    if (target_uid == 0) {
-        refuse(&outcome, "target_is_root_owned");
-        print_outcome(&outcome);
-        return status_exit_code(outcome.status);
-    }
     /* From here on the start_time in this report is the value the kernel
      * confirmed, not merely the value the caller supplied. */
     outcome.start_time_verified = 1;
@@ -1027,7 +1018,7 @@ int main(int argc, char **argv)
         return status_exit_code(outcome.status);
     }
 
-    /* ---- 5. Pin the identity. A pidfd cannot be re-pointed at a reused PID. ---- */
+    /* ---- 3. Pin the identity. A pidfd cannot be re-pointed at a reused PID. ---- */
 #ifdef MEMREDUCT_TESTING
     int pidfd = test_pidfd_open(outcome.pid);
     if (pidfd < 0) {
@@ -1046,14 +1037,25 @@ int main(int argc, char **argv)
     /* ---- 6. Re-read the identity through the pinned target. ---- */
     struct mr_proc_stat stat_pinned;
     if (read_stat(outcome.pid, &stat_pinned) != 0 ||
-        stat_pinned.start_time != outcome.start_time) {
+        stat_pinned.start_time != outcome.start_time ||
+        stat_pinned.state == 'Z' || stat_pinned.state == 'X' || stat_pinned.state == 'x') {
         (void)close(pidfd);
         refuse(&outcome, "target_identity_changed");
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
 
-    /* ---- 7. Choose ranges here, from the kernel's own maps. ---- */
+    uint64_t pinned_uid = 0;
+    target_error = inspect_target(outcome.pid, requester_uid,
+                                  !test_skip_requester(), &pinned_uid);
+    if (target_error != NULL || pinned_uid != (uint64_t)outcome.uid) {
+        (void)close(pidfd);
+        refuse(&outcome, target_error == NULL ? "target_identity_changed" : target_error);
+        print_outcome(&outcome);
+        return status_exit_code(outcome.status);
+    }
+
+    /* ---- 4. Choose ranges here, from the kernel's own maps. ---- */
     struct mr_region_plan plan;
     int planned = plan_regions(outcome.pid, raw_max_bytes, &plan);
     outcome.skipped_shared = plan.skipped_shared;
@@ -1081,7 +1083,7 @@ int main(int argc, char **argv)
     outcome.regions = (uint32_t)plan.count;
     outcome.requested_bytes = plan.bytes;
 
-    /* ---- 8. One syscall. Not a loop, not a retry, not a batch sequence. ---- */
+    /* ---- 5. One syscall. Not a loop, not a retry, not a batch sequence. ---- */
     errno = 0;
     long advised = call_process_madvise(pidfd, plan.vectors, plan.count);
     int call_errno = errno;

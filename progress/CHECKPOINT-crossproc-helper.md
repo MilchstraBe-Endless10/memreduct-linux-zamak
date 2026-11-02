@@ -1,6 +1,16 @@
 # CHECKPOINT — Issue #12 M1 跨进程 helper 实施（2026-11-02）
 
-## 状态：仅完成取证与工作树建立，生产代码尚未写入
+## 当前状态：M1.1 安全复审修正（2026-11-02）
+
+- 工作树：Issue #12 的隔离工作树，分支 `feat/issue-12-crossproc-helper`，基线 `1c4565f6e5f4808fe4f2cf376b0508ac93dcc416`。本轮沿用已有未提交实现，不改写提交历史或其他 worktree。
+- 已纠正 pkexec 凭据模型：root-target helper 按 `ruid=0/euid=0` 校验；有效 `CAP_SYS_NICE` 仍为必要条件。`PKEXEC_UID` 是请求者声明，不单独证明目标安全；helper 另读目标四项 UID 并要求一致、非 root、与声明 UID 相符。
+- 目标保护同时检查 `/proc/<pid>/exe`、UID 元组、PID/start_time/pidfd、祖先关系、共享保护名单和支持的用户应用 cgroup。exe/cgroup 缺失、截断、未知或不安全时失败关闭；候选扫描与 helper 共用规则。
+- 修复候选测试夹具重复 PID 时遗留 `exe` 符号链接的问题；新增未知 cgroup 拒绝覆盖。安装脚本验证安装后的 policy 与核验过的来源逐字节一致、专属 action ID 和固定 `exec.path` 存在，并确认 `pkaction` 已加载该 action。
+- 当前验证：凭据/helper 定向测试 73 项、候选扫描 6 项；治理 34 项、Python 全量 186 项（1 项因超长路径被文件系统拒绝而按条件跳过）、Zamak 0.2.0 `check`/`test`（76/76）/`build`、Arch 原生构建、全脚本 Shell 语法及 `git diff --check` 均通过。修正了候选夹具重复 PID 的符号链接，并修正了安装文件清单测试把目录当文件的误报。
+- 本机 `pkaction` 尚未识别专属 cross-process action，符合当前未安装状态；安装脚本自身未运行，helper 与 policy 未写入系统目录。
+- **未安装 root helper 或 policy；未运行真实 `pkexec`、`process_madvise` / `MADV_PAGEOUT`，未推送或合并。** 本 checkpoint 下方保留最初取证和实施任务作为历史记录。
+
+## 历史状态：实施前的取证与工作树建立（2026-11-02）
 
 ## 已完成
 

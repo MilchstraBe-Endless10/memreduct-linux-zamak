@@ -13,6 +13,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <spawn.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -30,6 +31,9 @@
 #define MR_XPROC_PKEXEC "/usr/bin/pkexec"
 #define MR_XPROC_POLICY_PATH \
     "/usr/share/polkit-1/actions/io.github.milchstrasse_endless10.memreduct.zamak.crossproc.policy"
+#define MR_XPROC_POLICY_MAX_BYTES 65536u
+#define MR_XPROC_EXEC_PATH_ANNOTATION \
+    "org.freedesktop.policykit.exec.path"
 
 /* Room for the whole result block. The helper prints at most ~20 short lines;
  * anything longer is truncated and therefore treated as unparseable rather than
@@ -67,22 +71,194 @@ static int64_t local_refusal;
  * so a binary either can reach it or cannot, and nm can tell which.
  * ------------------------------------------------------------------------- */
 
-static int file_is_trusted_root(const char *path)
+static int trusted_owner_group_mode(const struct stat *info, uid_t owner, gid_t group,
+                                    mode_t expected_mode, int exact_mode, int executable)
 {
-    struct stat info;
-    if (stat(path, &info) != 0) {
+    if (!S_ISREG(info->st_mode) || info->st_uid != owner || info->st_gid != group) {
         return 0;
     }
-    if (!S_ISREG(info.st_mode)) {
+    if ((info->st_mode & 0022) != 0) {
         return 0;
     }
-    if (info.st_uid != 0) {
+    if (exact_mode && (info->st_mode & 07777) != expected_mode) {
         return 0;
     }
-    if ((info.st_mode & 0022) != 0) {
+    if (executable && (info->st_mode & S_IXUSR) == 0) {
         return 0;
     }
     return 1;
+}
+
+static int trusted_directory_fd(int fd, uid_t owner, gid_t group,
+                                int allow_user_owned_test_directories)
+{
+    struct stat info;
+    if (fstat(fd, &info) != 0 || !S_ISDIR(info.st_mode)) {
+        return 0;
+    }
+    if ((info.st_mode & 0022) == 0 && info.st_uid == 0 && info.st_gid == 0) {
+        return 1;
+    }
+    if (allow_user_owned_test_directories && (info.st_mode & 0022) == 0 &&
+        info.st_uid == owner && info.st_gid == group) {
+        return 1;
+    }
+    /* /tmp is an allowed test ancestor only because the sticky bit prevents
+     * users from removing each other's entries; production paths never use it. */
+    return allow_user_owned_test_directories && info.st_uid == 0 && info.st_gid == 0 &&
+           (info.st_mode & S_ISVTX) != 0 && (info.st_mode & 0002) != 0;
+}
+
+/* Open each path component with O_NOFOLLOW and verify every parent directory.
+ * This avoids lstat/stat races and refuses symlinked helper or policy paths. */
+static int open_trusted_file(const char *path, uid_t owner, gid_t group,
+                             mode_t expected_mode, int exact_mode,
+                             int require_executable, int allow_user_owned_test_directories)
+{
+    if (path == NULL || path[0] != '/') {
+        return -1;
+    }
+    size_t length = strnlen(path, (size_t)PATH_MAX);
+    if (length == 0u || length >= (size_t)PATH_MAX) {
+        return -1;
+    }
+    char copy[PATH_MAX];
+    memcpy(copy, path, length + 1u);
+
+    int directory = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (directory < 0 || !trusted_directory_fd(directory, owner, group,
+                                                allow_user_owned_test_directories)) {
+        if (directory >= 0) {
+            (void)close(directory);
+        }
+        return -1;
+    }
+
+    char *component = copy + 1;
+    for (;;) {
+        if (*component == '\0' || strcmp(component, ".") == 0 ||
+            strcmp(component, "..") == 0) {
+            (void)close(directory);
+            return -1;
+        }
+        char *slash = strchr(component, '/');
+        int is_leaf = slash == NULL;
+        if (slash != NULL) {
+            *slash = '\0';
+            if (*component == '\0') {
+                (void)close(directory);
+                return -1;
+            }
+        }
+        if (!is_leaf) {
+            int next = openat(directory, component,
+                              O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+            if (next < 0 || !trusted_directory_fd(next, owner, group,
+                                                   allow_user_owned_test_directories)) {
+                if (next >= 0) {
+                    (void)close(next);
+                }
+                (void)close(directory);
+                return -1;
+            }
+            (void)close(directory);
+            directory = next;
+            component = slash + 1;
+            continue;
+        }
+
+        int file = openat(directory, component,
+                          O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+        (void)close(directory);
+        if (file < 0) {
+            return -1;
+        }
+        struct stat info;
+        if (fstat(file, &info) != 0 ||
+            !trusted_owner_group_mode(&info, owner, group, expected_mode,
+                                      exact_mode, require_executable)) {
+            (void)close(file);
+            return -1;
+        }
+        return file;
+    }
+}
+
+static size_t count_text(const char *text, const char *needle)
+{
+    size_t count = 0;
+    size_t length = strlen(needle);
+    const char *cursor = text;
+    while ((cursor = strstr(cursor, needle)) != NULL) {
+        count++;
+        cursor += length;
+    }
+    return count;
+}
+
+static size_t count_text_range(const char *text, size_t text_length, const char *needle)
+{
+    size_t count = 0;
+    size_t needle_length = strlen(needle);
+    if (needle_length == 0u || needle_length > text_length) {
+        return 0;
+    }
+    for (size_t index = 0; index <= text_length - needle_length; index++) {
+        if (memcmp(text + index, needle, needle_length) == 0) {
+            count++;
+            index += needle_length - 1u;
+        }
+    }
+    return count;
+}
+
+static int policy_fd_matches_action(int fd)
+{
+    char contents[MR_XPROC_POLICY_MAX_BYTES + 1u];
+    size_t used = 0;
+    for (;;) {
+        if (used == MR_XPROC_POLICY_MAX_BYTES) {
+            return 0;
+        }
+        ssize_t got = read(fd, contents + used, MR_XPROC_POLICY_MAX_BYTES - used);
+        if (got < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return 0;
+        }
+        if (got == 0) {
+            break;
+        }
+        used += (size_t)got;
+    }
+    if (memchr(contents, '\0', used) != NULL) {
+        return 0;
+    }
+    contents[used] = '\0';
+
+    char action[256];
+    char exec_annotation[512];
+    int action_length = snprintf(action, sizeof(action), "<action id=\"%s\">",
+                                 MR_XPROC_ACTION_ID);
+    int annotation_length = snprintf(exec_annotation, sizeof(exec_annotation),
+                                     "<annotate key=\"%s\">%s</annotate>",
+                                     MR_XPROC_EXEC_PATH_ANNOTATION,
+                                     MR_XPROC_HELPER_PATH);
+    if (action_length <= 0 || (size_t)action_length >= sizeof(action) ||
+        annotation_length <= 0 || (size_t)annotation_length >= sizeof(exec_annotation) ||
+        count_text(contents, action) != 1u) {
+        return 0;
+    }
+    const char *action_start = strstr(contents, action);
+    const char *action_end = action_start == NULL ? NULL : strstr(action_start, "</action>");
+    if (action_end == NULL) {
+        return 0;
+    }
+    size_t action_length_bytes = (size_t)(action_end - action_start);
+    return count_text_range(action_start, action_length_bytes,
+                            MR_XPROC_EXEC_PATH_ANNOTATION) == 1u &&
+           count_text_range(action_start, action_length_bytes, exec_annotation) == 1u;
 }
 
 static const char *helper_path(void)
@@ -94,6 +270,17 @@ static const char *helper_path(void)
     }
 #endif
     return MR_XPROC_HELPER_PATH;
+}
+
+static const char *policy_path(void)
+{
+#ifdef MEMREDUCT_TESTING
+    const char *override = getenv("MEMREDUCT_TEST_XPROC_POLICY");
+    if (override != NULL && override[0] == '/') {
+        return override;
+    }
+#endif
+    return MR_XPROC_POLICY_PATH;
 }
 
 static const char *pkexec_path(void)
@@ -109,17 +296,42 @@ static const char *pkexec_path(void)
 
 int64_t mr_xproc_preflight(void)
 {
-    if (!file_is_trusted_root(helper_path())) {
+    int helper = open_trusted_file(helper_path(), 0, 0, 0755, 1, 0, 0);
+    if (helper < 0) {
         return MR_XPROC_PREFLIGHT_NEED_HELPER;
     }
-    if (!file_is_trusted_root(MR_XPROC_POLICY_PATH)) {
+    (void)close(helper);
+
+    int policy = open_trusted_file(policy_path(), 0, 0, 0644, 1, 0, 0);
+    if (policy < 0) {
         return MR_XPROC_PREFLIGHT_NEED_POLICY;
     }
-    if (access(pkexec_path(), X_OK) != 0) {
+    int policy_matches = policy_fd_matches_action(policy);
+    (void)close(policy);
+    if (!policy_matches) {
+        return MR_XPROC_PREFLIGHT_NEED_POLICY;
+    }
+
+    int pkexec = open_trusted_file(pkexec_path(), 0, 0, 0, 0, 1, 0);
+    if (pkexec < 0) {
         return MR_XPROC_PREFLIGHT_NEED_PKEXEC;
     }
+    (void)close(pkexec);
     return MR_XPROC_PREFLIGHT_READY;
 }
+
+#ifdef MEMREDUCT_TESTING
+int mr_xproc_test_policy_file_matches(const char *path, uid_t owner, gid_t group)
+{
+    int fd = open_trusted_file(path, owner, group, 0644, 1, 0, 1);
+    if (fd < 0) {
+        return 0;
+    }
+    int matches = policy_fd_matches_action(fd);
+    (void)close(fd);
+    return matches;
+}
+#endif
 
 /* ---------------------------------------------------------------------------
  * Parsing the helper's result block.
