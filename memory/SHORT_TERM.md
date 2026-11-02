@@ -1,5 +1,19 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-02 — Issue #12 M1.1：独立跨进程 helper 与 Polkit action（本地完成，未安装）
+
+- **分支与提交：** 新工作树 `/home/arlune_innersea/.codex/worktrees/p3c-crossproc-helper`，分支 `feat/issue-12-crossproc-helper`，基点 `p3c/integration` @ `57dc1fa`。本地提交 `77f21f5`（功能）、`f7b4172`（两处实跑发现的缺陷修复）。**未 push、未 merge、未安装、未跑任何真实跨进程 syscall。**
+- **新建的生产代码：** `native/crossproc_helper.c/.h`（唯一特权动作：一个动词 + 三个十进制数 + 一次 `process_madvise`，所有身份判断由内核重新推导）、`native/crossproc_candidates.c/.h`（只读枚举用户自己的进程）、`native/async_crossproc.c/.h`（GUI 侧唯一 pkexec 调用者，字面量 argv）、`production_crossproc_gate_{default,enabled}.c`（与 page-cache 门控**独立**）、`packaging/polkit-1/actions/...crossproc.policy`（action id 与 exec.path 均与 page-cache 完全分离，`auth_admin` 每次，无 `*_keep`）。
+- **实跑发现的两个真实缺陷（均已修复并回归）：**
+  1. **comm 截断绕过保护名单。** 内核把 `/proc/<pid>/stat` 的 comm 截到 15 字节，本机 pid 1188 的 `/usr/bin/dbus-broker-launch` 报成 `dbus-broker-lau`，精确比较直接放行了一个桌面服务。现在：匹配对 15 字节截断敏感 + 显式列出长名 + 用未截断的 `/proc/<pid>/exe` basename 作第二来源；helper 与枚举用同一规则，有测试断言两份名单与规则不得漂移。
+  2. **拒绝可能报成"没有拒绝"。** `mr_xproc_start()` 入口清空 `local_refusal`，但某条拒绝路径在赋值前就返回，调用方读到 `0`（即 `MR_XPROC_LOCAL_NONE`）。现在每条路径都设唯一原因，并新增 `mr_xproc_local_refusal_name()` 稳定 token。
+- **设计修正：** `mr_xproc_test_classify()` 原先在所有构建里导出，GUI 可调用它来决定"特权侧说了什么"。现在只在 `MEMREDUCT_TESTING` 下编译，并有符号扫描测试断言生产 ELF 里不存在任何 `mr_xproc_test_*` / `mr_cand_test_*`。
+- **GUI：** `run_self_reclaim` 通过窗口用的同一条标量桥做只读枚举，并发出逐行 CI 标记（带 helper 将要核验的 start_time）。仍然只读：无 pidfd、无 advice。
+- **本机实测回归：** Python 167 项（1 项因 >PATH_MAX 被文件系统拒绝而 SKIP）、Zamak 76/76、`zam check .` CHECK OK、GUI 构建 PASS、全部 shell 语法 PASS。生产二进制内无 `MEMREDUCT_TEST_*` 开关、无测试符号。默认门控实测 `mr_xproc_capability_enabled()=0`，enabled 构建为 `1`。
+- **真实枚举（本机）：** 扫描 512 条 procfs 条目，32 个候选，跳过其他 UID 339、受保护 7、无空地址空间 3；候选含 pipewire / wireplumber / gnome-keyring-daemon / sh 等。
+- **仍未完成（需用户单独批准）：** ① 把 root 属主的 crossproc helper 与 Polkit action 装到本机；② 一次交互认证的真实 `MADV_PAGEOUT`。上次那份批准已用掉，不复用。M1.2 / M1.3 均未宣称完成。
+- **产物：** `progress/CHECKPOINT-crossproc-helper.md` 保留原始取证；`docs/ADR/0007-*.md` 已追加 M1.1 修订段。
+
 ## 2026-10-31 — P3B 第二轮：授权语义修复
 
 - **提交：**`48522c2`（授权归因修复），前一轮 `676d73f`。分支 `feat/issue-10-p3b-clean-closure`，未 push。

@@ -127,3 +127,49 @@ Residual risk: `MADV_PAGEOUT` on another process with `CAP_SYS_NICE` can force w
 - Product owner: is advising other processes at all acceptable, given swap/IO/latency costs and no guaranteed release?
 - Security review: no capability is granted in this round; if one is ever proposed, it needs its own ADR amendment and threat-model update.
 - Real-device test plan with explicit written authorization, on a throwaway same-UID child process only.
+
+---
+
+## Amendment: M1.1 — the separate privileged helper (2026-11-02)
+
+- **Status:** M1.1 code complete and locally verified. **Not installed. No real cross-process syscall issued.**
+- **Scope:** implements the option this ADR previously left as "not built by default", without granting the GUI any privilege.
+
+### What was built
+
+| Unit | Role | Privilege |
+|---|---|---|
+| `native/crossproc_helper.c` | The only privileged action. One verb, three decimal numbers, one syscall. | root + `CAP_SYS_NICE`, via its own Polkit action |
+| `native/crossproc_candidates.c` | Enumerates the user's own processes. Read-only. | none |
+| `native/async_crossproc.c` | Spawns the helper through `pkexec` with a literal argv. | none |
+| `production_crossproc_gate_{default,enabled}.c` | Build-time capability gate, separate from the page-cache one. | none |
+| `...memreduct.zamak.crossproc.policy` | Distinct action id and `exec.path` from the page-cache action. | authorization |
+
+### The helper re-derives every decision
+
+The PID the GUI sends is an untrusted candidate. Before anything is touched the helper checks, all from the kernel: effective UID is 0; the real UID differs from the effective UID (so it really came through `pkexec`, not from a root shell); `PKEXEC_UID` matches the real UID the kernel holds; `CAP_SYS_NICE` is effective; the target's `start_time` still matches; the target is not PID 1, not the helper, and not an ancestor; the target's real UID matches the requester's and is not 0; the target has an address space. Only then does it read the target's maps itself, choose ranges itself, pin a pidfd, re-read the identity through it, and issue **one** `process_madvise(MADV_PAGEOUT)` call. No retry, no signal, no shell, no path argument, no address range from outside.
+
+### Two defects this round found by running it
+
+Both were found by exercising the code against this machine, and both are now regression-tested:
+
+1. **Truncated `comm` bypassed the protected list.** The kernel caps `comm` at 15 bytes, so `/usr/bin/dbus-broker-launch` reports as `dbus-broker-lau` and an exact comparison let a desktop service through as a reclaim target. Matching is now truncation-aware, the long name is listed explicitly, and `/proc/<pid>/exe`'s basename is checked as a second, untruncated source. The helper and the enumeration apply the identical rule, and a test fails if the two lists drift.
+2. **A refusal could report "no refusal".** `mr_xproc_start()` cleared the local reason on entry, and a refusal path could return before setting it, so the caller saw `0` — the value that means "none". Every path now sets a distinct reason with a stable token.
+
+A third issue is a design correction rather than a bug: `mr_xproc_test_classify()` had been exported from every build. It is now compiled only under `MEMREDUCT_TESTING`, and a symbol scan asserts its absence, because a GUI-reachable classify entry point would let a caller decide what the privileged side "said".
+
+### Honesty invariants kept
+
+- The result block prints `bytes_advised_is_not_bytes_freed=true`, and no status token contains the word "freed".
+- `advised == 0` cannot be reported as accepted; more than one call, a truncated block, a duplicate key, an unknown token, or an exit code disagreeing with the report all resolve to `OUTCOME_UNKNOWN`.
+- A build without the gate enabled refuses locally with `not_enabled` rather than spawning anything.
+
+### Verified on this machine
+
+167 Python tests (1 skipped: a >PATH_MAX path the filesystem rejects), 76 Zamak tests, `zam check`, GUI build, all shell syntax. Live enumeration against this host: 512 procfs entries scanned, 32 candidates, 7 protected skipped. The production binary contains no `MEMREDUCT_TEST_*` switch and no `mr_xproc_test_*` symbol.
+
+### What is still required before any real reclaim
+
+1. The product owner authorizes installing the root-owned helper and its Polkit action.
+2. The product owner authorizes one interactive, authenticated `MADV_PAGEOUT`.
+3. Only then can M1.2 (controlled real call) and M1.3 (everyday applications) be claimed. Neither is claimed now.
