@@ -1,6 +1,15 @@
 # 短期记忆 / Latest Handoff
 
-## 2026-11-02 — Issue #12 M1.1：独立跨进程 helper 与 Polkit action（本地完成，未安装）
+## 2026-11-02 — Issue #12 M1.1 安全审查修正（本地提交，未安装）
+
+- **代码提交：**`8f236dcd77325c171ff2e76771e1f948710d4ce6`，Tree `ba31f0fc6910284fb3ffdb897bc7fc75f7353b36`，父 `1c4565f6e5f4808fe4f2cf376b0508ac93dcc416`。只在隔离分支 `feat/issue-12-crossproc-helper` 本地提交；未 push、未 merge。
+- **凭据修正：**pkexec root-target helper 按 `ruid=0/euid=0` 接受，不再要求两者不同；继续要求有效 `CAP_SYS_NICE`，并严格解析非零 `PKEXEC_UID`。该值仅表示请求者声明；目标 `/proc/<pid>/status` 的 real/effective/saved/fs UID 必须全部一致、非 root 且等于该声明。
+- **目标保护：**候选扫描与 root helper 共享截断感知名单；必须成功读取完整 `/proc/<pid>/exe`、匹配用户 UID、用户应用 cgroup、PID/start_time 和 pidfd 身份，保护进程及未知/不可验证状态一律不提供或拒绝。
+- **安装校验：**Arch 安装脚本验证专属 action ID 与固定 `exec.path`，安装后比对 policy 与已校验源文件、复查绑定并要求 `pkaction --action-id` 能识别该 action。脚本未实际运行；本机当前无已加载的 cross-process action。
+- **回归：**治理 34 项；Python 186 passed / 1 个既有超长路径用例按环境限制 skip；Zamak 0.2.0 check、76/76 test、build；`scripts/build-arch.sh`、所有 Shell 语法及 `git diff --check` 均 PASS。候选夹具重复 PID 的 symlink 错误已修；完整套件发现并修正安装文件清单把目录误作文件的问题。
+- **安全边界：**没有安装 helper/Policy，没有执行真实 pkexec、`process_madvise` 或 `MADV_PAGEOUT`，也没有推送。
+
+## 2026-11-02 — M1.1 初始实现历史快照（安全复审修正前）
 
 - **分支与提交：** 新工作树 `/home/arlune_innersea/.codex/worktrees/p3c-crossproc-helper`，分支 `feat/issue-12-crossproc-helper`，基点 `p3c/integration` @ `57dc1fa`。本地提交 `77f21f5`（功能）、`f7b4172`（两处实跑发现的缺陷修复）。**未 push、未 merge、未安装、未跑任何真实跨进程 syscall。**
 - **新建的生产代码：** `native/crossproc_helper.c/.h`（唯一特权动作：一个动词 + 三个十进制数 + 一次 `process_madvise`，所有身份判断由内核重新推导）、`native/crossproc_candidates.c/.h`（只读枚举用户自己的进程）、`native/async_crossproc.c/.h`（GUI 侧唯一 pkexec 调用者，字面量 argv）、`production_crossproc_gate_{default,enabled}.c`（与 page-cache 门控**独立**）、`packaging/polkit-1/actions/...crossproc.policy`（action id 与 exec.path 均与 page-cache 完全分离，`auth_admin` 每次，无 `*_keep`）。

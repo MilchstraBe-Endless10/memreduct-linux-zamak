@@ -1,5 +1,11 @@
 # 中期记忆 / Roadmap State
-更新时间：2026-10-31；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+更新时间：2026-11-02；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+
+## 2026-11-02 当前补充：Issue #12 M1.1 凭据与进程保护复审修正
+
+- 本地隔离分支 `feat/issue-12-crossproc-helper`，代码提交 `8f236dcd77325c171ff2e76771e1f948710d4ce6`（Tree `ba31f0fc6910284fb3ffdb897bc7fc75f7353b36`，父 `1c4565f6e5f4808fe4f2cf376b0508ac93dcc416`）。pkexec root-target 凭据模型按 `ruid=0/euid=0` 验证；仍要求有效 `CAP_SYS_NICE`。`PKEXEC_UID` 仅作为请求者声明，helper 另从目标 `/proc/<pid>/status` 核验 UID 四元组并要求与声明一致；同时核验完整 exe、cgroup、PID/start_time、pidfd 和祖先关系，身份不可验证或不属于该用户的受支持应用 scope 时拒绝。
+- 候选枚举与 root helper 共用保护规则；安装脚本准备了源/已安装 policy 字节一致、专属 action ID、固定 `exec.path` 与 `pkaction` 识别检查。回归通过：治理 34 项、Python 186 项（1 项超长路径环境限制 skip）、Zamak 0.2.0 76/76、check/build、Arch 原生构建、Shell 语法与 diff 检查。
+- **本地 M1.1 修改尚未推送；未安装 helper/Policy，未运行真实 pkexec 或 `process_madvise`。** 本机 `pkaction` 目前没有专属 action，符合未安装状态。安全复审后的安装仍是单独门槛；Issue #12 的一次性真实 MADV_PAGEOUT 授权不在本轮使用。
 
 ## 2026-10-31 当前补充：P3A 偏好持久化与清理模拟本地候选
 
