@@ -53,6 +53,8 @@ extern void gtk_window_set_resizable(GtkWindow *window, int resizable);
 extern int gtk_window_get_resizable(GtkWindow *window);
 extern void gtk_widget_show(GtkWidget *widget);
 extern void gtk_widget_hide(GtkWidget *widget);
+extern void gtk_widget_realize(GtkWidget *widget);
+extern void gtk_widget_unrealize(GtkWidget *widget);
 extern GtkWidget *gtk_bin_get_child(GtkBin *bin);
 extern GList *gtk_container_get_children(GtkContainer *container);
 extern unsigned int gtk_container_get_border_width(GtkContainer *container);
@@ -453,6 +455,19 @@ static int attach_header_bar(GtkWindow *window, struct mr_decoration_state *stat
         state->applied = 1;
         return 0;
     }
+    GtkWidget *widget = (GtkWidget *)window;
+    const int was_realized = gtk_widget_get_realized(widget);
+    if (was_realized) {
+        /* Zamak std/ui realizes its GtkWindow while constructing it. GTK3
+         * requires a custom titlebar to be attached before realization. The
+         * top-level is still unmapped here, so unrealize/attach/realize keeps
+         * the client window identity while letting GTK negotiate the bar at
+         * the correct lifecycle stage. Never mutate a mapped window this way. */
+        if (gtk_widget_get_mapped(widget)) {
+            return 0;
+        }
+        gtk_widget_unrealize(widget);
+    }
     GtkWidget *bar = gtk_header_bar_new();
     gtk_header_bar_set_title((GtkHeaderBar *)bar, state->title);
     gtk_header_bar_set_show_close_button((GtkHeaderBar *)bar, 1);
@@ -466,6 +481,9 @@ static int attach_header_bar(GtkWindow *window, struct mr_decoration_state *stat
     }
     gtk_window_set_titlebar(window, bar);
     gtk_widget_show_all(bar);
+    if (was_realized) {
+        gtk_widget_realize(widget);
+    }
     state->applied = 1;
     if (getenv("MEMREDUCT_CI") != NULL) {
         fprintf(stderr, "CI_TITLEBAR attached=true title=%s layout=%s\n", state->title,
@@ -757,13 +775,10 @@ int64_t mr_gui_lock_window_sizes(int64_t main_width, int64_t main_height,
     apply_decoration_layout();
     main_window_ref = main_window;
     settings_window_ref = settings_window_found;
-    /* Attach the header bars here, before the main loop realizes either
-     * toplevel. gtk_window_set_titlebar() emits
-     * "gtk_window_set_titlebar() called on a realized window" once the window
-     * is realized, and a title bar attached that late does not take part in
-     * the first size negotiation, which is exactly the "probe passes but the
-     * real container ignores it" symptom from Issue #11. attach_header_bar()
-     * is idempotent, so the idle pass below stays as a safety net. */
+    /* The UI library has already realized both unmapped toplevels by this
+     * point. attach_header_bar() performs one safe unrealize/attach/realize
+     * cycle so GTK accepts the custom titlebars without a warning. The idle
+     * pass below is idempotent and still measures the first mapped geometry. */
     attach_header_bar(main_window, &main_decoration);
     attach_header_bar(settings_window_found, &settings_decoration);
     if (main_window != NULL || settings_window_found != NULL) {

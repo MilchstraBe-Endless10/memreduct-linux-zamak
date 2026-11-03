@@ -205,9 +205,9 @@ app_pid=""
 require 'CI_WINDOW_CLOSE'
 require 'CI_APP_RETURNED'
 ! grep -Eq 'pkexec|process_madvise|drop_caches' "$app_log"
-if grep -Eq 'Gdk-CRITICAL|GLib-GObject-CRITICAL|Gtk-CRITICAL' "$app_log"; then
-  printf 'GTK critical diagnostics were emitted.\n' >&2
-  grep -E 'Gdk-CRITICAL|GLib-GObject-CRITICAL|Gtk-CRITICAL' "$app_log" >&2
+if grep -Eq 'Gdk-(WARNING|CRITICAL)|GLib-(WARNING|CRITICAL)|GLib-GObject-(WARNING|CRITICAL)|Gtk-(WARNING|CRITICAL)' "$app_log"; then
+  printf 'GTK warning or critical diagnostics were emitted.\n' >&2
+  grep -E 'Gdk-(WARNING|CRITICAL)|GLib-(WARNING|CRITICAL)|GLib-GObject-(WARNING|CRITICAL)|Gtk-(WARNING|CRITICAL)' "$app_log" >&2
   exit 1
 fi
 
