@@ -503,12 +503,14 @@ class TestConfirmationWording(unittest.TestCase):
         for sentence in ('No system memory is changed.', '不会改动系统内存。'):
             self.assertEqual(block.count(sentence), 1, sentence)
 
-    def test_authorization_states_do_not_claim_a_cause(self):
-        # 126/127 cannot prove who refused; the wording must stay neutral.
-        self.assertIn('"Authorization or execution not confirmed"', self.source)
-        self.assertNotIn('"Authorization cancelled"', self.source)
-        self.assertIn('"authorization-unconfirmed"', self.source)
-        self.assertNotIn('"authorization-cancelled"', self.source)
+    def test_authorization_cancel_and_failure_have_distinct_feedback(self):
+        # The fixed helper cannot exit 126/127: those pkexec outcomes identify
+        # dismissal vs failure to authorize/start the fixed helper.
+        self.assertIn('"authorization-cancelled"', self.source)
+        self.assertIn('"authorization-failed"', self.source)
+        self.assertIn('Authorization was cancelled; no helper result was received', self.source)
+        self.assertIn('Polkit could not authorize or start the fixed helper', self.source)
+        self.assertIn('不会自动重试', self.source)
 
 
 class TestCiMarkerOutputPath(unittest.TestCase):

@@ -737,16 +737,18 @@ class DriverTest(unittest.TestCase):
                                regions=0, calls=1), code)
                 self.assertEqual(fields["verdict"], verdict)
 
-    def test_pkexec_codes_without_a_result_are_unattributed(self):
+    def test_pkexec_cancel_and_authorization_failure_are_distinct(self):
+        fields = self.classify("", 126)
+        self.assertEqual(fields["verdict"], "11")  # AUTH_CANCELLED
+        fields = self.classify("", 127)
+        self.assertEqual(fields["verdict"], "12")  # AUTH_FAILED
+
+    def test_pkexec_code_with_a_helper_result_is_outcome_unknown(self):
         for code in (126, 127):
             with self.subTest(code=code):
-                fields = self.classify("", code)
-                self.assertEqual(fields["verdict"], "7")  # AUTH_UNATTRIBUTED
-
-    def test_pkexec_code_with_a_real_result_is_classified_by_the_result(self):
-        fields = self.classify(self.block("refused", advised=0, requested=0,
-                                          regions=0, calls=0), 126)
-        self.assertEqual(fields["verdict"], "2")
+                fields = self.classify(self.block("refused", advised=0, requested=0,
+                                                  regions=0, calls=0), code)
+                self.assertEqual(fields["verdict"], "9")
 
     def test_unknown_uid_is_reported_as_minus_one(self):
         fields = self.classify(self.block("refused", advised=0, requested=0,

@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -85,6 +86,11 @@ extern void g_free(void *memory);
 #define PANGO_SCALE 1024
 
 static int sample_failure_trigger_consumed;
+static int xproc_mock_in_flight;
+static int xproc_mock_progress;
+static int64_t xproc_mock_advised;
+static int64_t xproc_mock_requested;
+static int64_t xproc_mock_regions;
 
 /* Test controls are inert unless the CI runner sets these exact variables. */
 long long mr_gui_test_mode(void)
@@ -115,6 +121,107 @@ long long mr_gui_test_clean_simulation_enabled(void)
     const char *value = getenv("MEMREDUCT_CI_CLEAN_SIMULATION");
     return mr_gui_test_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
 }
+
+/* The cross-process UI fixture is fixed and exists only under the explicit CI
+ * gate. It never calls pkexec, the privileged helper, or process_madvise. */
+long long mr_gui_test_xproc_simulation_enabled(void)
+{
+    const char *value = getenv("MEMREDUCT_CI_XPROC_SIMULATION");
+    return mr_gui_test_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
+}
+
+long long mr_gui_test_xproc_candidate_count(void)
+{
+    return mr_gui_test_xproc_simulation_enabled() != 0 ? 2 : 0;
+}
+
+long long mr_gui_test_xproc_candidate_pid(long long index)
+{
+    if (mr_gui_test_xproc_simulation_enabled() == 0) return -1;
+    if (index == 0) return 4242;
+    if (index == 1) return 4243;
+    return -1;
+}
+
+long long mr_gui_test_xproc_candidate_start_time(long long index)
+{
+    return mr_gui_test_xproc_candidate_pid(index) < 0 ? -1 : 7700 + index;
+}
+
+long long mr_gui_test_xproc_candidate_uid(long long index)
+{
+    return mr_gui_test_xproc_candidate_pid(index) < 0 ? -1 : (long long)geteuid();
+}
+
+long long mr_gui_test_xproc_candidate_bytes(long long index)
+{
+    if (mr_gui_test_xproc_candidate_pid(index) < 0) return -1;
+    return index == 0 ? 8ll * 1024ll * 1024ll : 4ll * 1024ll * 1024ll;
+}
+
+long long mr_gui_test_xproc_candidate_regions(long long index)
+{
+    if (mr_gui_test_xproc_candidate_pid(index) < 0) return -1;
+    return index == 0 ? 3 : 2;
+}
+
+const char *mr_gui_test_xproc_candidate_name(long long index)
+{
+    if (index == 0 && mr_gui_test_xproc_simulation_enabled() != 0) return "fixture-app";
+    if (index == 1 && mr_gui_test_xproc_simulation_enabled() != 0) return "fixture-renderer";
+    return "";
+}
+
+const char *mr_gui_test_xproc_candidate_app_name(long long index)
+{
+    if (index == 0 && mr_gui_test_xproc_simulation_enabled() != 0) return "fixture-app-bin";
+    if (index == 1 && mr_gui_test_xproc_simulation_enabled() != 0) return "fixture-renderer-bin";
+    return "";
+}
+
+long long mr_gui_test_xproc_candidate_state(long long index)
+{
+    return mr_gui_test_xproc_candidate_pid(index) < 0 ? -1 : 'S';
+}
+
+long long mr_gui_test_xproc_start(long long pid, long long start_time,
+                                  long long max_bytes)
+{
+    if (mr_gui_test_xproc_simulation_enabled() == 0 || xproc_mock_in_flight != 0 ||
+        (pid != 4242 && pid != 4243) || start_time != 7700 + (pid - 4242) ||
+        max_bytes <= 0 || max_bytes > 16ll * 1024ll * 1024ll) {
+        return 2;
+    }
+    xproc_mock_in_flight = 1;
+    xproc_mock_progress = 0;
+    xproc_mock_advised = 0;
+    xproc_mock_requested = max_bytes;
+    xproc_mock_regions = pid == 4242 ? 3 : 2;
+    return 0;
+}
+
+long long mr_gui_test_xproc_poll(void)
+{
+    if (mr_gui_test_xproc_simulation_enabled() == 0 || xproc_mock_in_flight == 0) return -2;
+    if (xproc_mock_progress < 2) {
+        xproc_mock_progress++;
+        return -1;
+    }
+    xproc_mock_progress = 3;
+    xproc_mock_advised = xproc_mock_requested / 2;
+    xproc_mock_in_flight = 0;
+    return 1; /* partial advice is explicit; no syscall has been made */
+}
+
+long long mr_gui_test_xproc_stage(void)
+{
+    return xproc_mock_progress;
+}
+
+long long mr_gui_test_xproc_result_advised_bytes(void) { return xproc_mock_advised; }
+long long mr_gui_test_xproc_result_requested_bytes(void) { return xproc_mock_requested; }
+long long mr_gui_test_xproc_result_regions(void) { return xproc_mock_regions; }
+long long mr_gui_test_xproc_result_call_count(void) { return 0; }
 
 /* Read an unprivileged CI helper-stage marker from its private runtime dir. */
 long long mr_gui_test_mock_stage(void)

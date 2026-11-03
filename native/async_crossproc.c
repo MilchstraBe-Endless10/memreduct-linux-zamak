@@ -566,18 +566,16 @@ static int64_t classify(const char *text, size_t length, int exit_code)
         last_reason[copy] = '\0';
     }
 
-    /* pkexec(1) returns 126 when the authorization was dismissed and 127 when
-     * it could not authorize or launch. It forwards the child's status, so a
-     * helper that exited with the same number is indistinguishable. Without a
-     * complete result block we therefore report the outcome as unattributed
-     * instead of claiming the user cancelled. */
-    if (exit_code == 126 || exit_code == 127) {
-        if (parsed_ok) {
-            /* The helper did speak, so the number came from it or a failure it
-             * reported: still not an acceptance. */
-            return classify_token(&parsed);
-        }
-        return MR_XPROC_POLL_AUTH_UNATTRIBUTED;
+    /* pkexec uses 126 when authorization is dismissed and 127 when it cannot
+     * authorize or start the fixed command. The helper's documented exit set is
+     * 0..4 or 77, so these codes without a result block identify the polkit /
+     * exec boundary. If a result block accompanies either code, the two
+     * channels contradict each other and the outcome is unknown. */
+    if (exit_code == 126) {
+        return parsed_ok ? MR_XPROC_POLL_OUTCOME_UNKNOWN : MR_XPROC_POLL_AUTH_CANCELLED;
+    }
+    if (exit_code == 127) {
+        return parsed_ok ? MR_XPROC_POLL_OUTCOME_UNKNOWN : MR_XPROC_POLL_AUTH_FAILED;
     }
 
     if (!parsed_ok) {

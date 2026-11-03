@@ -153,6 +153,64 @@ struct cand_status {
     int have_state;
 };
 
+/* Names from procfs are bytes controlled by the target process. Keep drawing
+ * inputs valid UTF-8 and replace control or malformed bytes before returning
+ * them to the GTK text renderer. The helper still uses the original values for
+ * its independent safety checks. */
+static size_t valid_utf8_sequence(const unsigned char *text)
+{
+    const unsigned char first = text[0];
+    if (first >= 0xc2u && first <= 0xdfu &&
+        (text[1] & 0xc0u) == 0x80u) {
+        return 2u;
+    }
+    if (first >= 0xe0u && first <= 0xefu && text[1] != '\0' && text[2] != '\0' &&
+        (text[1] & 0xc0u) == 0x80u && (text[2] & 0xc0u) == 0x80u &&
+        !(first == 0xe0u && text[1] < 0xa0u) &&
+        !(first == 0xedu && text[1] >= 0xa0u)) {
+        return 3u;
+    }
+    if (first >= 0xf0u && first <= 0xf4u && text[1] != '\0' &&
+        text[2] != '\0' && text[3] != '\0' &&
+        (text[1] & 0xc0u) == 0x80u && (text[2] & 0xc0u) == 0x80u &&
+        (text[3] & 0xc0u) == 0x80u &&
+        !(first == 0xf0u && text[1] < 0x90u) &&
+        !(first == 0xf4u && text[1] >= 0x90u)) {
+        return 4u;
+    }
+    return 0u;
+}
+
+static void copy_display_text(char *out, size_t out_size, const char *source)
+{
+    const unsigned char *input = (const unsigned char *)source;
+    size_t used = 0;
+    if (out_size == 0u) {
+        return;
+    }
+    while (*input != '\0' && used + 1u < out_size) {
+        if (*input < 0x20u || *input == 0x7fu) {
+            out[used++] = '?';
+            input++;
+        } else if (*input < 0x80u) {
+            out[used++] = (char)*input++;
+        } else {
+            size_t sequence = valid_utf8_sequence(input);
+            if (sequence == 0u) {
+                out[used++] = '?';
+                input++;
+            } else if (used + sequence >= out_size) {
+                break;
+            } else {
+                memcpy(out + used, input, sequence);
+                used += sequence;
+                input += sequence;
+            }
+        }
+    }
+    out[used] = '\0';
+}
+
 static int read_status(int32_t pid, struct cand_status *out)
 {
     char path[MR_CAND_PROC_PATH_BYTES];
@@ -235,7 +293,7 @@ static int read_status(int32_t pid, struct cand_status *out)
         const char *next = strchr(line, '\n');
         line = next == NULL ? NULL : next + 1;
     }
-    return (out->have_name && out->have_uid) ? 0 : -1;
+    return (out->have_name && out->have_uid && out->have_state) ? 0 : -1;
 }
 
 static int read_exe(int32_t pid, char *out, size_t size)
@@ -487,9 +545,10 @@ int mr_cand_scan(struct mr_cand_list *out)
         memset(slot, 0, sizeof(*slot));
         slot->pid = pid;
         slot->uid = status.uid;
+        slot->state = status.state;
         slot->reclaimable_bytes = reclaimable;
         slot->regions = regions;
-        memcpy(slot->name, status.name, sizeof(slot->name) - 1u);
+        copy_display_text(slot->name, sizeof(slot->name), status.name);
         if (read_start_time(pid, &slot->start_time) != 0) {
             /* Without a start_time the helper cannot verify identity, so the row
              * would be unusable. Drop it rather than offer a row that always
@@ -499,6 +558,9 @@ int mr_cand_scan(struct mr_cand_list *out)
             continue;
         }
         memcpy(slot->exe, exe, strlen(exe) + 1u);
+        const char *app_name = strrchr(exe, '/');
+        app_name = app_name == NULL ? exe : app_name + 1;
+        copy_display_text(slot->app_name, sizeof(slot->app_name), app_name);
         out->count++;
     }
     (void)closedir(dir);
@@ -566,6 +628,22 @@ int64_t mr_cand_start_time(int64_t index)
     return (int64_t)scan_slot.entries[index].start_time;
 }
 
+int64_t mr_cand_uid(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return -1;
+    }
+    return (int64_t)scan_slot.entries[index].uid;
+}
+
+int64_t mr_cand_state(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return -1;
+    }
+    return (int64_t)(unsigned char)scan_slot.entries[index].state;
+}
+
 int64_t mr_cand_reclaimable_bytes(int64_t index)
 {
     if (index < 0 || index >= (int64_t)scan_slot.count) {
@@ -591,4 +669,12 @@ const char *mr_cand_name(int64_t index)
         return "";
     }
     return scan_slot.entries[index].name;
+}
+
+const char *mr_cand_app_name(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return "";
+    }
+    return scan_slot.entries[index].app_name;
 }

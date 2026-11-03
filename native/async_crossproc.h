@@ -34,8 +34,8 @@ enum mr_xproc_start {
  * kinds of "no" apart, because they need four different sentences:
  *   - we refused before spawning (REFUSED_LOCAL);
  *   - the launch failed (LAUNCH_FAILED);
- *   - pkexec or the authorization failed (AUTH_UNATTRIBUTED when the exit code
- *     cannot prove which);
+ *   - the authorization was dismissed (AUTH_CANCELLED), or authorization / the
+ *     fixed helper launch failed (AUTH_FAILED);
  *   - the helper ran and the kernel answered (HELPER_*).
  */
 enum mr_xproc_poll {
@@ -51,7 +51,9 @@ enum mr_xproc_poll {
     MR_XPROC_POLL_AUTH_UNATTRIBUTED = 7, /* pkexec refused, or the helper did */
     MR_XPROC_POLL_LAUNCH_FAILED = 8,     /* could not spawn pkexec at all */
     MR_XPROC_POLL_OUTCOME_UNKNOWN = 9,   /* the child died or could not be read */
-    MR_XPROC_POLL_REFUSED_LOCAL = 10     /* our own pre-checks said no */
+    MR_XPROC_POLL_REFUSED_LOCAL = 10,    /* our own pre-checks said no */
+    MR_XPROC_POLL_AUTH_CANCELLED = 11,   /* pkexec returned its cancellation code */
+    MR_XPROC_POLL_AUTH_FAILED = 12       /* pkexec could not authorize or start helper */
 };
 
 /* Why our own pre-checks refused, readable through mr_xproc_local_refusal(). */

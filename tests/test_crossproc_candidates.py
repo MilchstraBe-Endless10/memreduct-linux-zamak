@@ -34,6 +34,11 @@ class CandidateScannerTest(unittest.TestCase):
             getattr(cls.library, name).restype = ctypes.c_int64
         cls.library.mr_cand_skipped.argtypes = [ctypes.c_int64]
         cls.library.mr_cand_skipped.restype = ctypes.c_int64
+        for name in ("mr_cand_name", "mr_cand_app_name"):
+            getattr(cls.library, name).argtypes = [ctypes.c_int64]
+            getattr(cls.library, name).restype = ctypes.c_char_p
+        cls.library.mr_cand_state.argtypes = [ctypes.c_int64]
+        cls.library.mr_cand_state.restype = ctypes.c_int64
 
     @classmethod
     def tearDownClass(cls):
@@ -68,11 +73,11 @@ class CandidateScannerTest(unittest.TestCase):
         return directory
 
     def add_process(self, pid=4242, name="demo", exe="/usr/bin/demo",
-                    cgroup=None, uids=(UID, UID, UID, UID)):
+                    cgroup=None, uids=(UID, UID, UID, UID), state="S"):
         directory = self._add_stat(pid, name, 1, 77)
         uid_text = "\t".join(map(str, uids))
         with open(os.path.join(directory, "status"), "w", encoding="utf-8") as handle:
-            handle.write(f"Name:\t{name}\nState:\tS\nUid:\t{uid_text}\n")
+            handle.write(f"Name:\t{name}\nState:\t{state}\nUid:\t{uid_text}\n")
         with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
             handle.write("00400000-00401000 r--p 00000000 00:00 0\n")
         exe_path = os.path.join(directory, "exe")
@@ -99,6 +104,34 @@ class CandidateScannerTest(unittest.TestCase):
     def test_same_uid_user_app_with_known_exe_and_app_cgroup_is_offered(self):
         self.add_process()
         self.assertEqual(self.scan(), 1)
+
+    def test_candidate_exposes_snapshot_state_and_executable_basename_without_path(self):
+        self.add_process(name="editor", exe="/home/alice/Private Projects/editor")
+        self.assertEqual(self.scan(), 1)
+        self.assertEqual(self.library.mr_cand_name(0), b"editor")
+        self.assertEqual(self.library.mr_cand_app_name(0), b"editor")
+        self.assertEqual(self.library.mr_cand_state(0), ord("S"))
+        self.assertEqual(self.library.mr_cand_app_name(-1), b"")
+        self.assertEqual(self.library.mr_cand_state(-1), -1)
+
+    def test_candidate_display_name_preserves_valid_utf8(self):
+        self.add_process(name="编辑器", exe="/usr/bin/编辑器")
+        self.assertEqual(self.scan(), 1)
+        self.assertEqual(self.library.mr_cand_name(0).decode("utf-8"), "编辑器")
+        self.assertEqual(self.library.mr_cand_app_name(0).decode("utf-8"), "编辑器")
+
+    def test_candidate_display_strings_replace_controls(self):
+        self.add_process(name="bad-name", exe="/usr/bin/app\x1b")
+        with open(os.path.join(self.proc, "4242", "status"), "wb") as handle:
+            handle.write(f"Name:\tbad\x1bname\nState:\tR\nUid:\t{UID}\t{UID}\t{UID}\t{UID}\n".encode())
+        self.assertEqual(self.scan(), 1)
+        self.assertEqual(self.library.mr_cand_name(0), b"bad?name")
+        self.assertEqual(self.library.mr_cand_app_name(0), b"app?")
+
+    def test_unknown_process_state_is_not_offered(self):
+        self.add_process(state="")
+        self.assertEqual(self.scan(), 0)
+        self.assertEqual(self.skipped(5), 1)
 
     def test_system_and_login_session_cgroups_are_hidden(self):
         for cgroup in (

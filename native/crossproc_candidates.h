@@ -51,7 +51,9 @@ struct mr_cand_entry {
     uint64_t uid;
     uint64_t reclaimable_bytes;
     uint32_t regions;
+    char state;
     char name[MR_CAND_NAME_BYTES];
+    char app_name[MR_CAND_NAME_BYTES];
     char exe[MR_CAND_PATH_BYTES];
 };
 
@@ -99,9 +101,13 @@ int64_t mr_cand_scanned(void);
 int64_t mr_cand_skipped(int64_t reason);
 int64_t mr_cand_pid(int64_t index);
 int64_t mr_cand_start_time(int64_t index);
+int64_t mr_cand_uid(int64_t index);
+int64_t mr_cand_state(int64_t index);
 int64_t mr_cand_reclaimable_bytes(int64_t index);
 int64_t mr_cand_regions(int64_t index);
 /* Owned by the scan slot: valid until the next scan, never freed by the caller. */
 const char *mr_cand_name(int64_t index);
+/* Basename of the verified /proc/<pid>/exe target; never returns the path. */
+const char *mr_cand_app_name(int64_t index);
 
 #endif /* MEMREDUCT_CROSSPROC_CANDIDATES_H */

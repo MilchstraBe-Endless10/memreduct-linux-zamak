@@ -352,7 +352,7 @@ pub fn language_popup_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
 
 pub fn clean_popup_rect(canvas_width: f64, canvas_height: f64, button: &ui.Rect) -> ui.Rect:
     let width = 248.0
-    let height = 8.0 * clean_row_height_px() + 4.0
+    let height = 9.0 * clean_row_height_px() + 4.0
     fit_popup_rect(canvas_width, canvas_height, canvas_width - width - 6.0, button.y - height - 6.0, width, height)
 
 pub fn fit_popup_rect(view_width: f64, view_height: f64, x: f64, y: f64, w: f64, h: f64) -> ui.Rect:
@@ -466,6 +466,15 @@ fn test_all_popup_rectangles_fit_viewport():
         let root = menu_root_rect(325.0, 357.0, menu)
         assert(root.x >= 2.0 and root.y >= 2.0)
         assert(root.right() <= 323.0 and root.bottom() <= 355.0)
+
+fn test_clean_menu_extension_row_is_inside_popup():
+    let button = clean_button_rect(325.0, 357.0)
+    let popup = clean_popup_rect(325.0, 357.0, &button)
+    let extension = clean_menu_item_rect(&popup, 8)
+    assert(extension.x >= popup.x)
+    assert(extension.y >= popup.y)
+    assert(extension.right() <= popup.right())
+    assert(extension.bottom() <= popup.bottom())
 
 fn test_main_menu_separators_have_distinct_noninteractive_rows():
     assert(root_menu_row_count(1) == 3)
