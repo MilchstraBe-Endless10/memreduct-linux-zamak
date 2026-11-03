@@ -1,5 +1,14 @@
 # 中期记忆 / Roadmap State
-更新时间：2026-11-02；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+更新时间：2026-11-03；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+
+## 2026-11-03 当前补充：M1.2 实测成功；M1.3 本地候选未完成
+
+- M1.2 的真实受控测试结果来自所有者发布的 [Issue #12 验收记录](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/12#issuecomment-6599614790)：一次 authenticated `MADV_PAGEOUT`，对项目创建的 1 MiB 临时子进程映射，helper 报告 1 MiB advised，resident pages 256/256→0/256，目标存活且数据完整，临时资源已清理。此值不是净释放 RAM；单次授权已耗尽。此处不是本轮重跑或独立二进制审计。
+- M1.3 本地代码提交 `3bd2a7f1b3bcb975bac3d31302fc146e61475bee`（Tree `e3455b24b6704b777e31cda946fef57ac9fd13c9`，父 `24d9e1baa13cc5656f173f0f98c21a82d`）。为当前用户的合格应用提供只读候选枚举、初始空选择、单目标手动选择、确认和风险提示、固定 helper bridge、授权/执行结果与 `MemAvailable` 观察反馈；跨进程 helper 保留独立身份复核和保护规则。
+- 默认 GUI gate 仍关闭。另构建 opt-in M1.3 review binary，只启用跨进程 action、页缓存 gate 仍关闭；两种 ELF SHA、构建与日志见短期记忆对应目录。未启动任何二进制。
+- 本地治理 34/34、Python 190 passed / 1 个环境长度 skip、Zamak 0.2.0 check + 79/79 test + build、Shell 语法、`git diff --check` 通过。Xvfb/xdotool/ImageMagick 缺失，隔离 GUI 模拟 NOT RUN。
+- 没有运行 Polkit、没有读取实时进程列表、没有对日常进程执行 syscall、没有系统写入或远端 GitHub 写操作。真实日常应用测试需对具体目标另行批准。M1.3 尚未完成，ADR-0007 继续 PROPOSED；Windows 整页 1:1 仍 NOT PASS。
+- M1.2 orchestration `SystemExit(0)` 误报的脚本源码没有在本工作树或检查的 `p3c-integrate` 工作树中找到。没有对不相关的未提交 runner 代码作猜测性修改。
 
 ## 2026-11-02 当前补充：Issue #12 M1.1 凭据与进程保护复审修正
 
