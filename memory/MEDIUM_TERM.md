@@ -1,13 +1,13 @@
 # 中期记忆 / Roadmap State
 更新时间：2026-11-03；当前真实状态以本节为准，后续各节均为有日期的历史快照。
 
-## 2026-11-03 当前补充：M1.2 实测成功；M1.3 本地候选未完成
+## 2026-11-03 当前补充：M1.2 实测成功；M1.3 模拟 GUI 流程通过，日常进程验收未完成
 
 - M1.2 的真实受控测试结果来自所有者发布的 [Issue #12 验收记录](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/12#issuecomment-6599614790)：一次 authenticated `MADV_PAGEOUT`，对项目创建的 1 MiB 临时子进程映射，helper 报告 1 MiB advised，resident pages 256/256→0/256，目标存活且数据完整，临时资源已清理。此值不是净释放 RAM；单次授权已耗尽。此处不是本轮重跑或独立二进制审计。
-- M1.3 本地代码提交 `3bd2a7f1b3bcb975bac3d31302fc146e61475bee`（Tree `e3455b24b6704b777e31cda946fef57ac9fd13c9`，父 `24d9e1baa13cc5656f173f0f98c21a82d`）。为当前用户的合格应用提供只读候选枚举、初始空选择、单目标手动选择、确认和风险提示、固定 helper bridge、授权/执行结果与 `MemAvailable` 观察反馈；跨进程 helper 保留独立身份复核和保护规则。
-- 默认 GUI gate 仍关闭。另构建 opt-in M1.3 review binary，只启用跨进程 action、页缓存 gate 仍关闭；两种 ELF SHA、构建与日志见短期记忆对应目录。未启动任何二进制。
-- 本地治理 34/34、Python 190 passed / 1 个环境长度 skip、Zamak 0.2.0 check + 79/79 test + build、Shell 语法、`git diff --check` 通过。Xvfb/xdotool/ImageMagick 缺失，隔离 GUI 模拟 NOT RUN。
-- 没有运行 Polkit、没有读取实时进程列表、没有对日常进程执行 syscall、没有系统写入或远端 GitHub 写操作。真实日常应用测试需对具体目标另行批准。M1.3 尚未完成，ADR-0007 继续 PROPOSED；Windows 整页 1:1 仍 NOT PASS。
+- M1.3 本地实现位于 `feat/issue-12-m1-3-manual-reclaim`：UI/候选枚举基础提交 `3bd2a7f1b3bcb975bac3d31302fc146e61475bee`，模拟结果诚实标注修正 `e32c2ba3b802a6b90c696a2af127d04a5fcf033e`，GTK titlebar 生命周期修正 `74574a93c4059946ddc446e7787efa0a8a0e9adc`。
+- 隔离 Xvfb GUI 用固定候选夹具通过鼠标/键盘选择、确认取消、模拟授权/helper 部分结果、关闭与退出；`call_count=0`、没有进程列表扫描、syscall 或系统写入。此结果验证 UI 和 mock 流程，不验证 Polkit 或真实日常应用回收。
+- Python 190 passed / 1 个既有超长路径 skip；Zamak 0.2.0 check、80/80 tests、build；治理 34 项、Shell 20 项、默认 GUI 与 cross-process opt-in GUI 构建均通过。两个运行构建和 Xvfb evidence SHA/日志见 `memory/SHORT_TERM.md` 指向的 AI 产出目录。
+- 默认 GUI 的跨进程与页缓存特权 gate 仍关闭；本地 opt-in 候选仅启用跨进程 gate，页缓存 gate 关闭。没有运行 Polkit、helper 或真实日常目标。实际目标测试仍须针对具体目标另行授权；M1.3 未完成，ADR-0007 仍 PROPOSED。Windows 整页 1:1 仍 NOT PASS；无远端 push/PR 修改。
 - M1.2 orchestration `SystemExit(0)` 误报的脚本源码没有在本工作树或检查的 `p3c-integrate` 工作树中找到。没有对不相关的未提交 runner 代码作猜测性修改。
 
 ## 2026-11-02 当前补充：Issue #12 M1.1 凭据与进程保护复审修正
