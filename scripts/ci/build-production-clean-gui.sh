@@ -47,7 +47,14 @@ PY
 grep -q 'gui_runtime_prod.c' "$work/zam.toml"
 grep -q 'async_privileged_production.c' "$work/zam.toml"
 ! grep -q 'gui_test.c' "$work/zam.toml"
-echo "gate swapped: production_clean_gate_enabled.c" | tee "$artifact_dir/gate-swap.log"
+grep -q 'production_clean_gate_enabled.c' "$work/zam.toml"
+! grep -q 'production_clean_gate_default.c' "$work/zam.toml"
+grep -q 'production_crossproc_gate_default.c' "$work/zam.toml"
+! grep -q 'production_crossproc_gate_enabled.c' "$work/zam.toml"
+printf 'profile=m0-installed-release\npagecache_gate=enabled\ncrossproc_gate=disabled\nruntime=production-no-test-hooks\n' \
+  | tee "$artifact_dir/gate-selection.txt"
+echo "profile=m0-installed-release gate=production_clean_gate_enabled.c" \
+  | tee "$artifact_dir/gate-swap.log"
 
 cd "$work"
 zam test . 2>&1 | tee "$artifact_dir/zam-test.log" | tail -2
@@ -63,6 +70,7 @@ enabled="$(nm "$artifact_dir/memreduct-zamak-production-clean" | grep -c ' T mr_
 if nm "$artifact_dir/memreduct-zamak-production-clean" | grep -q 'production_clean_gate_default'; then
   echo 'default gate leaked into production build' >&2; exit 1
 fi
+grep -q ' T mr_xproc_capability_enabled$' < <(nm "$artifact_dir/memreduct-zamak-production-clean")
 nm "$artifact_dir/memreduct-zamak-production-clean" >"$artifact_dir/production-symbols.txt"
 if grep -Eq 'mr_gui_test_|mr_ci_emit|mr_start_reclaim_mock|mr_(xproc|cand)_test_' \
   "$artifact_dir/production-symbols.txt"; then
@@ -78,7 +86,7 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
    -o "$artifact_dir/memreduct-zamak-helper" native/memreduct_helper.c
 
 {
-  printf 'gate=production_clean_gate_enabled.c\n'
+  printf 'profile=m0-installed-release\npagecache_gate=enabled\ncrossproc_gate=disabled\n'
   sha256sum "$artifact_dir/memreduct-zamak-production-clean" "$artifact_dir/memreduct-zamak-helper"
 } | tee "$artifact_dir/production-clean-sha256.txt"
 printf 'Production-clean GUI + helper built successfully.\n' | tee "$artifact_dir/build-result.txt"

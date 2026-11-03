@@ -7,6 +7,11 @@ set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 artifact_dir="${ARTIFACT_DIR:-$root/artifacts/p3c-crossproc}"
+profile="${1:-m1-opt-in-candidate}"
+case "$profile" in
+  m1-opt-in-candidate|m0+m1-candidate) ;;
+  *) printf 'Unknown production profile: %s\n' "$profile" >&2; exit 2 ;;
+esac
 mkdir -p "$artifact_dir"
 work="$(mktemp -d "$artifact_dir/build-tree.XXXXXX")"
 cleanup() { rm -rf -- "$work"; }
@@ -24,11 +29,12 @@ python3 -m unittest discover -s tests -v 2>&1 | tee "$artifact_dir/c-safety-test
 zam check . 2>&1 | tee "$artifact_dir/zam-check.log"
 
 cp -a zam.toml src native "$work/"
-python3 - "$work/zam.toml" <<'PY'
+python3 - "$work/zam.toml" "$profile" <<'PY'
 import pathlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
+profile = sys.argv[2]
 text = path.read_text()
 replacements = {
     '"native/gui_test.c"': '"native/gui_runtime_prod.c"',
@@ -38,8 +44,12 @@ replacements = {
 for old, new in replacements.items():
     assert text.count(old) == 1, f"expected exactly one {old} entry"
     text = text.replace(old, new)
-assert '"native/production_clean_gate_default.c"' in text
-assert '"native/production_clean_gate_enabled.c"' not in text
+clean_default = '"native/production_clean_gate_default.c"'
+clean_enabled = '"native/production_clean_gate_enabled.c"'
+assert text.count(clean_default) == 1 and clean_enabled not in text
+if profile == "m0+m1-candidate":
+    text = text.replace(clean_default, clean_enabled)
+    assert clean_enabled in text and clean_default not in text
 path.write_text(text)
 PY
 cp "$work/zam.toml" "$artifact_dir/zam.toml"
@@ -49,8 +59,14 @@ grep -q 'production_clean_gate_default.c' "$artifact_dir/zam.toml"
 grep -q 'gui_runtime_prod.c' "$artifact_dir/zam.toml"
 grep -q 'async_privileged_production.c' "$artifact_dir/zam.toml"
 ! grep -q 'gui_test.c' "$artifact_dir/zam.toml"
-printf 'crossproc_gate=enabled\npagecache_gate=default-disabled\nruntime=production-no-test-hooks\n' \
-  | tee "$artifact_dir/gate-selection.txt"
+pagecache_gate=default-disabled
+if [[ "$profile" == "m0+m1-candidate" ]]; then
+  grep -q 'production_clean_gate_enabled.c' "$artifact_dir/zam.toml"
+  ! grep -q 'production_clean_gate_default.c' "$artifact_dir/zam.toml"
+  pagecache_gate=enabled
+fi
+printf 'profile=%s\ncrossproc_gate=enabled\npagecache_gate=%s\nruntime=production-no-test-hooks\n' \
+  "$profile" "$pagecache_gate" | tee "$artifact_dir/gate-selection.txt"
 
 cd "$work"
 zam test . 2>&1 | tee "$artifact_dir/zam-test.log"
@@ -60,7 +76,11 @@ binary_rel="$(sed -n 's/^OUTPUT //p' "$artifact_dir/zam-build.log" | tail -n 1)"
   printf 'Zamak did not produce an executable (OUTPUT=%s).\n' "$binary_rel" >&2
   exit 1
 }
-binary="$artifact_dir/memreduct-zamak-production-crossproc-candidate"
+binary_name=memreduct-zamak-production-crossproc-candidate
+if [[ "$profile" == "m0+m1-candidate" ]]; then
+  binary_name=memreduct-zamak-production-m0-m1-candidate
+fi
+binary="$artifact_dir/$binary_name"
 install -m 0755 "$binary_rel" "$binary"
 
 nm "$binary" >"$artifact_dir/symbols.txt"
@@ -76,5 +96,5 @@ if strings "$binary" | grep -Eq 'MEMREDUCT_CI|MEMREDUCT_TEST'; then
   exit 1
 fi
 sha256sum "$binary" | tee "$artifact_dir/binary-sha256.txt"
-printf 'Built an opt-in production candidate without test hooks; no install or reclaim request was run.\n' \
+printf 'Built profile=%s without test hooks; no install or reclaim request was run.\n' "$profile" \
   | tee "$artifact_dir/build-result.txt"

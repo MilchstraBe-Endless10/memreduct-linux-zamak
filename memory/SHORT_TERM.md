@@ -1,5 +1,13 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-03 — M0-preserving production profiles and M1.3 manual GUI gate
+
+- **Build profiles:** reused `build-production-clean-gui.sh` as `m0-installed-release` (page-cache=1, cross-process=0); extended the existing `build-production-crossproc-gui.sh` with the optional `m0+m1-candidate` profile while keeping its no-argument `m1-opt-in-candidate` behavior. No third duplicate build flow was added.
+- **ELF gate matrix, checked from actual x86-64 machine code:** `safe-default` 0/0; `m0-installed-release` 1/0; `m1-opt-in-candidate` 0/1; `m0+m1-candidate` 1/1 (page-cache/cross-process). All production candidates use inert runtime hooks and omit test/fake authorization entry points. `m0+m1-candidate` SHA-256 is `34ede383a2f81fe8507e620c208ccf2e90baa15de684fc8f9d7a9fa4efa85f18`; `m0-installed-release` is `0c193a1161fd0a2084ff08473f5c9177bfab413786bdc20cec7ac5eefe95795b`.
+- **Installed M0 was preserved and checked read-only:** `/usr/bin/memreduct-zamak` remained SHA `83af5a9caac1814046309cdae962ad6eb6072a2588675f00f4a5375d256c537d`, with page-cache gate returning 1. The installed M0 helper is root-owned mode 0755; its SHA `b0652c8ac3ae70576e39b71fbdcd047a7c57f23873fec2e45b1b691b34c45a5e` matches the locally built helper. The root-owned policy is mode 0644, its fixed helper path matches, and Polkit recognizes the `.pagecache` action. The cross-process helper/policy are likewise present root-owned and Polkit recognizes the `.crossproc` action. No file was installed or changed.
+- **Hyprland GUI:** production selection/risk/cancel is still awaiting manual interaction. This Codex session has no usable native window-control surface; the existing user Hyprland session was not blindly targeted. The prepared `m0+m1-candidate` has no `MEMREDUCT_CI` hooks and is suitable for the requested no-reclaim UI check. No page-cache action, Polkit request, helper launch, or `MADV_PAGEOUT` occurred in this pass.
+- **Artifacts:** the safe-default and M1-only hashes remain as recorded in the following entry; all new build outputs are in the configured external AI output folder. No Git push/merge/release was performed.
+
 ## 2026-11-03 — M1.3 production build isolation recheck
 
 - **Normal production build:** `scripts/ci/build-production-gui.sh` passed governance (34 checks), shell syntax (20 scripts), Python safety (190 passed / 1 filesystem path-length skip), Zamak 0.2.0 check, Zamak GUI tests (80/80), CI GUI build, and production GUI build. It builds the CI executable separately as `memreduct-zamak-ci-test`; production uses inert runtime hooks and production-only async bridge.
