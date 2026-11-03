@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 artifact_dir="${ARTIFACT_DIR:-$root/artifacts/p2b-x11}"
-app="${1:-$artifact_dir/memreduct-zamak-production}"
+app="${1:-$artifact_dir/memreduct-zamak-ci-test}"
 mkdir -p "$artifact_dir"
 cd "$root"
 [[ "$(id -u)" != 0 ]] || { printf 'P2B Xvfb simulation must run as an unprivileged user.\n' >&2; exit 2; }

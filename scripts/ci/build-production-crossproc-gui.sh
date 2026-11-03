@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Build an opt-in GUI candidate for M1.3 review. This does not install anything
-# or run a reclaim request. The default zam.toml keeps this capability disabled.
+# Build the normal opt-in M1.3 GUI candidate without CI/test hooks. This does
+# not install anything or run a reclaim request. The default zam.toml keeps both
+# privileged capabilities disabled.
 set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -29,10 +30,14 @@ import sys
 
 path = pathlib.Path(sys.argv[1])
 text = path.read_text()
-old = '"native/production_crossproc_gate_default.c"'
-new = '"native/production_crossproc_gate_enabled.c"'
-assert text.count(old) == 1, "expected exactly one default cross-process gate"
-text = text.replace(old, new)
+replacements = {
+    '"native/gui_test.c"': '"native/gui_runtime_prod.c"',
+    '"native/async_privileged.c"': '"native/async_privileged_production.c"',
+    '"native/production_crossproc_gate_default.c"': '"native/production_crossproc_gate_enabled.c"',
+}
+for old, new in replacements.items():
+    assert text.count(old) == 1, f"expected exactly one {old} entry"
+    text = text.replace(old, new)
 assert '"native/production_clean_gate_default.c"' in text
 assert '"native/production_clean_gate_enabled.c"' not in text
 path.write_text(text)
@@ -41,7 +46,10 @@ cp "$work/zam.toml" "$artifact_dir/zam.toml"
 grep -q 'production_crossproc_gate_enabled.c' "$artifact_dir/zam.toml"
 grep -q 'production_clean_gate_default.c' "$artifact_dir/zam.toml"
 ! grep -q 'production_clean_gate_enabled.c' "$artifact_dir/zam.toml"
-printf 'crossproc_gate=enabled\npagecache_gate=default-disabled\n' \
+grep -q 'gui_runtime_prod.c' "$artifact_dir/zam.toml"
+grep -q 'async_privileged_production.c' "$artifact_dir/zam.toml"
+! grep -q 'gui_test.c' "$artifact_dir/zam.toml"
+printf 'crossproc_gate=enabled\npagecache_gate=default-disabled\nruntime=production-no-test-hooks\n' \
   | tee "$artifact_dir/gate-selection.txt"
 
 cd "$work"
@@ -59,6 +67,14 @@ nm "$binary" >"$artifact_dir/symbols.txt"
 grep -q ' T mr_xproc_capability_enabled$' "$artifact_dir/symbols.txt"
 ! grep -q 'production_crossproc_gate_default' "$artifact_dir/symbols.txt"
 grep -q ' T mr_production_clean_enabled$' "$artifact_dir/symbols.txt"
+if grep -Eq 'mr_gui_test_|mr_ci_emit|mr_start_reclaim_mock|mr_(xproc|cand)_test_' "$artifact_dir/symbols.txt"; then
+  printf 'Test or fake-authorization symbol leaked into production candidate.\n' >&2
+  exit 1
+fi
+if strings "$binary" | grep -Eq 'MEMREDUCT_CI|MEMREDUCT_TEST'; then
+  printf 'Test-only environment hook leaked into production candidate.\n' >&2
+  exit 1
+fi
 sha256sum "$binary" | tee "$artifact_dir/binary-sha256.txt"
-printf 'Built an opt-in review candidate; no install or reclaim request was run.\n' \
+printf 'Built an opt-in production candidate without test hooks; no install or reclaim request was run.\n' \
   | tee "$artifact_dir/build-result.txt"

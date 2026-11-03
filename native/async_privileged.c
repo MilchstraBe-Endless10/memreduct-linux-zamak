@@ -93,6 +93,7 @@ int64_t mr_reclaim_preflight(void)
  * would be a link error, so a binary either has the bridge reachable or it
  * does not, and which one it is can be checked with nm. */
 
+#ifndef MEMREDUCT_PRODUCTION_BUILD
 /* Explicit CI simulation only. This path executes a same-UID test launcher;
  * it never invokes pkexec or the installed helper. The launcher receives the
  * same fixed helper path and enum as the production bridge for contract tests. */
@@ -119,6 +120,7 @@ int64_t mr_start_reclaim_mock(int64_t mode) {
     child_pid = p;
     return MR_RECLAIM_STARTED;
 }
+#endif
 
 /* Normalize pkexec/helper results. Never retry: an uncertain write may have applied. */
 int64_t mr_poll_reclaim(void) {

@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "async_privileged.h"
+
 /* Keep the test-only font probe header-free like the production GTK bridge. */
 typedef struct _GtkWidget GtkWidget;
 typedef struct _GtkWindow GtkWindow;
@@ -93,19 +95,19 @@ static int64_t xproc_mock_requested;
 static int64_t xproc_mock_regions;
 
 /* Test controls are inert unless the CI runner sets these exact variables. */
-long long mr_gui_test_mode(void)
+long long mr_runtime_mode(void)
 {
     const char *value = getenv("MEMREDUCT_CI");
     return value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
 }
 
-long long mr_gui_test_selected_group(void)
+long long mr_runtime_selected_group(void)
 {
     const char *value = getenv("MEMREDUCT_CI_SELECTED_GROUP");
     char *end = NULL;
     long parsed;
 
-    if (mr_gui_test_mode() == 0 || value == NULL || value[0] == '\0') {
+    if (mr_runtime_mode() == 0 || value == NULL || value[0] == '\0') {
         return -1;
     }
     errno = 0;
@@ -116,78 +118,78 @@ long long mr_gui_test_selected_group(void)
     return parsed;
 }
 
-long long mr_gui_test_clean_simulation_enabled(void)
+long long mr_runtime_clean_simulation_enabled(void)
 {
     const char *value = getenv("MEMREDUCT_CI_CLEAN_SIMULATION");
-    return mr_gui_test_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
+    return mr_runtime_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
 }
 
 /* The cross-process UI fixture is fixed and exists only under the explicit CI
  * gate. It never calls pkexec, the privileged helper, or process_madvise. */
-long long mr_gui_test_xproc_simulation_enabled(void)
+long long mr_runtime_xproc_simulation_enabled(void)
 {
     const char *value = getenv("MEMREDUCT_CI_XPROC_SIMULATION");
-    return mr_gui_test_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
+    return mr_runtime_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
 }
 
-long long mr_gui_test_xproc_candidate_count(void)
+long long mr_runtime_xproc_candidate_count(void)
 {
-    return mr_gui_test_xproc_simulation_enabled() != 0 ? 2 : 0;
+    return mr_runtime_xproc_simulation_enabled() != 0 ? 2 : 0;
 }
 
-long long mr_gui_test_xproc_candidate_pid(long long index)
+long long mr_runtime_xproc_candidate_pid(long long index)
 {
-    if (mr_gui_test_xproc_simulation_enabled() == 0) return -1;
+    if (mr_runtime_xproc_simulation_enabled() == 0) return -1;
     if (index == 0) return 4242;
     if (index == 1) return 4243;
     return -1;
 }
 
-long long mr_gui_test_xproc_candidate_start_time(long long index)
+long long mr_runtime_xproc_candidate_start_time(long long index)
 {
-    return mr_gui_test_xproc_candidate_pid(index) < 0 ? -1 : 7700 + index;
+    return mr_runtime_xproc_candidate_pid(index) < 0 ? -1 : 7700 + index;
 }
 
-long long mr_gui_test_xproc_candidate_uid(long long index)
+long long mr_runtime_xproc_candidate_uid(long long index)
 {
-    return mr_gui_test_xproc_candidate_pid(index) < 0 ? -1 : (long long)geteuid();
+    return mr_runtime_xproc_candidate_pid(index) < 0 ? -1 : (long long)geteuid();
 }
 
-long long mr_gui_test_xproc_candidate_bytes(long long index)
+long long mr_runtime_xproc_candidate_bytes(long long index)
 {
-    if (mr_gui_test_xproc_candidate_pid(index) < 0) return -1;
+    if (mr_runtime_xproc_candidate_pid(index) < 0) return -1;
     return index == 0 ? 8ll * 1024ll * 1024ll : 4ll * 1024ll * 1024ll;
 }
 
-long long mr_gui_test_xproc_candidate_regions(long long index)
+long long mr_runtime_xproc_candidate_regions(long long index)
 {
-    if (mr_gui_test_xproc_candidate_pid(index) < 0) return -1;
+    if (mr_runtime_xproc_candidate_pid(index) < 0) return -1;
     return index == 0 ? 3 : 2;
 }
 
-const char *mr_gui_test_xproc_candidate_name(long long index)
+const char *mr_runtime_xproc_candidate_name(long long index)
 {
-    if (index == 0 && mr_gui_test_xproc_simulation_enabled() != 0) return "fixture-app";
-    if (index == 1 && mr_gui_test_xproc_simulation_enabled() != 0) return "fixture-renderer";
+    if (index == 0 && mr_runtime_xproc_simulation_enabled() != 0) return "fixture-app";
+    if (index == 1 && mr_runtime_xproc_simulation_enabled() != 0) return "fixture-renderer";
     return "";
 }
 
-const char *mr_gui_test_xproc_candidate_app_name(long long index)
+const char *mr_runtime_xproc_candidate_app_name(long long index)
 {
-    if (index == 0 && mr_gui_test_xproc_simulation_enabled() != 0) return "fixture-app-bin";
-    if (index == 1 && mr_gui_test_xproc_simulation_enabled() != 0) return "fixture-renderer-bin";
+    if (index == 0 && mr_runtime_xproc_simulation_enabled() != 0) return "fixture-app-bin";
+    if (index == 1 && mr_runtime_xproc_simulation_enabled() != 0) return "fixture-renderer-bin";
     return "";
 }
 
-long long mr_gui_test_xproc_candidate_state(long long index)
+long long mr_runtime_xproc_candidate_state(long long index)
 {
-    return mr_gui_test_xproc_candidate_pid(index) < 0 ? -1 : 'S';
+    return mr_runtime_xproc_candidate_pid(index) < 0 ? -1 : 'S';
 }
 
-long long mr_gui_test_xproc_start(long long pid, long long start_time,
+long long mr_runtime_xproc_start(long long pid, long long start_time,
                                   long long max_bytes)
 {
-    if (mr_gui_test_xproc_simulation_enabled() == 0 || xproc_mock_in_flight != 0 ||
+    if (mr_runtime_xproc_simulation_enabled() == 0 || xproc_mock_in_flight != 0 ||
         (pid != 4242 && pid != 4243) || start_time != 7700 + (pid - 4242) ||
         max_bytes <= 0 || max_bytes > 16ll * 1024ll * 1024ll) {
         return 2;
@@ -200,9 +202,9 @@ long long mr_gui_test_xproc_start(long long pid, long long start_time,
     return 0;
 }
 
-long long mr_gui_test_xproc_poll(void)
+long long mr_runtime_xproc_poll(void)
 {
-    if (mr_gui_test_xproc_simulation_enabled() == 0 || xproc_mock_in_flight == 0) return -2;
+    if (mr_runtime_xproc_simulation_enabled() == 0 || xproc_mock_in_flight == 0) return -2;
     if (xproc_mock_progress < 2) {
         xproc_mock_progress++;
         return -1;
@@ -213,18 +215,18 @@ long long mr_gui_test_xproc_poll(void)
     return 1; /* partial advice is explicit; no syscall has been made */
 }
 
-long long mr_gui_test_xproc_stage(void)
+long long mr_runtime_xproc_stage(void)
 {
     return xproc_mock_progress;
 }
 
-long long mr_gui_test_xproc_result_advised_bytes(void) { return xproc_mock_advised; }
-long long mr_gui_test_xproc_result_requested_bytes(void) { return xproc_mock_requested; }
-long long mr_gui_test_xproc_result_regions(void) { return xproc_mock_regions; }
-long long mr_gui_test_xproc_result_call_count(void) { return 0; }
+long long mr_runtime_xproc_result_advised_bytes(void) { return xproc_mock_advised; }
+long long mr_runtime_xproc_result_requested_bytes(void) { return xproc_mock_requested; }
+long long mr_runtime_xproc_result_regions(void) { return xproc_mock_regions; }
+long long mr_runtime_xproc_result_call_count(void) { return 0; }
 
 /* Read an unprivileged CI helper-stage marker from its private runtime dir. */
-long long mr_gui_test_mock_stage(void)
+long long mr_runtime_mock_stage(void)
 {
     const char *path = getenv("MEMREDUCT_CI_MOCK_STAGE_FILE");
     struct stat status;
@@ -232,7 +234,7 @@ long long mr_gui_test_mock_stage(void)
     size_t used = 0;
     int fd;
 
-    if (mr_gui_test_clean_simulation_enabled() == 0 || path == NULL || path[0] != '/') return 0;
+    if (mr_runtime_clean_simulation_enabled() == 0 || path == NULL || path[0] != '/') return 0;
     fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
     if (fd < 0) return 0;
     if (fstat(fd, &status) != 0 || !S_ISREG(status.st_mode) || status.st_uid != geteuid() ||
@@ -256,7 +258,15 @@ long long mr_gui_test_mock_stage(void)
     return 0;
 }
 
-long long mr_gui_test_timeout_ms(void)
+/* This test-only entry connects the UI simulation to its private launcher.
+ * Production builds replace gui_test.c with gui_runtime_prod.c, which has no
+ * mock launcher or environment-controlled simulation path. */
+long long mr_runtime_clean_simulation_start(long long mode)
+{
+    return (long long)mr_start_reclaim_mock((int64_t)mode);
+}
+
+long long mr_runtime_timeout_ms(void)
 {
     const char *value = getenv("MEMREDUCT_CI_EXIT_MS");
     char *end = NULL;
@@ -361,7 +371,7 @@ static int capture_application_windows(void *data)
     int captured = 0;
     (void)data;
 
-    if (mr_gui_test_mode() == 0 || getenv("MEMREDUCT_CI_CAPTURE") == NULL ||
+    if (mr_runtime_mode() == 0 || getenv("MEMREDUCT_CI_CAPTURE") == NULL ||
         strcmp(getenv("MEMREDUCT_CI_CAPTURE"), "1") != 0) {
         return 0;
     }
@@ -387,9 +397,9 @@ static int capture_application_windows(void *data)
     return 0;
 }
 
-long long mr_gui_test_schedule_capture(void)
+long long mr_runtime_schedule_capture(void)
 {
-    if (mr_gui_test_mode() == 0 || getenv("MEMREDUCT_CI_CAPTURE") == NULL ||
+    if (mr_runtime_mode() == 0 || getenv("MEMREDUCT_CI_CAPTURE") == NULL ||
         strcmp(getenv("MEMREDUCT_CI_CAPTURE"), "1") != 0) {
         return 0;
     }
@@ -437,31 +447,31 @@ static int sample_failure_trigger_is_valid(void)
            memcmp(buffer, expected, sizeof(expected) - 1) == 0;
 }
 
-long long mr_gui_test_sample_failure_requested(void)
+long long mr_runtime_sample_failure_requested(void)
 {
-    return mr_gui_test_mode() != 0 && sample_failure_trigger_consumed == 0 &&
+    return mr_runtime_mode() != 0 && sample_failure_trigger_consumed == 0 &&
            sample_failure_trigger_is_valid() != 0 ? 1 : 0;
 }
 
-long long mr_gui_test_consume_sample_failure_trigger(void)
+long long mr_runtime_consume_sample_failure_trigger(void)
 {
-    if (mr_gui_test_sample_failure_requested() == 0) {
+    if (mr_runtime_sample_failure_requested() == 0) {
         return 0;
     }
     sample_failure_trigger_consumed = 1;
     return 1;
 }
 
-long long mr_gui_test_start_settings(void)
+long long mr_runtime_start_settings(void)
 {
     const char *value = getenv("MEMREDUCT_CI_START_SETTINGS");
-    return mr_gui_test_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
+    return mr_runtime_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
 }
 
-long long mr_gui_test_widget_preview_resource(void)
+long long mr_runtime_widget_preview_resource(void)
 {
     const char *value = getenv("MEMREDUCT_CI_WIDGET_PREVIEW");
-    if (mr_gui_test_mode() == 0 || value == NULL) {
+    if (mr_runtime_mode() == 0 || value == NULL) {
         return 0;
     }
     if (strcmp(value, "checkbox-116") == 0) {
@@ -473,9 +483,9 @@ long long mr_gui_test_widget_preview_resource(void)
     return 0;
 }
 
-long long mr_gui_test_log_canvas_font(void)
+long long mr_runtime_log_canvas_font(void)
 {
-    if (mr_gui_test_mode() == 0) {
+    if (mr_runtime_mode() == 0) {
         return 0;
     }
 
@@ -530,7 +540,7 @@ long long mr_gui_test_log_canvas_font(void)
 
 /* CI markers must survive an abnormal exit, so they bypass the buffered
    stdout the Zamak runtime uses for `println`. */
-void mr_ci_emit(const char *line)
+void mr_runtime_emit(const char *line)
 {
     if (getenv("MEMREDUCT_CI") == NULL || line == NULL) {
         return;

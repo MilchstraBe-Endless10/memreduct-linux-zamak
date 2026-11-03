@@ -66,12 +66,12 @@ jobs:
       - name: Exercise production UI with isolated real X11 input
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/p2b-x11
-        run: bash scripts/ci/p2b-production-xvfb.sh "$RUNNER_TEMP/p2b-x11/memreduct-zamak-production"
+        run: bash scripts/ci/p2b-production-xvfb.sh "$RUNNER_TEMP/p2b-x11/memreduct-zamak-ci-test"
       - name: Exercise production settings pages with isolated real X11 input
         if: github.event_name != 'pull_request' || github.event.pull_request.head.ref != 'feat/issue-3-p2c-settings-ui'
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/p2b-x11
-        run: bash scripts/ci/p2c-settings-xvfb.sh "$RUNNER_TEMP/p2b-x11/memreduct-zamak-production"
+        run: bash scripts/ci/p2c-settings-xvfb.sh "$RUNNER_TEMP/p2b-x11/memreduct-zamak-ci-test"
       - name: Upload X11 screenshots and logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24
@@ -123,7 +123,7 @@ jobs:
       - name: Run production UI on a private Weston socket
         env:
           ARTIFACT_DIR: ${{ runner.temp }}/p2b-wayland
-        run: bash scripts/ci/p2b-production-wayland.sh "$RUNNER_TEMP/p2b-wayland/memreduct-zamak-production"
+        run: bash scripts/ci/p2b-production-wayland.sh "$RUNNER_TEMP/p2b-wayland/memreduct-zamak-ci-test"
       - name: Upload Weston and client logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node 24

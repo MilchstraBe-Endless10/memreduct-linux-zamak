@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 artifact_dir="${ARTIFACT_DIR:-$root/artifacts/p2b-wayland}"
-app="${1:-$artifact_dir/memreduct-zamak-production}"
+app="${1:-$artifact_dir/memreduct-zamak-ci-test}"
 mkdir -p "$artifact_dir"
 for cmd in weston wayland-info stat timeout grep; do
   command -v "$cmd" >/dev/null || { printf 'Missing Wayland test command: %s\n' "$cmd" >&2; exit 2; }

@@ -44,8 +44,11 @@ int64_t mr_start_reclaim(int64_t mode);
  * reporting the unattributable 126/127 outcome. */
 int64_t mr_reclaim_preflight(void);
 /* Test-only UI path: requires MEMREDUCT_CI=1 and a private fake authorizer.
- * It never calls pkexec or the installed production helper. */
+ * It never calls pkexec or the installed production helper. It is absent from
+ * async_privileged_production.c builds. */
+#ifndef MEMREDUCT_PRODUCTION_BUILD
 int64_t mr_start_reclaim_mock(int64_t mode);
+#endif
 int64_t mr_poll_reclaim(void);
 /* Record whether the running child reported its own failure. Exit codes cannot
  * distinguish a pkexec refusal from a child that exited with the same number,

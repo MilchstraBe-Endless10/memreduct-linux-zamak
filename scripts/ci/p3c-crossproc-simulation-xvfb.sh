@@ -5,7 +5,7 @@
 set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-app="${1:-$root/artifacts/p2b/memreduct-zamak-production}"
+app="${1:-$root/artifacts/p2b/memreduct-zamak-ci-test}"
 artifact_dir="${ARTIFACT_DIR:-$root/artifacts/p3c-xproc-simulation}"
 [[ -x "$app" ]] || { printf 'Production executable missing: %s\n' "$app" >&2; exit 2; }
 [[ "$(id -u)" != 0 ]] || { printf 'XProc simulation must run as an unprivileged user.\n' >&2; exit 2; }

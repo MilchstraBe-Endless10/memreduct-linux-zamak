@@ -1,5 +1,13 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-03 — M1.3 production build isolation recheck
+
+- **Normal production build:** `scripts/ci/build-production-gui.sh` passed governance (34 checks), shell syntax (20 scripts), Python safety (190 passed / 1 filesystem path-length skip), Zamak 0.2.0 check, Zamak GUI tests (80/80), CI GUI build, and production GUI build. It builds the CI executable separately as `memreduct-zamak-ci-test`; production uses inert runtime hooks and production-only async bridge.
+- **ELF gate evidence:** default production candidate `memreduct-zamak-production` has `mr_xproc_capability_enabled() == 0` and `mr_production_clean_enabled() == 0`; the separately built `memreduct-zamak-production-crossproc-candidate` has cross-process gate `1` while page-cache gate remains `0`. The opt-in candidate also has no CI/test environment strings, fixture symbols, or mock authorization entry point. Neither candidate was run against a target or invoked Polkit.
+- **Artifacts:** build logs, manifests, symbols and binaries were kept in the configured external AI output folder. SHA-256: default production `bb6c98c20502f6b20fdb04fe618db20349ddabce276ad3d6c1a05cf61544e04d`; CI test `82d32568716b0932201875c9f75c367798e27f87f229c90b73959841bd320f94`; cross-process opt-in `c519d79ff6878580155267721c41f4e2a4579d27a5cdf5244b445f53cd4f8ec1`.
+- **Real Hyprland interaction:** `XDG_SESSION_TYPE=wayland`, `WAYLAND_DISPLAY=wayland-1`, and a Hyprland process were observed. No native app/window control surface was available in this Codex session, so the production GUI was not launched or interactively inspected; do not call this a Hyprland acceptance. The live picker, risk prompt, and cancellation acceptance remain pending. No Polkit request, helper invocation, `MADV_PAGEOUT`, or M0 operation occurred.
+- **Git:** this worktree remains on `feat/issue-12-m1-3-manual-reclaim`; no remote action was performed. Windows 3.5.2 whole-page 1:1 fidelity remains NOT PASS.
+
 ## 2026-11-03 — M1.2 owner-reported success; M1.3 isolated GUI simulation verified
 
 - **M1.2 evidence:** Per owner-published [Issue #12 record](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak/issues/12#issuecomment-6599614790), one authenticated `process_madvise(MADV_PAGEOUT)` call advised 1 MiB on the project's temporary child; residency changed 256/256 → 0/256 pages; child stayed alive and data integrity passed; temporary resources were removed. This is not a net-RAM-freed measurement. The one-call authorization is consumed; this worktree did not repeat it.

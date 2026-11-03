@@ -378,7 +378,9 @@ class TestGuiTestBridge(unittest.TestCase):
         ).stdout.split()
         subprocess.run(
             ['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic',
-             '-shared', '-fPIC', str(ROOT / 'native/gui_test.c'), *gtk_flags,
+             '-shared', '-fPIC', str(ROOT / 'native/gui_test.c'),
+             str(ROOT / 'native/async_privileged.c'),
+             str(ROOT / 'native/production_clean_gate_default.c'), *gtk_flags,
              '-o', str(cls.library_path)],
             check=True,
         )
@@ -401,12 +403,12 @@ class TestGuiTestBridge(unittest.TestCase):
         probe = (
             'import ctypes,sys; '
             'lib=ctypes.CDLL(sys.argv[1]); '
-            'lib.mr_gui_test_sample_failure_requested.restype=ctypes.c_longlong; '
-            'lib.mr_gui_test_consume_sample_failure_trigger.restype=ctypes.c_longlong; '
-            'print(lib.mr_gui_test_sample_failure_requested(), '
-            'lib.mr_gui_test_consume_sample_failure_trigger(), '
-            'lib.mr_gui_test_sample_failure_requested(), '
-            'lib.mr_gui_test_consume_sample_failure_trigger())'
+            'lib.mr_runtime_sample_failure_requested.restype=ctypes.c_longlong; '
+            'lib.mr_runtime_consume_sample_failure_trigger.restype=ctypes.c_longlong; '
+            'print(lib.mr_runtime_sample_failure_requested(), '
+            'lib.mr_runtime_consume_sample_failure_trigger(), '
+            'lib.mr_runtime_sample_failure_requested(), '
+            'lib.mr_runtime_consume_sample_failure_trigger())'
         )
 
         def run_probe(path, enabled=True):
@@ -432,13 +434,13 @@ class TestGuiTestBridge(unittest.TestCase):
 
     def test_widget_preview_environment_is_ci_gated_and_allowlisted(self):
         library = ctypes.CDLL(str(self.library_path))
-        library.mr_gui_test_widget_preview_resource.restype = ctypes.c_longlong
+        library.mr_runtime_widget_preview_resource.restype = ctypes.c_longlong
         names = ('MEMREDUCT_CI', 'MEMREDUCT_CI_WIDGET_PREVIEW')
         previous = {name: os.environ.get(name) for name in names}
         try:
             os.environ['MEMREDUCT_CI_WIDGET_PREVIEW'] = 'checkbox-136'
             os.environ.pop('MEMREDUCT_CI', None)
-            self.assertEqual(library.mr_gui_test_widget_preview_resource(), 0)
+            self.assertEqual(library.mr_runtime_widget_preview_resource(), 0)
 
             os.environ['MEMREDUCT_CI'] = '1'
             for value, expected in (
@@ -450,7 +452,7 @@ class TestGuiTestBridge(unittest.TestCase):
             ):
                 with self.subTest(value=value):
                     os.environ['MEMREDUCT_CI_WIDGET_PREVIEW'] = value
-                    self.assertEqual(library.mr_gui_test_widget_preview_resource(), expected)
+                    self.assertEqual(library.mr_runtime_widget_preview_resource(), expected)
         finally:
             for name, value in previous.items():
                 if value is None:
@@ -524,7 +526,7 @@ class TestCiMarkerOutputPath(unittest.TestCase):
 
     def test_main_markers_use_the_unbuffered_native_emitter(self):
         source = (ROOT / 'src/main.zm').read_text()
-        self.assertIn('extern fn mr_ci_emit(line: &string)', source)
+        self.assertIn('extern fn mr_runtime_emit(line: &string)', source)
         leaked = [
             line.strip()
             for line in source.splitlines()
@@ -543,7 +545,9 @@ class TestCiMarkerOutputPath(unittest.TestCase):
         ).stdout.split()
         subprocess.run(
             ['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-pedantic',
-             '-shared', '-fPIC', str(ROOT / 'native/gui_test.c'), *gtk_flags,
+             '-shared', '-fPIC', str(ROOT / 'native/gui_test.c'),
+             str(ROOT / 'native/async_privileged.c'),
+             str(ROOT / 'native/production_clean_gate_default.c'), *gtk_flags,
              '-o', str(library_path)],
             check=True,
         )
@@ -551,7 +555,7 @@ class TestCiMarkerOutputPath(unittest.TestCase):
         # the assertion has to observe a real child process, not sys.stderr.
         script = (
             'import ctypes, sys\n'
-            'emit = ctypes.CDLL(sys.argv[1]).mr_ci_emit\n'
+            'emit = ctypes.CDLL(sys.argv[1]).mr_runtime_emit\n'
             'emit.argtypes = [ctypes.c_char_p]\n'
             'emit.restype = None\n'
             'emit(b"CI_PRODUCTION_START")\n'

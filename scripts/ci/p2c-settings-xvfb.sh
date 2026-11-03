@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 artifact_dir="${ARTIFACT_DIR:-$root/artifacts/p2c-x11}"
-app="${1:-$artifact_dir/memreduct-zamak-production}"
+app="${1:-$artifact_dir/memreduct-zamak-ci-test}"
 font_candidate="${P2C_FONT_CANDIDATE:-default}"
 fontconfig_mode=system-default
 mkdir -p "$artifact_dir"
