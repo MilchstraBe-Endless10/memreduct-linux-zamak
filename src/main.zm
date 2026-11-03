@@ -346,13 +346,21 @@ fn xproc_result_name(state: i64) -> string:
     if state == 25: return "authorization-failed"
     "in-progress"
 
-fn xproc_result_text(zh: bool, state: i64) -> string:
-    if state == 10: return label(zh, "Kernel accepted the full advice request.", "内核已接受完整回收建议请求。")
-    if state == 11: return label(zh, "Kernel accepted only part of the advice request.", "内核只接受了部分回收建议请求。")
+fn xproc_result_text(zh: bool, state: i64, simulated: bool) -> string:
+    if state == 10:
+        if simulated: return label(zh, "Simulation: test helper reported the full request.", "模拟：测试 helper 报告完整建议请求。")
+        return label(zh, "Kernel accepted the full advice request.", "内核已接受完整回收建议请求。")
+    if state == 11:
+        if simulated: return label(zh, "Simulation: test helper reported a partial request.", "模拟：测试 helper 报告部分建议请求。")
+        return label(zh, "Kernel accepted only part of the advice request.", "内核只接受了部分回收建议请求。")
     if state == 12: return label(zh, "The helper refused this target before advising it.", "helper 在发出回收建议前拒绝了此目标。")
-    if state == 13: return label(zh, "The kernel denied permission for this target.", "内核拒绝了此目标的权限请求。")
+    if state == 13:
+        if simulated: return label(zh, "Simulation: the mock helper reported a permission denial.", "模拟：测试 helper 返回权限拒绝。")
+        return label(zh, "The kernel denied permission for this target.", "内核拒绝了此目标的权限请求。")
     if state == 14: return label(zh, "The selected process exited before the request completed.", "所选进程在请求完成前已退出。")
-    if state == 15: return label(zh, "This kernel does not support the requested operation.", "当前内核不支持该操作。")
+    if state == 15:
+        if simulated: return label(zh, "Simulation: the mock backend reports this operation unsupported.", "模拟：测试后端报告此操作不受支持。")
+        return label(zh, "This kernel does not support the requested operation.", "当前内核不支持该操作。")
     if state == 16: return label(zh, "The helper found no eligible memory regions.", "helper 未找到符合条件的内存区域。")
     if state == 17: return label(zh, "Authorization was dismissed or could not be attributed; no retry was made.", "授权被取消或无法确认原因；未重试。")
     if state == 18: return label(zh, "Could not start the fixed authorization helper.", "无法启动固定授权 helper。")
@@ -364,6 +372,14 @@ fn xproc_result_text(zh: bool, state: i64) -> string:
     if state == 24: return label(zh, "Authorization was cancelled; no helper result was received and no retry was made.", "已取消授权；未收到 helper 结果，也不会自动重试。")
     if state == 25: return label(zh, "Polkit could not authorize or start the fixed helper; no retry was made.", "Polkit 未能授权或启动固定 helper；不会自动重试。")
     label(zh, "Cross-process reclaim is in progress.", "跨进程回收正在进行。")
+
+fn xproc_advised_bytes_label(zh: bool, simulated: bool) -> string:
+    if simulated: return label(zh, "Mock bytes advised:", "模拟建议字节：")
+    label(zh, "Bytes advised:", "建议字节：")
+
+fn xproc_helper_calls_label(zh: bool, simulated: bool) -> string:
+    if simulated: return label(zh, "Mock helper calls:", "模拟 helper 调用：")
+    label(zh, "Helper calls:", "helper 调用：")
 
 fn xproc_waiting_text(zh: bool, state: i64, simulation: bool) -> string:
     if simulation:
@@ -499,7 +515,7 @@ fn xproc_local_failure(s: &mut MainWindow, state: i64):
     s.xproc_regions = 0
     s.xproc_error_code = 0
     s.xproc_call_count = 0
-    s.status = xproc_result_text(s.zh, state)
+    s.status = xproc_result_text(s.zh, state, s.xproc_simulation)
     if s.test_mode: mr_ci_emit(f"CI_XPROC_RESULT state={xproc_result_name(state)} authorization_started=false call_count=0 no_system_write={s.xproc_simulation}")
     s.canvas.redraw()
 
@@ -526,7 +542,7 @@ fn xproc_finish(s: &mut MainWindow, result: i64):
     s.page_cache_estimate = after.page_cache
     s.sample_ok = true
     s.xproc_after_available = after.available
-    s.status = xproc_result_text(s.zh, s.xproc_state)
+    s.status = xproc_result_text(s.zh, s.xproc_state, s.xproc_simulation)
     if s.test_mode: mr_ci_emit(f"CI_XPROC_RESULT state={xproc_result_name(s.xproc_state)} poll={result} advised_bytes={s.xproc_advised_bytes} requested_bytes={s.xproc_requested_bytes} regions={s.xproc_regions} error_code={s.xproc_error_code} call_count={s.xproc_call_count} memavailable_before_kib={s.xproc_before_available} memavailable_after_kib={s.xproc_after_available} causal_attribution=none no_retry=true mock={s.xproc_simulation} no_system_write={s.xproc_simulation}")
     s.canvas.redraw()
 
@@ -547,7 +563,7 @@ fn xproc_start_selected(s: &mut MainWindow):
         s.xproc_view = 4
         s.xproc_before_available = -1
         s.xproc_after_available = -1
-        s.status = xproc_result_text(s.zh, 22)
+        s.status = xproc_result_text(s.zh, 22, s.xproc_simulation)
         s.canvas.redraw()
         return
     s.xproc_before_available = before.available
@@ -573,7 +589,7 @@ fn xproc_start_selected(s: &mut MainWindow):
 fn xproc_confirm_cancel(s: &mut MainWindow):
     s.xproc_state = 21
     s.xproc_view = 4
-    s.status = xproc_result_text(s.zh, 21)
+    s.status = xproc_result_text(s.zh, 21, s.xproc_simulation)
     if s.test_mode: mr_ci_emit(f"CI_XPROC_RESULT state=confirmation-cancelled authorization_started=false call_count=0 mock={s.xproc_simulation}")
     s.canvas.redraw()
 
@@ -1034,11 +1050,11 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
         p.text(panel.x + 9.0, panel.y + 77.0, label(s.zh, "This view stays open until a result is known.", "结果明确前，此窗口会保持打开。"), secondary, size=8.0)
     else:
         let reason = if s.xproc_simulation: "simulated-partial" else: mr_xproc_result_reason()
-        p.text(panel.x + 9.0, panel.y + 27.0, xproc_result_text(s.zh, s.xproc_state), fg, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 27.0, xproc_result_text(s.zh, s.xproc_state, s.xproc_simulation), fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 49.0, f"Target PID {s.xproc_target_pid} · UID {s.xproc_target_uid}", secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 68.0, f"Bytes advised: {xproc_bytes(s.xproc_advised_bytes)}", fg, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 68.0, f"{xproc_advised_bytes_label(s.zh, s.xproc_simulation)} {xproc_bytes(s.xproc_advised_bytes)}", fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 86.0, f"Requested: {xproc_bytes(s.xproc_requested_bytes)} · regions: {s.xproc_regions}", secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 104.0, f"Helper calls: {s.xproc_call_count} · errno: {s.xproc_error_code}", secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 104.0, f"{xproc_helper_calls_label(s.zh, s.xproc_simulation)} {s.xproc_call_count} · errno: {s.xproc_error_code}", secondary, size=8.0)
         p.text(panel.x + 9.0, panel.y + 122.0, f"Reason: {reason}", secondary, size=8.0)
         p.text(panel.x + 9.0, panel.y + 150.0, f"MemAvailable before: {value(s.xproc_before_available, s.xproc_before_available >= 0)}", secondary, size=8.0)
         p.text(panel.x + 9.0, panel.y + 168.0, f"MemAvailable after: {value(s.xproc_after_available, s.xproc_after_available >= 0)}", secondary, size=8.0)
@@ -1212,6 +1228,18 @@ fn test_xproc_candidate_process_state_text_is_explicit():
     assert(xproc_candidate_state_text(false, 84) == "stopped")
     assert(xproc_candidate_state_text(false, 999) == "unknown")
     assert(xproc_candidate_state_text(true, 83) == "休眠中")
+
+fn test_xproc_simulation_never_claims_a_kernel_result():
+    assert(xproc_result_text(false, 10, false) == "Kernel accepted the full advice request.")
+    assert(xproc_result_text(false, 11, false) == "Kernel accepted only part of the advice request.")
+    assert(xproc_result_text(false, 10, true) == "Simulation: test helper reported the full request.")
+    assert(xproc_result_text(false, 11, true) == "Simulation: test helper reported a partial request.")
+    assert(xproc_result_text(true, 11, true) == "模拟：测试 helper 报告部分建议请求。")
+    assert(xproc_result_text(false, 13, true) == "Simulation: the mock helper reported a permission denial.")
+    assert(xproc_advised_bytes_label(false, true) == "Mock bytes advised:")
+    assert(xproc_advised_bytes_label(false, false) == "Bytes advised:")
+    assert(xproc_helper_calls_label(false, true) == "Mock helper calls:")
+    assert(xproc_helper_calls_label(false, false) == "Helper calls:")
 
 fn test_clean_operation_results_preserve_distinct_feedback():
     assert(clean_operation_busy(2))
