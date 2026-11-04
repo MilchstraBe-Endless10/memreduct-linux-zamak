@@ -1,5 +1,11 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-05 — M1.3 新隔离 Pinta 目标已准备，等待目标级授权
+
+- 在新的唯一用户 scope 下启动了空白 Pinta，使用 AI 输出目录内独立 XDG profile，没有传入文件路径。只读核验确认命令行为 dotnet + Pinta.dll、UID 四元组一致、启动时间及专属 scope 与预期相符；目标身份和当时的 smaps/maps 观察保存在私有文件 `报告与研究/MemReduct-M1-3-2026-11-05/pkcheck-diagnostic/test-target-r1/target-candidate.md`，避免把本机 PID 写入公开仓库记忆。
+- 只读内存映射统计不代表可回收量；拟申请的操作上限为 16 MiB。未启动 Mem Reduct GUI、pkexec、Crossproc helper 或任何回收 syscall；旧 Pinta 实例未触碰。
+- 该新目标的 PID/start_time 一次性回收授权尚未取得。执行前必须重新核验全部身份字段；任何不匹配或退出都停止，不换目标。当前等待所有者对该具体实例批准一次调用。
+
 ## 2026-11-05 — 专属 Crossproc action 的 pkcheck 交互授权通过
 
 - **授权和 action：**所有者批准一次仅授权检查。已核实 action 为 io.github.milchstrasse_endless10.memreduct.zamak.crossproc，活动会话策略为 auth_admin，固定 executable 路径为 /usr/libexec/memreduct-zamak-crossproc-helper。
