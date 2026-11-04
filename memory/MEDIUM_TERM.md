@@ -1,5 +1,11 @@
 # 中期记忆 / Roadmap State
-更新时间：2026-11-03；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+更新时间：2026-11-04；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+
+## 2026-11-04 当前补充：M1.3 生产 Wayland 选择/取消通过，日常回收仍未授权
+
+- 在所有者批准的本机 Hyprland 测试中，隔离 XDG profile 的空白 Pinta 进程 PID `1874718`（UID 四元组 1000，start_time `41781042`，exe `/usr/share/dotnet/dotnet`，用户 `app-pinta-m13-test-r2.scope`）通过未启用 `MEMREDUCT_CI`/`MEMREDUCT_TEST` 的生产 M0+M1 候选进入真实候选列表，index 22/32。GUI 显示其身份、790 个私有 region 及映射长度估计，并成功打开 PAGEOUT 风险页。
+- 点击 Cancel 后界面明确显示请求未开始，requested/advised bytes、regions、helper calls 均为 0；没有 Polkit、helper、`process_madvise` 或其他进程操作。Mem Reduct 测试窗正常退出 0；Pinta 的精确临时 scope 随后停止且进程退出。证据、PNG 与哈希清单见 `memory/SHORT_TERM.md` 最新条目所列 `continuation-2026-11-04-02/m0-m1-candidate/real-wayland/`。
+- 修复 `MR_CAND_SKIP_LIMIT` 未记录 32-row list ceiling 的诊断缺口；不改变候选资格或 helper 安全规则。M1.3 的目标选择/风险/取消可在真实 Wayland 使用，**实际日常应用回收仍未执行，须针对具体目标另行授权**。全页 Windows v3.5.2 1:1 仍 NOT PASS；PR 未推送/改动。
 
 ## 2026-11-03 当前补充：M1.2 实测成功；M1.3 模拟 GUI 与只读实时扫描通过，日常进程回收未完成
 
