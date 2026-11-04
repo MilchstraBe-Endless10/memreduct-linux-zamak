@@ -17,6 +17,13 @@
 # simulation backend must not be reachable in this build/run shape.
 set -Eeuo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+# This test deliberately invokes the real pkexec path. Run it only on a hosted
+# headless Actions runner; on a local desktop an installed auth agent could
+# display a real Polkit prompt and launch the fixed helper after user input.
+if [[ "${GITHUB_ACTIONS:-}" != true || -n "${WAYLAND_DISPLAY:-}" || -n "${DISPLAY:-}" ]]; then
+  printf 'P0A invokes real pkexec and is restricted to a headless GitHub Actions runner.\n' >&2
+  exit 2
+fi
 artifact_dir="$(printenv ARTIFACT_DIR || printf /tmp/p0a-mock-run)"
 mkdir -p "$artifact_dir"
 tmp_root="$(printenv RUNNER_TEMP || printf /tmp)"
@@ -145,7 +152,8 @@ forbid_marker 'CI_CLEAN_SIM stage='
 forbid_marker 'CI_CLEAN_SIM result='
 forbid_marker 'backend=mock'
 
-# Open the Clean menu and click the page-cache row (target 19).
+# The button body opens the action menu. Page-cache confirmation is reachable
+# only after the user explicitly chooses that row.
 # The #11 CSD titlebar sits above the canvas, so window-space Y = canvas Y +
 # titlebar height. Derive the titlebar height from the app's own geometry
 # markers instead of assuming 47: CI_MAIN_CONTENT_INSET and the canvas alloc
@@ -173,7 +181,14 @@ done
 printf 'clean_button_window_y=%s\n' "$found" | tee -a "$artifact_dir/environment.txt"
 xdotool click 1
 sleep 0.3
-require_marker 'CI_MOUSE_ACTION target=19' require_marker 'CI_CLEAN_CONFIRM open=true mode=production'
+require_marker 'CI_MOUSE_ACTION target=19'
+require_marker 'CI_CLEAN_MENU open=true source=button-body default_action=none'
+forbid_marker 'CI_CLEAN_CONFIRM open=true'
+forbid_marker 'CI_XPROC_PICKER open=true'
+xdotool key --clearmodifiers Down
+require_marker 'CI_FOCUS item=501.0'
+xdotool key --clearmodifiers Return
+require_marker 'CI_CLEAN_CONFIRM open=true mode=production'
 for _ in {1..50}; do
   grep -q 'CI_CLEAN_CONFIRM_TEXT ' "$app_log" && break
   sleep 0.1
@@ -247,4 +262,19 @@ grep 'CI_CLEAN result=uncertain' "$app_log" | tail -n 1 | tee -a "$artifact_dir/
 
 sleep 0.3
 import -window "$window_id" "$artifact_dir/clean-result.png"
+xdotool mousemove --window "$window_id" 309 28
+xdotool click 1
+for _ in {1..100}; do kill -0 "$app_pid" 2>/dev/null || break; sleep 0.1; done
+if kill -0 "$app_pid" 2>/dev/null; then
+  printf 'Application did not close through its GTK titlebar button.\n' >&2
+  exit 1
+fi
+set +e
+wait "$app_pid"
+app_status="$?"
+set -e
+app_pid=""
+[[ "$app_status" -eq 0 ]] || { printf 'Application exited with %s after GTK close.\n' "$app_status" >&2; exit 1; }
+require_marker 'CI_WINDOW_CLOSE'
+require_marker 'CI_APP_RETURNED'
 printf 'P0A production-clean real-pkexec refusal chain: PASS\n' | tee "$artifact_dir/result.txt"

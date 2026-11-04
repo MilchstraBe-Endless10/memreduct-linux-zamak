@@ -78,6 +78,8 @@ extern fn mr_xproc_result_requested_bytes() -> i64
 extern fn mr_xproc_result_regions() -> i64
 extern fn mr_xproc_result_error_code() -> i64
 extern fn mr_xproc_result_call_count() -> i64
+extern fn mr_xproc_result_exit_code() -> i64
+extern fn mr_xproc_result_signal() -> i64
 extern fn mr_xproc_result_reason() -> string
 extern fn mr_xproc_local_refusal() -> i64
 extern fn mr_self_reclaim_bytes() -> i64
@@ -373,6 +375,14 @@ fn xproc_result_text(zh: bool, state: i64, simulated: bool) -> string:
     if state == 25: return label(zh, "Polkit could not authorize or start the fixed helper; no retry was made.", "Polkit 未能授权或启动固定 helper；不会自动重试。")
     label(zh, "Cross-process reclaim is in progress.", "跨进程回收正在进行。")
 
+fn xproc_exit_detail(zh: bool, exit_code: i64, signal: i64) -> string:
+    if signal > 0:
+        return label(zh, f"pkexec child ended by signal {signal}; result is unknown.", f"pkexec 子进程被信号 {signal} 终止；结果不确定。")
+    if exit_code == 126: return label(zh, "pkexec exit 126: authorization was dismissed.", "pkexec 退出码 126：授权对话已取消。")
+    if exit_code == 127: return label(zh, "pkexec exit 127: authorization or launch failed.", "pkexec 退出码 127：授权或启动失败。")
+    if exit_code >= 0: return f"pkexec exit code {exit_code}"
+    ""
+
 fn xproc_advised_bytes_label(zh: bool, simulated: bool) -> string:
     if simulated: return label(zh, "Mock bytes advised:", "模拟建议字节：")
     label(zh, "Bytes advised:", "建议字节：")
@@ -526,11 +536,13 @@ fn xproc_finish(s: &mut MainWindow, result: i64):
     s.xproc_regions = if s.xproc_simulation: mr_runtime_xproc_result_regions() else: mr_xproc_result_regions()
     s.xproc_error_code = if s.xproc_simulation: 0 else: mr_xproc_result_error_code()
     s.xproc_call_count = if s.xproc_simulation: mr_runtime_xproc_result_call_count() else: mr_xproc_result_call_count()
+    let child_exit = if s.xproc_simulation: -1 else: mr_xproc_result_exit_code()
+    let child_signal = if s.xproc_simulation: 0 else: mr_xproc_result_signal()
     s.xproc_after_available = -1
     s.xproc_view = 4
     let after = memory.sample() catch e:
         let reason = if s.xproc_simulation: "simulated-partial" else: mr_xproc_result_reason()
-        if s.test_mode: mr_runtime_emit(f"CI_XPROC_RESULT state={xproc_result_name(s.xproc_state)} poll={result} advised_bytes={s.xproc_advised_bytes} requested_bytes={s.xproc_requested_bytes} regions={s.xproc_regions} error_code={s.xproc_error_code} call_count={s.xproc_call_count} reason={reason} memavailable_before_kib={s.xproc_before_available} memavailable_after_kib=unavailable causal_attribution=none no_retry=true mock={s.xproc_simulation} no_system_write={s.xproc_simulation}")
+        if s.test_mode: mr_runtime_emit(f"CI_XPROC_RESULT state={xproc_result_name(s.xproc_state)} poll={result} advised_bytes={s.xproc_advised_bytes} requested_bytes={s.xproc_requested_bytes} regions={s.xproc_regions} error_code={s.xproc_error_code} call_count={s.xproc_call_count} pkexec_exit_code={child_exit} child_signal={child_signal} reason={reason} memavailable_before_kib={s.xproc_before_available} memavailable_after_kib=unavailable causal_attribution=none no_retry=true mock={s.xproc_simulation} no_system_write={s.xproc_simulation}")
         if s.test_mode: mr_runtime_emit(f"CI_XPROC_AFTER_SAMPLE available=false error={e}")
         s.status = label(s.zh, "Result recorded; after-sample unavailable", "结果已记录；无法取得操作后采样")
         s.canvas.redraw()
@@ -543,7 +555,7 @@ fn xproc_finish(s: &mut MainWindow, result: i64):
     s.sample_ok = true
     s.xproc_after_available = after.available
     s.status = xproc_result_text(s.zh, s.xproc_state, s.xproc_simulation)
-    if s.test_mode: mr_runtime_emit(f"CI_XPROC_RESULT state={xproc_result_name(s.xproc_state)} poll={result} advised_bytes={s.xproc_advised_bytes} requested_bytes={s.xproc_requested_bytes} regions={s.xproc_regions} error_code={s.xproc_error_code} call_count={s.xproc_call_count} memavailable_before_kib={s.xproc_before_available} memavailable_after_kib={s.xproc_after_available} causal_attribution=none no_retry=true mock={s.xproc_simulation} no_system_write={s.xproc_simulation}")
+    if s.test_mode: mr_runtime_emit(f"CI_XPROC_RESULT state={xproc_result_name(s.xproc_state)} poll={result} advised_bytes={s.xproc_advised_bytes} requested_bytes={s.xproc_requested_bytes} regions={s.xproc_regions} error_code={s.xproc_error_code} call_count={s.xproc_call_count} pkexec_exit_code={child_exit} child_signal={child_signal} memavailable_before_kib={s.xproc_before_available} memavailable_after_kib={s.xproc_after_available} causal_attribution=none no_retry=true mock={s.xproc_simulation} no_system_write={s.xproc_simulation}")
     s.canvas.redraw()
 
 fn xproc_start_selected(s: &mut MainWindow):
@@ -1056,6 +1068,11 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
         p.text(panel.x + 9.0, panel.y + 86.0, f"Requested: {xproc_bytes(s.xproc_requested_bytes)} · regions: {s.xproc_regions}", secondary, size=8.0)
         p.text(panel.x + 9.0, panel.y + 104.0, f"{xproc_helper_calls_label(s.zh, s.xproc_simulation)} {s.xproc_call_count} · errno: {s.xproc_error_code}", secondary, size=8.0)
         p.text(panel.x + 9.0, panel.y + 122.0, f"Reason: {reason}", secondary, size=8.0)
+        let child_exit = if s.xproc_simulation: -1 else: mr_xproc_result_exit_code()
+        let child_signal = if s.xproc_simulation: 0 else: mr_xproc_result_signal()
+        let exit_detail = xproc_exit_detail(s.zh, child_exit, child_signal)
+        if exit_detail != "" and (s.xproc_state == 19 or s.xproc_state == 24 or s.xproc_state == 25):
+            p.text(panel.x + 9.0, panel.y + 138.0, exit_detail, secondary, size=7.0)
         p.text(panel.x + 9.0, panel.y + 150.0, f"MemAvailable before: {value(s.xproc_before_available, s.xproc_before_available >= 0)}", secondary, size=8.0)
         p.text(panel.x + 9.0, panel.y + 168.0, f"MemAvailable after: {value(s.xproc_after_available, s.xproc_after_available >= 0)}", secondary, size=8.0)
         p.text(panel.x + 9.0, panel.y + 192.0, label(s.zh, "Observed change is not causal attribution.", "观测变化不能归因于本次操作。"), secondary, size=8.0)
@@ -1240,6 +1257,12 @@ fn test_xproc_simulation_never_claims_a_kernel_result():
     assert(xproc_advised_bytes_label(false, false) == "Bytes advised:")
     assert(xproc_helper_calls_label(false, true) == "Mock helper calls:")
     assert(xproc_helper_calls_label(false, false) == "Helper calls:")
+
+fn test_xproc_exit_detail_keeps_pkexec_outcome_codes_distinct():
+    assert(xproc_exit_detail(false, 126, 0) == "pkexec exit 126: authorization was dismissed.")
+    assert(xproc_exit_detail(false, 127, 0) == "pkexec exit 127: authorization or launch failed.")
+    assert(xproc_exit_detail(false, -1, 15) == "pkexec child ended by signal 15; result is unknown.")
+    assert(xproc_exit_detail(false, -1, 0) == "")
 
 fn test_clean_operation_results_preserve_distinct_feedback():
     assert(clean_operation_busy(2))
@@ -1429,6 +1452,15 @@ fn settings_scroll_tick(s: &mut MainWindow):
     if s.test_mode: mr_runtime_emit(f"CI_SETTINGS_SCROLL_DISPATCH x={x} y={y} delta={delta} changed={changed}")
     if changed: s.settings_canvas.redraw()
 
+fn open_clean_menu(s: &mut MainWindow, source: string):
+    s.popup = 2
+    s.menu = 0
+    s.focus = 4.0
+    s.menu_focus = 500.0
+    s.status = label(s.zh, "Choose a memory action", "请选择内存操作")
+    if s.test_mode: mr_runtime_emit(f"CI_CLEAN_MENU open=true source={source} default_action=none")
+    log_popup(s, "clean", &clean_popup_rect(s))
+
 fn activate(s: &mut MainWindow, target: f64):
     if s.xproc_view == 1:
         if target >= 900.0 and target < 932.0:
@@ -1476,35 +1508,12 @@ fn activate(s: &mut MainWindow, target: f64):
         if s.test_mode: mr_runtime_emit(f"CI_MENU root={s.menu} open={s.popup == 1}")
         if s.popup == 1: log_popup(s, "root", &menu_rect(s))
     elif target == 20.0:
-        s.popup = 2
-        s.menu = 0
-        s.focus = 4.0
-        s.menu_focus = 500.0
-        s.status = label(s.zh, "Cleaning is not enabled in this build", "当前版本尚未开放内存清理")
-        if s.test_mode: mr_runtime_emit("CI_CLEAN_MENU open=true")
-        log_popup(s, "clean", &clean_popup_rect(s))
+        open_clean_menu(s, "arrow")
     elif target == 19.0:
-        # Production runs check the fixed chain first: a missing helper or
-        # policy must be named, not turned into "outcome unconfirmed".
-        let preflight = if s.clean_production: mr_reclaim_preflight() else: 0
-        if preflight != 0 and not s.clean_simulation and clean_simulation_can_start(s.clean_state):
-            s.clean_state = 13
-            s.status = clean_preflight_status(s.zh, preflight)
-            if s.test_mode: mr_runtime_emit(f"CI_CLEAN_PREFLIGHT result={preflight} action=blocked component_missing=true")
-        elif (s.clean_simulation or s.clean_production) and clean_simulation_can_start(s.clean_state):
-            s.clean_state = 1
-            s.clean_confirm_focus = 0
-            s.status = ""
-            if s.test_mode:
-                let confirm_mode = if s.clean_simulation: "simulation" else: "production"
-                mr_runtime_emit(f"CI_CLEAN_CONFIRM open=true mode={confirm_mode}")
-        else:
-            # The wording has to say WHY the click did nothing. A busy state
-            # carries its own explanation; a build without the capability gate
-            # compiled in never had a clean action to run, which is what the
-            # user is actually looking at in a default build.
-            s.status = if clean_operation_busy(s.clean_state): clean_result_status(s.zh, s.clean_state) else: label(s.zh, "Page cache cleaning is not compiled into this build", "当前构建未编译页缓存清理功能")
-            if s.test_mode: mr_runtime_emit("CI_CLEAN_DISABLED action=none production_bridge_connected=false")
+        # The whole control opens the action menu. Page cache remains an
+        # explicit menu choice so the generic button cannot misroute a user
+        # who intends to select a process.
+        open_clean_menu(s, "button-body")
     elif target == 710.0 and s.clean_state == 1:
         if not s.sample_ok:
             s.clean_state = 12
@@ -1597,6 +1606,7 @@ fn activate(s: &mut MainWindow, target: f64):
             if clean_operation_busy(s.clean_state):
                 s.status = label(s.zh, "Wait for the current memory operation to finish.", "请等待当前内存操作完成。")
             elif s.xproc_simulation or mr_xproc_enabled() != 0:
+                if s.test_mode: mr_runtime_emit("CI_CLEAN_ACTION index=8 action=selected-process")
                 xproc_scan(s)
             else:
                 s.status = label(s.zh, "Cross-process reclaim is not built into this version.", "此版本未编译跨进程回收功能。")

@@ -598,6 +598,8 @@ class DriverTest(unittest.TestCase):
                     printf("calls=%lld\\n", (long long)mr_xproc_result_call_count());
                     printf("verified=%lld\\n", (long long)mr_xproc_result_start_time_verified());
                     printf("uid=%lld\\n", (long long)mr_xproc_result_uid());
+                    printf("pkexec_exit_code=%lld\\n", (long long)mr_xproc_result_exit_code());
+                    printf("child_signal=%lld\\n", (long long)mr_xproc_result_signal());
                     printf("reason=%s\\n", mr_xproc_result_reason());
                     return 0;
                 }
@@ -740,8 +742,12 @@ class DriverTest(unittest.TestCase):
     def test_pkexec_cancel_and_authorization_failure_are_distinct(self):
         fields = self.classify("", 126)
         self.assertEqual(fields["verdict"], "11")  # AUTH_CANCELLED
+        self.assertEqual(fields["pkexec_exit_code"], "126")
+        self.assertEqual(fields["child_signal"], "0")
         fields = self.classify("", 127)
         self.assertEqual(fields["verdict"], "12")  # AUTH_FAILED
+        self.assertEqual(fields["pkexec_exit_code"], "127")
+        self.assertEqual(fields["child_signal"], "0")
 
     def test_pkexec_code_with_a_helper_result_is_outcome_unknown(self):
         for code in (126, 127):

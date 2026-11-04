@@ -18,6 +18,8 @@ if [[ -z "$artifact_dir" ]]; then
 else
   mkdir -p "$artifact_dir"
 fi
+harness_log="$artifact_dir/harness.log"
+printf 'HARNESS_START backend=xvfb app_pid_pending=true\n' >"$harness_log"
 
 xvfb_prefix="$(printenv XVFB_PREFIX || printf '%s/.local/opt/xvfb-test' "$HOME")"
 if [[ -d "$xvfb_prefix/usr/bin" ]]; then
@@ -38,25 +40,32 @@ chmod 0700 "$runtime_dir"
 xvfb_pid=""
 app_pid=""
 stop_pid() {
-  local pid="$1" i
+  local pid="$1" child="$2" i signal=SIGTERM wait_status=0
   [[ -n "$pid" ]] || return 0
   kill -0 "$pid" 2>/dev/null || return 0
+  printf 'HARNESS_TEARDOWN child=%s signal=SIGTERM reason=cleanup\n' "$child" >>"$harness_log"
   kill -TERM "$pid" 2>/dev/null || true
   for i in {1..40}; do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
-  kill -KILL "$pid" 2>/dev/null || true
-  wait "$pid" 2>/dev/null || true
+  if kill -0 "$pid" 2>/dev/null; then
+    signal=SIGKILL
+    printf 'HARNESS_TEARDOWN child=%s signal=SIGKILL reason=term-timeout\n' "$child" >>"$harness_log"
+    kill -KILL "$pid" 2>/dev/null || true
+  fi
+  wait "$pid" 2>/dev/null || wait_status="$?"
+  printf 'HARNESS_CHILD_EXIT child=%s sent=SIGTERM final_signal=%s wait_status=%s reason=cleanup\n' \
+    "$child" "$signal" "$wait_status" >>"$harness_log"
 }
 cleanup() {
   local status="$?"
   trap - EXIT INT TERM
-  stop_pid "$app_pid"
-  stop_pid "$xvfb_pid"
+  stop_pid "$app_pid" app
+  stop_pid "$xvfb_pid" xvfb
   rm -rf -- "$runtime_dir"
   exit "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
-trap 'exit 143' TERM
+trap 'printf "HARNESS_SIGNAL source=external signal=SIGTERM exit=143\\n" >>"$harness_log"; exit 143' TERM
 
 display_file="$runtime_dir/display-number"
 Xvfb -displayfd 3 -screen 0 1024x768x24 -nolisten tcp -noreset 3>"$display_file" \
@@ -131,7 +140,16 @@ require() {
 
 # The click has to land on the button, or this run proves nothing about gating.
 require 'CI_MOUSE_ACTION target=19'
-# ...and the guarded branch must refuse it.
+# The button must route through an action menu, then the explicit page-cache
+# choice must be refused by this default build.
+require 'CI_CLEAN_MENU open=true source=button-body default_action=none'
+if grep -q 'CI_CLEAN_CONFIRM open=true' "$app_log"; then
+  printf 'Button-body click bypassed the action menu.\n' >&2
+  exit 1
+fi
+xdotool key --clearmodifiers Down
+require 'CI_FOCUS item=501.0'
+xdotool key --clearmodifiers Return
 require 'CI_CLEAN_DISABLED action=none'
 
 if grep -q 'CI_CLEAN_CONFIRM' "$app_log"; then
@@ -145,5 +163,21 @@ fi
 printf 'confirmation_opened=false helper_invoked=false\n' | tee -a "$artifact_dir/markers.txt"
 
 import -window "$window_id" "$artifact_dir/clean-disabled.png"
+xdotool mousemove --window "$window_id" 309 28
+xdotool click 1
+for _ in {1..100}; do kill -0 "$app_pid" 2>/dev/null || break; sleep 0.1; done
+if kill -0 "$app_pid" 2>/dev/null; then
+  printf 'Application did not close through its GTK titlebar button.\n' >&2
+  exit 1
+fi
+set +e
+wait "$app_pid"
+app_status="$?"
+set -e
+app_pid=""
+[[ "$app_status" -eq 0 ]] || { printf 'Application exited with %s after GTK close.\n' "$app_status" >&2; exit 1; }
+printf 'HARNESS_APP_EXIT status=%s method=gtk-window-close signal=none\n' "$app_status" >>"$harness_log"
+grep -q 'CI_WINDOW_CLOSE' "$app_log"
+grep -q 'CI_APP_RETURNED' "$app_log"
 printf 'PASS: the default build refuses the clean action at the button, with no confirmation, no helper launch and no kernel access.\n' \
   | tee "$artifact_dir/result.txt"

@@ -103,6 +103,11 @@ int64_t mr_xproc_result_call_count(void);
 int64_t mr_xproc_result_pid(void);
 int64_t mr_xproc_result_start_time_verified(void);
 int64_t mr_xproc_result_uid(void);
+/* The pkexec child status, kept separately from the helper's result block.
+ * exit_code is -1 when it was not a normal exit; signal is nonzero only when
+ * waitpid reported signal termination. */
+int64_t mr_xproc_result_exit_code(void);
+int64_t mr_xproc_result_signal(void);
 /* The helper's own reason token, stable ASCII, e.g. "target_other_uid".
  * Empty string when the helper produced no result block. */
 const char *mr_xproc_result_reason(void);

@@ -59,6 +59,8 @@ static int64_t last_call_count;
 static int64_t last_pid;
 static int64_t last_start_time_verified;
 static int64_t last_uid;
+static int64_t last_exit_code = -1;
+static int64_t last_signal;
 static char last_reason[MR_XPROC_REASON_BYTES];
 static int64_t local_refusal;
 
@@ -534,7 +536,7 @@ static int64_t classify_token(const struct parsed_result *parsed)
 /* The single place where an exit code and a parsed block become a verdict.
  * Exposed to tests through mr_xproc_test_classify so every branch is asserted
  * against the production code rather than a copy of it. */
-static int64_t classify(const char *text, size_t length, int exit_code)
+static void reset_last_result(void)
 {
     last_status = 0;
     last_advised_bytes = 0;
@@ -545,7 +547,15 @@ static int64_t classify(const char *text, size_t length, int exit_code)
     last_pid = 0;
     last_start_time_verified = 0;
     last_uid = -1;
+    last_exit_code = -1;
+    last_signal = 0;
     last_reason[0] = '\0';
+}
+
+static int64_t classify(const char *text, size_t length, int exit_code)
+{
+    reset_last_result();
+    last_exit_code = exit_code;
 
     struct parsed_result parsed;
     int parsed_ok = parse_result(text, length, &parsed) == 0 && result_is_complete(&parsed);
@@ -687,6 +697,7 @@ int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t max_bytes)
     if (child_pid > 0) {
         return MR_XPROC_START_BUSY;
     }
+    reset_last_result();
     if (pid < 2 || pid > 0x7fffffff) {
         local_refusal = MR_XPROC_LOCAL_BAD_PID;
         return MR_XPROC_START_BAD_REQUEST;
@@ -787,18 +798,27 @@ int64_t mr_xproc_poll(void)
     child_pid = -1;
 
     if (result < 0) {
+        reset_last_result();
         return MR_XPROC_POLL_OUTCOME_UNKNOWN;
     }
-    if (WIFSIGNALED(status) || !WIFEXITED(status)) {
+    if (WIFSIGNALED(status)) {
         /* Killed by a signal: we cannot know how far it got. */
+        reset_last_result();
+        last_signal = WTERMSIG(status);
         return MR_XPROC_POLL_OUTCOME_UNKNOWN;
     }
+    if (!WIFEXITED(status)) {
+        reset_last_result();
+        return MR_XPROC_POLL_OUTCOME_UNKNOWN;
+    }
+    last_exit_code = WEXITSTATUS(status);
+    last_signal = 0;
     if (output_overflowed) {
         /* A result we could not read in full is not a result. */
         return MR_XPROC_POLL_OUTCOME_UNKNOWN;
     }
 
-    return classify(output_buffer, output_used, WEXITSTATUS(status));
+    return classify(output_buffer, output_used, (int)last_exit_code);
 }
 
 int64_t mr_xproc_result_status(void) { return last_status; }
@@ -810,6 +830,8 @@ int64_t mr_xproc_result_call_count(void) { return last_call_count; }
 int64_t mr_xproc_result_pid(void) { return last_pid; }
 int64_t mr_xproc_result_start_time_verified(void) { return last_start_time_verified; }
 int64_t mr_xproc_result_uid(void) { return last_uid; }
+int64_t mr_xproc_result_exit_code(void) { return last_exit_code; }
+int64_t mr_xproc_result_signal(void) { return last_signal; }
 const char *mr_xproc_result_reason(void) { return last_reason; }
 int64_t mr_xproc_local_refusal(void) { return local_refusal; }
 

@@ -11,6 +11,8 @@ artifact_dir="${ARTIFACT_DIR:-$root/artifacts/p3c-xproc-simulation}"
 [[ "$(id -u)" != 0 ]] || { printf 'XProc simulation must run as an unprivileged user.\n' >&2; exit 2; }
 
 mkdir -p "$artifact_dir"
+harness_log="$artifact_dir/harness.log"
+printf 'HARNESS_START backend=xvfb app_pid_pending=true\n' >"$harness_log"
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/memreduct-p3c-xvfb.XXXXXX")"
 chmod 0700 "$runtime_dir"
 xvfb_pid=""
@@ -19,19 +21,25 @@ cleanup() {
   local status="$?"
   trap - EXIT INT TERM
   if [[ -n "$app_pid" ]] && kill -0 "$app_pid" 2>/dev/null; then
+    printf 'HARNESS_TEARDOWN child=app signal=SIGTERM reason=cleanup\n' >>"$harness_log"
     kill -TERM "$app_pid" 2>/dev/null || true
-    wait "$app_pid" 2>/dev/null || true
+    local app_wait_status=0
+    wait "$app_pid" 2>/dev/null || app_wait_status="$?"
+    printf 'HARNESS_TEARDOWN child=app wait_status=%s\n' "$app_wait_status" >>"$harness_log"
   fi
   if [[ -n "$xvfb_pid" ]] && kill -0 "$xvfb_pid" 2>/dev/null; then
+    printf 'HARNESS_TEARDOWN child=xvfb signal=SIGTERM reason=cleanup\n' >>"$harness_log"
     kill -TERM "$xvfb_pid" 2>/dev/null || true
-    wait "$xvfb_pid" 2>/dev/null || true
+    local xvfb_wait_status=0
+    wait "$xvfb_pid" 2>/dev/null || xvfb_wait_status="$?"
+    printf 'HARNESS_TEARDOWN child=xvfb wait_status=%s\n' "$xvfb_wait_status" >>"$harness_log"
   fi
   rm -rf -- "$runtime_dir"
   exit "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
-trap 'exit 143' TERM
+trap 'printf "HARNESS_SIGNAL source=external signal=SIGTERM exit=143\\n" >>"$harness_log"; exit 143' TERM
 
 for cmd in Xvfb xdotool import sha256sum cmp grep tail; do
   command -v "$cmd" >/dev/null || { printf 'Missing command: %s\n' "$cmd" >&2; exit 2; }
@@ -61,7 +69,8 @@ app_log="$artifact_dir/app.log"
 env HOME="$home_dir" XDG_CONFIG_HOME="$config_home" DISPLAY="$DISPLAY" \
   GDK_BACKEND=x11 GTK_THEME="$GTK_THEME" GDK_SCALE=1 GDK_DPI_SCALE=1 \
   GSETTINGS_BACKEND=memory XDG_RUNTIME_DIR="$runtime_dir" \
-  MEMREDUCT_CI=1 MEMREDUCT_CI_XPROC_SIMULATION=1 MEMREDUCT_CI_EXIT_MS=120000 \
+  MEMREDUCT_CI=1 MEMREDUCT_CI_CLEAN_SIMULATION=1 \
+  MEMREDUCT_CI_XPROC_SIMULATION=1 MEMREDUCT_CI_EXIT_MS=120000 \
   stdbuf -oL "$app" >"$app_log" 2>&1 &
 app_pid="$!"
 
@@ -101,6 +110,33 @@ open_picker() {
   require 'CI_XPROC_PICKER open=true candidates=2'
   require 'CI_XPROC_PICKER open=true candidates=2 selected=-1 preflight=0 scan=0 mock=true no_privilege_request=true'
   require 'mock=true no_privilege_request=true'
+  require 'CI_CLEAN_ACTION index=8 action=selected-process'
+}
+open_menu_from_button_body() {
+  xdotool mousemove --window "$window_id" 125 391
+  xdotool click 1
+  require 'CI_CLEAN_MENU open=true source=button-body default_action=none'
+  ! grep -q 'CI_CLEAN_CONFIRM open=true' "$app_log"
+  xdotool key --clearmodifiers Down Return
+  require 'CI_CLEAN_CONFIRM open=true mode=simulation'
+  ! grep -q 'CI_XPROC_PICKER open=true' "$app_log"
+  xdotool key --clearmodifiers Escape
+  require 'CI_CLEAN_SIM result=confirmation-cancelled stage=confirmation backend=mock helper_called=false no_system_write=true'
+  ! grep -q 'CI_CLEAN_SIM stage=confirmed' "$app_log"
+}
+open_picker_from_button_body() {
+  xdotool mousemove --window "$window_id" 125 391
+  xdotool click 1
+  require 'CI_CLEAN_MENU open=true source=button-body default_action=none'
+  ! grep -q 'CI_CLEAN_CONFIRM open=true' "$app_log"
+  xdotool mousemove --window "$window_id" 125 363
+  xdotool click 1
+  require 'CI_CLEAN_ACTION index=8 action=selected-process'
+  require 'CI_XPROC_PICKER open=true candidates=2 selected=-1 preflight=0 scan=0 mock=true no_privilege_request=true'
+  ! grep -q 'CI_CLEAN_CONFIRM open=true' "$app_log"
+  ! grep -q 'CI_CLEAN_SIM stage=confirmed' "$app_log"
+  xdotool key --clearmodifiers Escape
+  require 'CI_XPROC_PICKER open=false cancelled=true request_started=false'
 }
 select_candidate() {
   local index="$1" y="$2"
@@ -119,7 +155,14 @@ for _ in {1..50}; do
   sleep 0.1
 done
 require 'CI_MEMORY source=/proc/meminfo'
+require 'CI_CLEAN_SIM enabled=true mock_bridge_connected=true production_bridge_connected=false'
 require 'CI_XPROC_SIM enabled=true mock_bridge_connected=true production_bridge_connected=false'
+
+# The button body is an action selector too. Page cache is reached only after
+# choosing its own row; it cannot appear as the default when the user wants a
+# process action.
+open_menu_from_button_body
+open_picker_from_button_body
 
 # Mouse selection followed by confirmation cancellation must not start a request.
 open_picker
@@ -202,6 +245,7 @@ app_status="$?"
 set -e
 [[ "$app_status" -eq 0 ]] || { printf 'Application exited with %s.\n' "$app_status" >&2; exit 1; }
 app_pid=""
+printf 'HARNESS_APP_EXIT status=%s method=gtk-window-close signal=none\n' "$app_status" >>"$harness_log"
 require 'CI_WINDOW_CLOSE'
 require 'CI_APP_RETURNED'
 ! grep -Eq 'pkexec|process_madvise|drop_caches' "$app_log"

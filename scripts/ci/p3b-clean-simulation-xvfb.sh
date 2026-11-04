@@ -37,6 +37,8 @@ done
 app="$1"
 [[ -x "$app" ]] || { printf 'Production executable missing: %s\n' "$app" >&2; exit 2; }
 [[ "$(id -u)" != 0 ]] || { printf 'P3B clean loop test must run unprivileged.\n' >&2; exit 2; }
+harness_log="$artifact_dir/harness.log"
+printf 'HARNESS_START backend=xvfb app_pid_pending=true\n' >"$harness_log"
 
 runtime_dir="$(mktemp -d "$tmp_root/memreduct-p3b-xvfb.XXXXXX")"
 chmod 0700 "$runtime_dir"
@@ -44,25 +46,30 @@ xvfb_pid=""
 app_pid=""
 window_id=""
 stop_pid() {
-  local pid="$1" i
+  local pid="$1" child="$2" i signal=SIGTERM wait_status=0
   [[ -n "$pid" ]] || return 0
   kill -0 "$pid" 2>/dev/null || return 0
   kill -TERM "$pid" 2>/dev/null || true
   for i in {1..40}; do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
-  kill -KILL "$pid" 2>/dev/null || true
-  wait "$pid" 2>/dev/null || true
+  if kill -0 "$pid" 2>/dev/null; then
+    signal=SIGKILL
+    kill -KILL "$pid" 2>/dev/null || true
+  fi
+  wait "$pid" 2>/dev/null || wait_status="$?"
+  printf 'HARNESS_CHILD_EXIT child=%s sent=SIGTERM final_signal=%s wait_status=%s reason=cleanup\n' \
+    "$child" "$signal" "$wait_status" >>"$harness_log"
 }
 cleanup() {
   local status="$?"
   trap - EXIT INT TERM
-  stop_pid "$app_pid"
-  stop_pid "$xvfb_pid"
+  stop_pid "$app_pid" app
+  stop_pid "$xvfb_pid" xvfb
   rm -rf -- "$runtime_dir"
   exit "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
-trap 'exit 143' TERM
+trap 'printf "HARNESS_SIGNAL source=external signal=SIGTERM exit=143\\n" >>"$harness_log"; exit 143' TERM
 
 display_file="$runtime_dir/display-number"
 Xvfb -displayfd 3 -screen 0 1024x768x24 -nolisten tcp -noreset 3>"$display_file" \
@@ -135,6 +142,12 @@ xwininfo -id "$window_id" >"$artifact_dir/main-geometry.txt"
 width="$(awk '$1 == "Width:" {print $2; exit}' "$artifact_dir/main-geometry.txt")"
 height="$(awk '$1 == "Height:" {print $2; exit}' "$artifact_dir/main-geometry.txt")"
 printf 'main_window=%sx%s\n' "$width" "$height" | tee -a "$artifact_dir/environment.txt"
+titlebar_h="$(sed -nE 's/^CI_TREE tag=main_post_titlebar .*titlebar_h=([0-9]+) .*/\1/p' "$app_log" | head -n 1)"
+[[ "$titlebar_h" =~ ^[0-9]+$ ]] || { printf 'Could not read the actual GTK titlebar height.\n' >&2; exit 1; }
+clean_button_y=$((height - 24))
+clean_confirm_y=$((titlebar_h + 212))
+printf 'titlebar_h=%s clean_button_window_y=%s clean_confirm_window_y=%s\n' \
+  "$titlebar_h" "$clean_button_y" "$clean_confirm_y" | tee -a "$artifact_dir/environment.txt"
 
 # Wait for the first /proc/meminfo sample; the clean path refuses to start
 # without a real reading, and that refusal is a distinct marker.
@@ -157,15 +170,32 @@ require_marker() {
 require_marker 'CI_CLEAN_SIM enabled=true'
 require_marker 'mock_bridge_connected=true'
 
-# The clean button is target 19. Geometry derived from clean_button_rect plus
-# the DLU scale: x in [11, 319], y in [335, 356] on a 337x369 window.
-xdotool mousemove --window "$window_id" 165 345
+# The GTK headerbar is part of the X11 top-level surface. Derive its button
+# coordinates from the observed top-level height and titlebar marker.
+xdotool mousemove --window "$window_id" 165 "$clean_button_y"
 sleep 0.1
+grep -q 'CI_MOUSE_HOVER target=19' "$app_log" || {
+  printf 'Calculated click did not land on the Clean button.\n' >&2
+  tail -n 20 "$app_log" >&2
+  exit 1
+}
 capture_before="$artifact_dir/clean-before.png"
 import -window "$window_id" "$capture_before"
 xdotool click 1
 sleep 0.3
 require_marker 'CI_MOUSE_ACTION target=19'
+require_marker 'CI_CLEAN_MENU open=true source=button-body default_action=none'
+! grep -q 'CI_CLEAN_CONFIRM open=true' "$app_log" || {
+  printf 'Button-body click bypassed the action menu.\n' >&2
+  exit 1
+}
+! grep -q 'CI_XPROC_PICKER open=true' "$app_log" || {
+  printf 'Button-body click unexpectedly opened process selection.\n' >&2
+  exit 1
+}
+xdotool key --clearmodifiers Down
+require_marker 'CI_FOCUS item=501.0'
+xdotool key --clearmodifiers Return
 require_marker 'CI_CLEAN_CONFIRM open=true mode=simulation'
 # The dialog panel has a fixed width, so a sentence that overruns it is clipped
 # mid-word. The window itself reports the measured line widths; require them to
@@ -193,8 +223,9 @@ xdotool key --clearmodifiers Tab
 sleep 0.15
 require_marker 'CI_CLEAN_CONFIRM_FOCUS choice=confirm'
 
-# Confirm button is a fixed window-space rect: 112,190 78x24.
-xdotool mousemove --window "$window_id" 151 202
+# Confirm button center is canvas (151,212); window-space includes the measured
+# GTK titlebar height.
+xdotool mousemove --window "$window_id" 151 "$clean_confirm_y"
 sleep 0.1
 xdotool click 1
 
@@ -260,7 +291,7 @@ printf 'swap_usage_crop=zoom-swap-usage.png\n' | tee -a "$artifact_dir/markers.t
 
 # A real second click must not silently retry: the state machine owns backoff.
 before_retry="$(marker_count 'CI_CLEAN_SIM result=accepted')"
-xdotool mousemove --window "$window_id" 165 345
+xdotool mousemove --window "$window_id" 165 "$clean_button_y"
 xdotool click 1
 sleep 0.3
 after_retry="$(marker_count 'CI_CLEAN_SIM result=accepted')"
@@ -282,9 +313,23 @@ if [[ -n "$privileged_hits" || -n "$kernel_hits" ]]; then
 fi
 printf 'privileged_reference=none\n' | tee -a "$artifact_dir/markers.txt"
 
-kill -TERM "$app_pid" 2>/dev/null || true
-for _ in {1..40}; do kill -0 "$app_pid" 2>/dev/null || break; sleep 0.1; done
+xdotool mousemove --window "$window_id" 309 28
+xdotool click 1
+for _ in {1..100}; do kill -0 "$app_pid" 2>/dev/null || break; sleep 0.1; done
+if kill -0 "$app_pid" 2>/dev/null; then
+  printf 'Application did not close through its GTK titlebar button.\n' >&2
+  exit 1
+fi
+set +e
+wait "$app_pid"
+app_status="$?"
+set -e
 app_pid=""
+[[ "$app_status" -eq 0 ]] || { printf 'Application exited with %s after GTK close.\n' "$app_status" >&2; exit 1; }
+printf 'HARNESS_APP_EXIT status=%s method=gtk-window-close signal=none\n' "$app_status" >>"$harness_log"
+grep -q 'CI_WINDOW_CLOSE' "$app_log"
+grep -q 'CI_APP_RETURNED' "$app_log"
+printf 'app_exit=%s method=gtk-window-close\n' "$app_status" | tee -a "$artifact_dir/environment.txt"
 
 printf 'PASS: real GUI click -> confirmation -> mock authorization -> fake helper -> result feedback, all under Xvfb with no privilege, no pkexec and no kernel write.\n' \
   | tee "$artifact_dir/result.txt"

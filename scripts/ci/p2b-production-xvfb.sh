@@ -570,8 +570,17 @@ start_clean_simulation() {
 }
 open_clean_confirmation() {
   local log="$1" confirmation_png="$2"
-  # Main split-button body; the adjacent Windows-only region drop-down remains disabled.
+  # The button body opens the action menu; explicitly choose page cache so the
+  # test cannot accidentally depend on the old implicit M0 route.
   xdotool mousemove --sync --window "$window_id" 255 345 click 1
+  wait_for_sim_marker "$log" 'CI_CLEAN_MENU open=true source=button-body default_action=none' "$app_pid"
+  ! grep -q 'CI_CLEAN_CONFIRM open=true' "$log" || {
+    printf 'Clean button opened the page-cache confirmation without a menu choice.\n' >&2
+    return 1
+  }
+  xdotool key --clearmodifiers Down
+  wait_for_sim_marker "$log" 'CI_FOCUS item=501.0' "$app_pid"
+  xdotool key --clearmodifiers Return
   wait_for_sim_marker "$log" 'CI_CLEAN_CONFIRM open=true' "$app_pid"
   capture "$confirmation_png"
 }

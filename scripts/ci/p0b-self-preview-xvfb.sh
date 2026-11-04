@@ -172,9 +172,10 @@ while (( y <= 412 )); do
   y=$(( y + 2 ))
 done
 [[ -n "$clean_y" ]] || { printf 'Clean button not found by hover scan.\n' >&2; tail -n 20 "$app_log" >&2; exit 1; }
-# The arrow zone at the right edge of the button opens the popup (target 20);
-# the body (19) would run the page-cache path instead. Window width is 337 and
-# the arrow zone is the last clean_arrow_width_px pixels of the button.
+# Both the arrow and the button body open the action menu. Keep this probe on
+# the arrow zone (target 20) so the body path is tested separately; neither
+# region starts page-cache cleaning without an explicit menu selection.
+# Window width is 337 and the arrow zone is the last clean_arrow_width_px px.
 xdotool mousemove --window "$window_id" 315 "$clean_y"
 sleep 0.1
 grep -q "CI_MOUSE_HOVER target=20" "$app_log" || {
