@@ -105,6 +105,21 @@ class CandidateScannerTest(unittest.TestCase):
         self.add_process()
         self.assertEqual(self.scan(), 1)
 
+    def test_dotnet_application_in_user_scope_is_not_protected(self):
+        self.add_process(
+            name="dotnet", exe="/usr/share/dotnet/dotnet",
+            cgroup=(f"0::/user.slice/user-{UID}.slice/user@{UID}.service/"
+                    "app.slice/app-pinta-m13-test.scope\n"),
+        )
+        self.assertEqual(self.scan(), 1)
+
+    def test_candidate_list_limit_is_reported(self):
+        for index in range(33):
+            self.add_process(pid=4242 + index, name=f"demo-{index}",
+                             exe=f"/usr/bin/demo-{index}")
+        self.assertEqual(self.scan(), 32)
+        self.assertEqual(self.skipped(10), 1)
+
     def test_candidate_exposes_snapshot_state_and_executable_basename_without_path(self):
         self.add_process(name="editor", exe="/home/alice/Private Projects/editor")
         self.assertEqual(self.scan(), 1)

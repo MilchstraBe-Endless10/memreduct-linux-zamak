@@ -40,7 +40,7 @@ enum mr_cand_skip {
     MR_CAND_SKIP_ANCESTOR = 7,      /* this program's own parent chain */
     MR_CAND_SKIP_NO_REGIONS = 8,    /* nothing private and readable */
     MR_CAND_SKIP_ZOMBIE = 9,
-    MR_CAND_SKIP_LIMIT = 10         /* the entry ceiling was reached */
+    MR_CAND_SKIP_LIMIT = 10         /* candidate-list ceiling was reached */
 };
 
 /* One offered process. `reclaimable_bytes` is the sum of mapping lengths that
@@ -69,6 +69,7 @@ struct mr_cand_list {
     uint32_t skipped_ancestor;
     uint32_t skipped_no_regions;
     uint32_t skipped_zombie;
+    uint32_t skipped_limit;
 };
 
 /* Scan the fixed production procfs root and fill `out`. Returns 0 on success,

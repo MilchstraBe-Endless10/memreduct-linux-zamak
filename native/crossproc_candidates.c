@@ -537,7 +537,7 @@ int mr_cand_scan(struct mr_cand_list *out)
         }
 
         if (out->count >= MR_CAND_MAX) {
-            out->skipped_no_regions += 0; /* ceiling reported via skipped_limit */
+            out->skipped_limit++;
             continue;
         }
 
@@ -608,6 +608,7 @@ int64_t mr_cand_skipped(int64_t reason)
         case MR_CAND_SKIP_ANCESTOR: return (int64_t)scan_slot.skipped_ancestor;
         case MR_CAND_SKIP_NO_REGIONS: return (int64_t)scan_slot.skipped_no_regions;
         case MR_CAND_SKIP_ZOMBIE: return (int64_t)scan_slot.skipped_zombie;
+        case MR_CAND_SKIP_LIMIT: return (int64_t)scan_slot.skipped_limit;
         default: return 0;
     }
 }
