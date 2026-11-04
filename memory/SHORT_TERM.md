@@ -1,5 +1,12 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-05 — 专属 Crossproc action 的 pkcheck 交互授权通过
+
+- **授权和 action：**所有者批准一次仅授权检查。已核实 action 为 io.github.milchstrasse_endless10.memreduct.zamak.crossproc，活动会话策略为 auth_admin，固定 executable 路径为 /usr/libexec/memreduct-zamak-crossproc-helper。
+- **执行结果：**第一次将 --process 与 PID 写在同一个参数中的调用，被本地 pkcheck 参数解析拒绝（126），没有联系 Polkit。按 pkcheck 语法更正后，使用 --allow-user-interaction 的单次检查返回 0，输出 polkit.result=auth_admin。Hyprland Polkit agent 在对应时间配置了认证窗口；systemd 的 Polkit agent helper unit 随后以 Result=success、ExecMainStatus=0 结束。pkcheck --list-temp 没有列出此 action 的临时授权。综合 action 的 auth_admin（非 keep）策略、交互 helper 成功及 pkcheck 0，证据支持这次是新的交互认证并已被 Polkit 接受。
+- **PAM 证据边界：**该时间范围没有 pam_unix 成功/失败文本日志；系统只记录 PAM helper 服务成功退出。故记录为“交互授权成功，未见 PAM 模块级成功行”，不伪造 pam_unix 日志。
+- **安全边界：**pkcheck 只查询当前 shell 对该 action 的授权，没有启动 Crossproc helper、pkexec 或对任何目标进程操作；process_madvise/MADV_PAGEOUT 调用 0。没有修改 PAM、Polkit、helper、系统配置、Pinta 或其他桌面进程。原 Pinta 一次性回收授权仍已耗尽。
+
 ## 2026-11-04 — 获批的 pkexec 无副作用诊断结果
 
 - **授权操作：**所有者单独批准一次 pkexec /usr/bin/true，目的为检查 Polkit 认证通道；严格未运行 Mem Reduct helper、未操作 Pinta、未执行内存 syscall 或系统写入。
