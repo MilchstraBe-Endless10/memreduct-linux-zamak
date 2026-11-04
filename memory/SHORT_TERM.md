@@ -1,5 +1,11 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-04 — 获批的 pkexec 无副作用诊断结果
+
+- **授权操作：**所有者单独批准一次 pkexec /usr/bin/true，目的为检查 Polkit 认证通道；严格未运行 Mem Reduct helper、未操作 Pinta、未执行内存 syscall 或系统写入。
+- **结果：**命令在 Wayland + session D-Bus 环境中返回 0。系统日志于 23:10:22 记录 pkexec 以 root 打开会话并执行固定的 /usr/bin/true。该时段没有新的 Polkit PAM helper 或 PAM 认证日志，因此命令很可能使用已有授权/缓存，未触发新的认证挑战。
+- **结论边界：**这证明当前 Polkit 可以执行该固定 root no-op，但不证明新的密码认证对话成功，也不证明专属 crossproc action 的 PAM 问题已修复。没有重试已耗尽的 Pinta 授权；后续若需强制新认证挑战，必须另行批准具体的只读授权检查。
+
 ## 2026-11-04 — M1.3 认证诊断、清理路由与 143 归因修正
 
 - **本地代码提交：**`3dd412bd8bb60185b132f6fef89e946d9bd8f1d1`，基于 `9ff3ccfe3df950c1b917934f8cf38d0bfc848091`，分支 `codex/m13-fault-repair`。仅本地提交；未推送、未改变 PR 状态，也未触碰其他 worktree。
