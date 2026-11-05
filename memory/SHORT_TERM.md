@@ -1,5 +1,13 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-05 — 生产 GTK bridge 隔离与 M0+M1 候选 r4
+
+- **纠正旧候选结论：**撤回此前对 `installable-package-r2-final`“不含 CI 环境字符串”的结论；重新核验发现它仍含测试入口，不得安装或运行。r4 是新的构建身份：生产版编译使用 `native/gui_window_prod.c`，CI/Xvfb 版使用 `native/gui_window_ci.c`。r4 二进制扫描未发现 `MEMREDUCT_CI`、`MEMREDUCT_TEST`、`P2C_FONT_CANDIDATE`、CI 窗口控制符号或本机路径 token。
+- **代码提交：**`fe5ba4a16d2a2070c60dba11eed868337f15d57f`，Tree `84b01a1aec5170b6ae0a6cf5866ab0c028e2da5e`，父 `b3bc3f5d6200197fe1deb6c48d504bb619a1648e`。10 个文件，92 additions / 7 deletions；只提交本地，未推送。README 已含候选边界和安装/回退要求，本轮未改。
+- **候选：**M0+M1 两个 production gate 启用，GUI SHA-256 `2a3a15584918f3298049a4b705bc8de0d558a455d38a788ca47689c756d9469d`。page-cache helper SHA `b0652c8ac3ae70576e39b71fbdcd047a7c57f23873fec2e45b1b691b34c45a5e`；Crossproc helper SHA `03044920f438892e3279f276921d673f5a2cb996699e8b599acafb0a8997867a`。当前安装中的 page-cache helper 与候选相同，Crossproc helper 为旧 SHA `ae7fecede5dd7230e4fc6769f3b408ba7fb4a7f95088ed6a026d2f6d5f787339`，不匹配；候选包包含新 helper/policy 及安装前五个系统文件快照。
+- **验证：**治理 34 PASS；Python/C 207（206 PASS、1 个超长路径因文件系统限制 SKIP）；Shell 20；Zamak 0.2.0 check PASS、test 81/81、build PASS。候选 installer preflight PASS，普通 profile 被拒绝；依赖扫描无缺失库。r4 普通模式隔离 Xvfb 主窗启动与 GTK Close 退出 0、无 GTK/GDK/GLib warning；CI fixture 模拟回归 PASS、`call_count=0`。一次没有窗口管理器的 WM_DELETE harness 超时，改用 GTK 标题栏 Close 后通过，未定位到产品故障。
+- **边界：**候选及 host-specific rollback package 在 AI 产出目录 `编程脚本/其他脚本/Mem Reduct Linux/P3C-M1.3-2026-11-05/installable-package-r4-review/`；验证摘要在 `报告与研究/MemReduct-M1-3-2026-11-05/continuation-2026-11-05-06/`。未安装、未回退、未运行 helper/Polkit、未真实 PAGEOUT/清缓存、未触碰活动 Hyprland；本轮真实 M1.3 调用 0 次。生产 GUI 的 live picker、真实 Polkit 和日常应用回收仍未验收；Windows 整页 1:1 NOT PASS。
+
 ## 2026-11-05 — 修正 M0+M1 构建身份与安装预检
 
 - **根因：**旧的 `--check-m0-m1-candidate` 只验证 `mr_production_clean_enabled` 与 `mr_xproc_capability_enabled` 两个通用符号。普通生产 GUI 可含有这些符号但 M0 gate 仍关闭，因此旧预检会误收 M0-only/错误 profile 二进制。

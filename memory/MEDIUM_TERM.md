@@ -1,6 +1,13 @@
 # 中期记忆 / Roadmap State
 更新时间：2026-11-05；当前真实状态以本节为准，后续各节均为有日期的历史快照。
 
+## 2026-11-05 当前补充：生产桥接隔离与 M0+M1 本机候选包
+
+- 本地代码 HEAD `fe5ba4a16d2a2070c60dba11eed868337f15d57f`，Tree `84b01a1aec5170b6ae0a6cf5866ab0c028e2da5e`，父 `b3bc3f5d6200197fe1deb6c48d504bb619a1648e`。生产 GUI bridge 与 CI bridge 分离，安装预检按唯一 profile marker 和两个 gate 拒绝错误 profile。
+- M0+M1 候选 GUI SHA `2a3a15584918f3298049a4b705bc8de0d558a455d38a788ca47689c756d9469d`，静态门禁、normal-mode Xvfb 主窗启动/GTK Close 及独立 CI fixture 模拟通过。该证据不包括生产 live picker、Polkit 或真实回收。
+- 本机已安装 Crossproc helper 与候选 SHA 不同；候选包含重新构建的 helper/policy、只读安装预检和本机原文件/缺失路径快照。安装/回退未执行，系统文件保持不变。
+- 治理 34、Python/C 206 PASS + 1 路径限制 SKIP、20 Shell、Zamak check/test 81/build 均通过。没有推送、Polkit/helper、内存 syscall、页缓存或 Swap/ZRAM 操作。日常 M1.3 清理仍未完成验收，Windows 3.5.2 整页像素 1:1 仍 NOT PASS。
+
 ## 2026-11-05 当前补充：M1.3 目标绑定修复及 M0+M1 候选
 
 - 所有者报告此前一轮 `MADV_PAGEOUT` 虽被内核接受 16 MiB 建议，但实际 PID 与该次一次性授权的 PID 不一致。该结果属于目标完整性失败，不能作为日常应用清理通过证据；本地没有重放该操作。
