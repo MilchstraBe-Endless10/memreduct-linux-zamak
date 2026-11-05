@@ -26,15 +26,36 @@ const char *mr_runtime_xproc_candidate_name(long long index) { (void)index; retu
 const char *mr_runtime_xproc_candidate_app_name(long long index) { (void)index; return ""; }
 long long mr_runtime_xproc_candidate_state(long long index) { (void)index; return 0; }
 long long mr_runtime_xproc_candidate_identity_token(long long index) { (void)index; return -1; }
-long long mr_runtime_xproc_start(long long pid, long long start_time,
-                                 long long uid, long long identity_token,
-                                 long long reviewed_bytes,
-                                 long long reviewed_regions, long long max_bytes)
+long long mr_runtime_xproc_candidate_scope_hash(long long index) { (void)index; return -1; }
+long long mr_runtime_xproc_candidate_region_digest(long long index) { (void)index; return -1; }
+long long mr_runtime_xproc_request_id_new(void) { return 0; }
+long long mr_runtime_xproc_audit_confirmation(long long request_id, long long pid,
+                                                long long start_time, long long uid,
+                                                long long scope_hash, long long identity_hash,
+                                                long long region_digest)
 {
+    (void)request_id;
     (void)pid;
     (void)start_time;
     (void)uid;
-    (void)identity_token;
+    (void)scope_hash;
+    (void)identity_hash;
+    (void)region_digest;
+    return 1;
+}
+long long mr_runtime_xproc_start(long long request_id, long long pid,
+                                 long long start_time, long long uid,
+                                 long long identity_hash, long long scope_hash,
+                                 long long region_digest, long long reviewed_bytes,
+                                 long long reviewed_regions, long long max_bytes)
+{
+    (void)request_id;
+    (void)pid;
+    (void)start_time;
+    (void)uid;
+    (void)identity_hash;
+    (void)scope_hash;
+    (void)region_digest;
     (void)reviewed_bytes;
     (void)reviewed_regions;
     (void)max_bytes;

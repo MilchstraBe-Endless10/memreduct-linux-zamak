@@ -17,6 +17,7 @@
 #define MEMREDUCT_ASYNC_CROSSPROC_H
 
 #include <stdint.h>
+#include <sys/types.h>
 
 #include "crossproc_helper.h"
 
@@ -75,7 +76,8 @@ enum mr_xproc_preflight {
     MR_XPROC_PREFLIGHT_NEED_HELPER = 1,
     MR_XPROC_PREFLIGHT_NEED_POLICY = 2,
     MR_XPROC_PREFLIGHT_NEED_PKEXEC = 3,
-    MR_XPROC_PREFLIGHT_NEED_KERNEL = 4  /* no pidfd_open / process_madvise */
+    MR_XPROC_PREFLIGHT_NEED_KERNEL = 4,  /* no pidfd_open / process_madvise */
+    MR_XPROC_PREFLIGHT_HELPER_PROTOCOL = 5 /* installed helper is incompatible */
 };
 int64_t mr_xproc_preflight(void);
 
@@ -87,9 +89,18 @@ int64_t mr_xproc_enabled(void);
 /* Start one reclaim for exactly this immutable selection. The helper compares
  * the numeric identity fingerprint against fresh procfs data after Polkit.
  * Returns an mr_xproc_start value. */
-int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t uid,
-                       int64_t identity_token, int64_t reviewed_bytes,
-                       int64_t reviewed_regions, int64_t max_bytes);
+/* Request IDs are opaque per-request correlation values. They are not
+ * credentials and never authorize helper behaviour. */
+int64_t mr_xproc_request_id_new(void);
+int64_t mr_xproc_audit_confirmation(int64_t request_id, int64_t pid,
+                                    int64_t start_time, int64_t uid,
+                                    int64_t scope_hash, int64_t identity_hash,
+                                    int64_t region_digest);
+int64_t mr_xproc_start(int64_t request_id, int64_t pid, int64_t start_time,
+                       int64_t uid, int64_t identity_hash,
+                       int64_t scope_hash, int64_t region_digest,
+                       int64_t reviewed_bytes, int64_t reviewed_regions,
+                       int64_t max_bytes);
 
 /* Poll the running child. Returns an mr_xproc_poll value. Safe to call when
  * idle, which answers MR_XPROC_POLL_IDLE. */
@@ -128,6 +139,7 @@ const char *mr_xproc_local_refusal_name(void);
  * let a caller decide what the helper "said". */
 #ifdef MEMREDUCT_TESTING
 int64_t mr_xproc_test_classify(const char *stdout_text, int64_t exit_code);
+int mr_xproc_test_helper_protocol_matches(const char *path, uid_t owner, gid_t group);
 #endif
 
 #endif /* MEMREDUCT_ASYNC_CROSSPROC_H */

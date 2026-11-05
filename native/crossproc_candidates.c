@@ -458,12 +458,14 @@ static int pid_safety(int32_t pid, const char *comm, uint64_t uid,
 /* Sum the mapping lengths the helper would also consider. Same filter, so the
  * number shown before the click is the number the helper will actually work
  * with — not a larger, more flattering one. */
-static int sum_reclaimable(int32_t pid, uint64_t *bytes_out, uint32_t *regions_out)
+static int sum_reclaimable(int32_t pid, uint64_t *bytes_out,
+                           uint32_t *regions_out, uint64_t *digest_out)
 {
     char path[MR_CAND_PROC_PATH_BYTES];
     char line[4096];
     uint64_t total = 0;
     uint32_t count = 0;
+    uint64_t digest = mr_xproc_region_digest_init();
 
     if (snprintf(path, sizeof(path), "%s/%d/maps", cand_proc_root, (int)pid) >= (int)sizeof(path)) {
         return -1;
@@ -503,12 +505,25 @@ static int sum_reclaimable(int32_t pid, uint64_t *bytes_out, uint32_t *regions_o
         if (aligned_end <= aligned_start) {
             continue;
         }
-        total += aligned_end - aligned_start;
+        uint64_t aligned_length = aligned_end - aligned_start;
+        if (UINT64_MAX - total < aligned_length || count == UINT32_MAX) {
+            (void)fclose(maps);
+            return -1;
+        }
+        total += aligned_length;
         count++;
+        digest = mr_xproc_region_digest_add(digest, aligned_start, aligned_end,
+                                             perms, (uint64_t)offset, device,
+                                             (uint64_t)inode, name);
     }
+    int read_error = ferror(maps);
     (void)fclose(maps);
+    if (read_error) {
+        return -1;
+    }
     *bytes_out = total;
     *regions_out = count;
+    *digest_out = mr_xproc_region_digest_finish(digest, count);
     return 0;
 }
 
@@ -641,7 +656,8 @@ int mr_cand_scan(struct mr_cand_list *out)
 
         uint64_t reclaimable = 0;
         uint32_t regions = 0;
-        if (sum_reclaimable(pid, &reclaimable, &regions) != 0) {
+        uint64_t region_digest = 0;
+        if (sum_reclaimable(pid, &reclaimable, &regions, &region_digest) != 0) {
             out->skipped_kernel_thread++;
             continue;
         }
@@ -671,6 +687,8 @@ int mr_cand_scan(struct mr_cand_list *out)
         slot->reclaimable_bytes = reclaimable;
         slot->regions = regions;
         slot->start_time = start_time;
+        slot->scope_token = mr_xproc_scope_token(cgroup);
+        slot->region_digest = region_digest;
         slot->identity_token = mr_xproc_identity_token(
             pid, start_time, status.uid, status.name, exe, cgroup,
             cmdline, cmdline_length);
@@ -706,6 +724,7 @@ int mr_cand_at(const struct mr_cand_list *list, uint32_t index,
 static struct mr_cand_list scan_slot;
 static struct mr_cand_entry selected_snapshot;
 static int selected_snapshot_valid;
+static uint64_t selected_request_id;
 
 int64_t mr_cand_scan_run(void)
 {
@@ -788,6 +807,22 @@ int64_t mr_cand_identity_token(int64_t index)
     return (int64_t)scan_slot.entries[index].identity_token;
 }
 
+int64_t mr_cand_scope_token(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return -1;
+    }
+    return (int64_t)scan_slot.entries[index].scope_token;
+}
+
+int64_t mr_cand_region_digest(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return -1;
+    }
+    return (int64_t)scan_slot.entries[index].region_digest;
+}
+
 static int live_snapshot_matches(const struct mr_cand_entry *expected)
 {
     struct cand_status status;
@@ -797,6 +832,7 @@ static int live_snapshot_matches(const struct mr_cand_entry *expected)
     size_t cmdline_length = 0;
     uint64_t start_time = 0;
     uint64_t bytes = 0;
+    uint64_t region_digest = 0;
     uint32_t regions = 0;
 
     if (expected == NULL || read_status(expected->pid, &status) != 0 ||
@@ -806,10 +842,12 @@ static int live_snapshot_matches(const struct mr_cand_entry *expected)
         pid_safety(expected->pid, status.name, status.uid, exe, sizeof(exe),
                    cgroup, sizeof(cgroup)) != 0 ||
         read_cmdline(expected->pid, cmdline, sizeof(cmdline), &cmdline_length) != 0 ||
-        sum_reclaimable(expected->pid, &bytes, &regions) != 0) {
+        sum_reclaimable(expected->pid, &bytes, &regions, &region_digest) != 0) {
         return -1;
     }
-    if (bytes != expected->reclaimable_bytes || regions != expected->regions) {
+    if (bytes != expected->reclaimable_bytes || regions != expected->regions ||
+        region_digest != expected->region_digest ||
+        mr_xproc_scope_token(cgroup) != expected->scope_token) {
         return -1;
     }
     uint64_t token = mr_xproc_identity_token(
@@ -820,6 +858,7 @@ static int live_snapshot_matches(const struct mr_cand_entry *expected)
 
 int64_t mr_cand_snapshot_select(int64_t index)
 {
+    selected_request_id = 0u;
     if (index < 0 || index >= (int64_t)scan_slot.count) {
         selected_snapshot_valid = 0;
         return 1;
@@ -834,16 +873,51 @@ int64_t mr_cand_snapshot_select(int64_t index)
     return 0;
 }
 
-int64_t mr_cand_snapshot_verify(int64_t pid, int64_t start_time, int64_t uid,
-                                int64_t identity_token, int64_t bytes,
+int64_t mr_cand_snapshot_bind_request(int64_t request_id)
+{
+    if (!selected_snapshot_valid || request_id <= 0) {
+        selected_request_id = 0u;
+        return 1;
+    }
+    selected_request_id = (uint64_t)request_id;
+    mr_xproc_audit_emit("selection", selected_request_id,
+                        selected_snapshot.pid, selected_snapshot.start_time,
+                        selected_snapshot.uid, selected_snapshot.scope_token,
+                        selected_snapshot.identity_token,
+                        selected_snapshot.region_digest);
+    return 0;
+}
+
+int64_t mr_cand_snapshot_request_id(void)
+{
+    return selected_request_id > 0u && selected_request_id <= (uint64_t)INT64_MAX
+               ? (int64_t)selected_request_id
+               : -1;
+}
+
+void mr_cand_snapshot_clear(void)
+{
+    selected_snapshot_valid = 0;
+    selected_request_id = 0u;
+    memset(&selected_snapshot, 0, sizeof(selected_snapshot));
+}
+
+int64_t mr_cand_snapshot_verify(int64_t request_id, int64_t pid,
+                                int64_t start_time, int64_t uid,
+                                int64_t identity_token, int64_t scope_token,
+                                int64_t region_digest, int64_t bytes,
                                 int64_t regions)
 {
-    if (!selected_snapshot_valid || pid < 2 || start_time <= 0 || uid < 0 ||
-        identity_token <= 0 || bytes <= 0 || regions <= 0 ||
+    if (!selected_snapshot_valid || selected_request_id == 0u ||
+        request_id <= 0 || (uint64_t)request_id != selected_request_id ||
+        pid < 2 || start_time <= 0 || uid < 0 || identity_token <= 0 ||
+        scope_token <= 0 || region_digest <= 0 || bytes <= 0 || regions <= 0 ||
         selected_snapshot.pid != pid ||
         selected_snapshot.start_time != (uint64_t)start_time ||
         selected_snapshot.uid != (uint64_t)uid ||
         selected_snapshot.identity_token != (uint64_t)identity_token ||
+        selected_snapshot.scope_token != (uint64_t)scope_token ||
+        selected_snapshot.region_digest != (uint64_t)region_digest ||
         selected_snapshot.reclaimable_bytes != (uint64_t)bytes ||
         selected_snapshot.regions != (uint32_t)regions) {
         return 1;

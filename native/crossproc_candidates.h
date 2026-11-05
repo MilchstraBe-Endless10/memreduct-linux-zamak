@@ -52,6 +52,8 @@ struct mr_cand_entry {
     uint64_t uid;
     uint64_t reclaimable_bytes;
     uint64_t identity_token;
+    uint64_t scope_token;
+    uint64_t region_digest;
     uint32_t regions;
     char state;
     char name[MR_CAND_NAME_BYTES];
@@ -109,14 +111,21 @@ int64_t mr_cand_state(int64_t index);
 int64_t mr_cand_reclaimable_bytes(int64_t index);
 int64_t mr_cand_regions(int64_t index);
 int64_t mr_cand_identity_token(int64_t index);
+int64_t mr_cand_scope_token(int64_t index);
+int64_t mr_cand_region_digest(int64_t index);
 /* Pin the currently displayed scan row as the user's immutable selection.
  * A later scan cannot change this snapshot. */
 int64_t mr_cand_snapshot_select(int64_t index);
+int64_t mr_cand_snapshot_bind_request(int64_t request_id);
+int64_t mr_cand_snapshot_request_id(void);
+void mr_cand_snapshot_clear(void);
 /* Re-read /proc and compare the pinned PID/start/UID/executable/cgroup/command
- * identity and reviewed mapping summary. Zero means the exact snapshot still
- * matches; every other value means fail closed. */
-int64_t mr_cand_snapshot_verify(int64_t pid, int64_t start_time, int64_t uid,
-                                int64_t identity_token, int64_t bytes,
+ * identity, request ID, scope digest and exact eligible mapping digest. Zero
+ * means the exact snapshot still matches; every other value means fail closed. */
+int64_t mr_cand_snapshot_verify(int64_t request_id, int64_t pid,
+                                int64_t start_time, int64_t uid,
+                                int64_t identity_token, int64_t scope_token,
+                                int64_t region_digest, int64_t bytes,
                                 int64_t regions);
 /* Owned by the scan slot: valid until the next scan, never freed by the caller. */
 const char *mr_cand_name(int64_t index);

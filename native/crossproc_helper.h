@@ -8,9 +8,9 @@
  *   3. tests/                     — Python and C regressions.
  *
  * It deliberately describes no path argument, no address range, no advice
- * number and no signal. The helper accepts one verb and seven decimal numbers,
- * and everything that decides whether memory is touched is re-derived by the
- * helper from the kernel.
+ * number and no signal. The helper accepts one verb and ten decimal numbers;
+ * these are immutable request/target claims, and everything that decides
+ * whether memory is touched is re-derived by the helper from the kernel.
  */
 #ifndef MEMREDUCT_CROSSPROC_HELPER_H
 #define MEMREDUCT_CROSSPROC_HELPER_H
@@ -20,6 +20,11 @@
 /* Fixed verb. The GUI cannot ask for another action through this helper, and
  * the helper cannot be asked to do anything the page-cache helper does. */
 #define MR_XPROC_VERB "reclaim"
+#define MR_XPROC_PROTOCOL_VERSION 2
+#define MR_XPROC_PROTOCOL_STRINGIFY_INNER(value) #value
+#define MR_XPROC_PROTOCOL_STRINGIFY(value) MR_XPROC_PROTOCOL_STRINGIFY_INNER(value)
+#define MR_XPROC_PROTOCOL_MARKER \
+    "MR_XPROC_PROTOCOL_ABI=" MR_XPROC_PROTOCOL_STRINGIFY(MR_XPROC_PROTOCOL_VERSION) ";"
 
 /* Fixed install path. The Polkit action pins exactly this path; install and
  * uninstall scripts use the same literal so there is one source of truth. */

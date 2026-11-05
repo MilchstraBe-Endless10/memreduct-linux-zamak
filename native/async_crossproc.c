@@ -20,11 +20,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/random.h>
 #include <sys/types.h>
+#include <time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include "async_crossproc.h"
+#include "crossproc_identity.h"
 
 /* Fixed absolute paths. The helper installs to the first; the Polkit action
  * pins it. Only a test build may override any of them. */
@@ -60,6 +63,16 @@ static int64_t last_pid;
 static int64_t last_start_time;
 static int64_t last_start_time_verified;
 static int64_t last_uid;
+static uint64_t last_request_id;
+static uint64_t last_expected_identity_hash;
+static uint64_t last_observed_identity_hash;
+static int64_t last_identity_hash_verified;
+static uint64_t last_expected_scope_hash;
+static uint64_t last_observed_scope_hash;
+static int64_t last_scope_hash_verified;
+static uint64_t last_expected_region_digest;
+static uint64_t last_observed_region_digest;
+static int64_t last_region_digest_verified;
 static int64_t last_exit_code = -1;
 static int64_t last_signal;
 static char last_reason[MR_XPROC_REASON_BYTES];
@@ -67,6 +80,10 @@ static int64_t local_refusal;
 static int64_t expected_pid;
 static int64_t expected_start_time;
 static int64_t expected_uid;
+static uint64_t expected_request_id;
+static uint64_t expected_identity_hash;
+static uint64_t expected_scope_hash;
+static uint64_t expected_region_digest;
 
 /* ---------------------------------------------------------------------------
  * Capability switch.
@@ -300,11 +317,55 @@ static const char *pkexec_path(void)
     return MR_XPROC_PKEXEC;
 }
 
+/* The helper and GUI have a strict result protocol. A root-owned helper can
+ * still be from an older install, so ownership and mode alone are not enough.
+ * Scan its already-open trusted file instead of executing a capability-bearing
+ * binary outside the Polkit path. */
+static int helper_protocol_matches(int fd)
+{
+    struct stat info;
+    if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size <= 0 ||
+        (uint64_t)info.st_size > 64ull * 1024ull * 1024ull) {
+        return 0;
+    }
+    static const unsigned char marker[] = MR_XPROC_PROTOCOL_MARKER;
+    unsigned char buffer[4096u + sizeof(marker)];
+    size_t carry = 0u;
+    off_t offset = 0;
+    while ((uint64_t)offset < (uint64_t)info.st_size) {
+        ssize_t got = pread(fd, buffer + carry, 4096u, offset);
+        if (got < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return 0;
+        }
+        if (got == 0) {
+            return 0;
+        }
+        size_t used = carry + (size_t)got;
+        for (size_t index = 0u; index + sizeof(marker) - 1u <= used; index++) {
+            if (memcmp(buffer + index, marker, sizeof(marker) - 1u) == 0) {
+                return 1;
+            }
+        }
+        carry = used < sizeof(marker) - 1u ? used : sizeof(marker) - 1u;
+        memmove(buffer, buffer + used - carry, carry);
+        offset += got;
+    }
+    return 0;
+}
+
 int64_t mr_xproc_preflight(void)
 {
-    int helper = open_trusted_file(helper_path(), 0, 0, 0755, 1, 0, 0);
+    const char *path = helper_path();
+    int helper = open_trusted_file(path, 0, 0, 0755, 1, 0, 0);
     if (helper < 0) {
         return MR_XPROC_PREFLIGHT_NEED_HELPER;
+    }
+    if (!helper_protocol_matches(helper)) {
+        (void)close(helper);
+        return MR_XPROC_PREFLIGHT_HELPER_PROTOCOL;
     }
     (void)close(helper);
 
@@ -337,6 +398,17 @@ int mr_xproc_test_policy_file_matches(const char *path, uid_t owner, gid_t group
     (void)close(fd);
     return matches;
 }
+
+int mr_xproc_test_helper_protocol_matches(const char *path, uid_t owner, gid_t group)
+{
+    int fd = open_trusted_file(path, owner, group, 0755, 1, 1, 1);
+    if (fd < 0) {
+        return 0;
+    }
+    int matches = helper_protocol_matches(fd);
+    (void)close(fd);
+    return matches;
+}
 #endif
 
 /* ---------------------------------------------------------------------------
@@ -349,6 +421,7 @@ int mr_xproc_test_policy_file_matches(const char *path, uid_t owner, gid_t group
 
 struct parsed_result {
     int have_marker;
+    int protocol_seen;
     int status_seen;
     int reason_seen;
     int advised_seen;
@@ -359,6 +432,17 @@ struct parsed_result {
     int pid_seen;
     int verified_seen;
     int uid_seen;
+    int request_id_seen;
+    int expected_identity_hash_seen;
+    int observed_identity_hash_seen;
+    int identity_hash_verified_seen;
+    int expected_scope_hash_seen;
+    int observed_scope_hash_seen;
+    int scope_hash_verified_seen;
+    int expected_region_digest_seen;
+    int observed_region_digest_seen;
+    int region_digest_verified_seen;
+    uint64_t protocol_version;
     const char *status_text;
     size_t status_len;
     const char *reason_text;
@@ -374,6 +458,16 @@ struct parsed_result {
     int verified;
     int uid_known;
     int64_t uid;
+    uint64_t request_id;
+    uint64_t expected_identity_hash;
+    uint64_t observed_identity_hash;
+    int identity_hash_verified;
+    uint64_t expected_scope_hash;
+    uint64_t observed_scope_hash;
+    int scope_hash_verified;
+    uint64_t expected_region_digest;
+    uint64_t observed_region_digest;
+    int region_digest_verified;
 };
 
 static int key_is(const char *line, size_t line_len, const char *key, const char **value,
@@ -456,7 +550,10 @@ static int parse_result(const char *text, size_t length, struct parsed_result *o
             } else {
                 const char *value = NULL;
                 size_t value_len = 0;
-                if (key_is(cursor, line_len, "status", &value, &value_len)) {
+                if (key_is(cursor, line_len, "protocol_version", &value, &value_len)) {
+                    out->protocol_seen++;
+                    (void)parse_u64_text(value, value_len, &out->protocol_version);
+                } else if (key_is(cursor, line_len, "status", &value, &value_len)) {
                     out->status_seen++;
                     out->status_text = value;
                     out->status_len = value_len;
@@ -495,6 +592,39 @@ static int parse_result(const char *text, size_t length, struct parsed_result *o
                     } else if (parse_i64_text(value, value_len, &out->uid) == 0) {
                         out->uid_known = 1;
                     }
+                } else if (key_is(cursor, line_len, "request_id", &value, &value_len)) {
+                    out->request_id_seen++;
+                    (void)parse_u64_text(value, value_len, &out->request_id);
+                } else if (key_is(cursor, line_len, "expected_identity_hash", &value, &value_len)) {
+                    out->expected_identity_hash_seen++;
+                    (void)parse_u64_text(value, value_len, &out->expected_identity_hash);
+                } else if (key_is(cursor, line_len, "observed_identity_hash", &value, &value_len)) {
+                    out->observed_identity_hash_seen++;
+                    (void)parse_u64_text(value, value_len, &out->observed_identity_hash);
+                } else if (key_is(cursor, line_len, "identity_hash_verified", &value, &value_len)) {
+                    out->identity_hash_verified_seen++;
+                    out->identity_hash_verified = value_len == 4u &&
+                        memcmp(value, "true", 4u) == 0;
+                } else if (key_is(cursor, line_len, "expected_scope_hash", &value, &value_len)) {
+                    out->expected_scope_hash_seen++;
+                    (void)parse_u64_text(value, value_len, &out->expected_scope_hash);
+                } else if (key_is(cursor, line_len, "observed_scope_hash", &value, &value_len)) {
+                    out->observed_scope_hash_seen++;
+                    (void)parse_u64_text(value, value_len, &out->observed_scope_hash);
+                } else if (key_is(cursor, line_len, "scope_hash_verified", &value, &value_len)) {
+                    out->scope_hash_verified_seen++;
+                    out->scope_hash_verified = value_len == 4u &&
+                        memcmp(value, "true", 4u) == 0;
+                } else if (key_is(cursor, line_len, "expected_region_digest", &value, &value_len)) {
+                    out->expected_region_digest_seen++;
+                    (void)parse_u64_text(value, value_len, &out->expected_region_digest);
+                } else if (key_is(cursor, line_len, "observed_region_digest", &value, &value_len)) {
+                    out->observed_region_digest_seen++;
+                    (void)parse_u64_text(value, value_len, &out->observed_region_digest);
+                } else if (key_is(cursor, line_len, "region_digest_verified", &value, &value_len)) {
+                    out->region_digest_verified_seen++;
+                    out->region_digest_verified = value_len == 4u &&
+                        memcmp(value, "true", 4u) == 0;
                 } else if (key_is(cursor, line_len, "bytes_advised_is_not_bytes_freed",
                                    &value, &value_len)) {
                     /* Present for readers of the raw stream; the bridge does not
@@ -512,7 +642,19 @@ static int parse_result(const char *text, size_t length, struct parsed_result *o
  * a missing one: it means two answers, and picking either would be a guess. */
 static int result_is_complete(const struct parsed_result *parsed)
 {
-    return parsed->status_seen == 1 && parsed->reason_seen == 1 &&
+    return parsed->protocol_seen == 1 &&
+           parsed->protocol_version == MR_XPROC_PROTOCOL_VERSION &&
+           parsed->request_id_seen == 1 &&
+           parsed->expected_identity_hash_seen == 1 &&
+           parsed->observed_identity_hash_seen == 1 &&
+           parsed->identity_hash_verified_seen == 1 &&
+           parsed->expected_scope_hash_seen == 1 &&
+           parsed->observed_scope_hash_seen == 1 &&
+           parsed->scope_hash_verified_seen == 1 &&
+           parsed->expected_region_digest_seen == 1 &&
+           parsed->observed_region_digest_seen == 1 &&
+           parsed->region_digest_verified_seen == 1 &&
+           parsed->status_seen == 1 && parsed->reason_seen == 1 &&
            parsed->advised_seen == 1 && parsed->requested_seen == 1 &&
            parsed->regions_seen == 1 && parsed->error_seen == 1 &&
            parsed->calls_seen == 1 && parsed->pid_seen == 1 &&
@@ -558,6 +700,16 @@ static void reset_last_result(void)
     last_start_time = 0;
     last_start_time_verified = 0;
     last_uid = -1;
+    last_request_id = 0u;
+    last_expected_identity_hash = 0u;
+    last_observed_identity_hash = 0u;
+    last_identity_hash_verified = 0;
+    last_expected_scope_hash = 0u;
+    last_observed_scope_hash = 0u;
+    last_scope_hash_verified = 0;
+    last_expected_region_digest = 0u;
+    last_observed_region_digest = 0u;
+    last_region_digest_verified = 0;
     last_exit_code = -1;
     last_signal = 0;
     last_reason[0] = '\0';
@@ -581,6 +733,16 @@ static int64_t classify(const char *text, size_t length, int exit_code)
         last_start_time = (int64_t)parsed.start_time;
         last_start_time_verified = parsed.verified;
         last_uid = parsed.uid_known ? parsed.uid : -1;
+        last_request_id = parsed.request_id;
+        last_expected_identity_hash = parsed.expected_identity_hash;
+        last_observed_identity_hash = parsed.observed_identity_hash;
+        last_identity_hash_verified = parsed.identity_hash_verified;
+        last_expected_scope_hash = parsed.expected_scope_hash;
+        last_observed_scope_hash = parsed.observed_scope_hash;
+        last_scope_hash_verified = parsed.scope_hash_verified;
+        last_expected_region_digest = parsed.expected_region_digest;
+        last_observed_region_digest = parsed.observed_region_digest;
+        last_region_digest_verified = parsed.region_digest_verified;
         size_t copy = parsed.reason_len < sizeof(last_reason) - 1u
                           ? parsed.reason_len
                           : sizeof(last_reason) - 1u;
@@ -658,6 +820,55 @@ const char *mr_xproc_local_refusal_name(void)
     }
 }
 
+static uint64_t last_generated_request_id;
+
+int64_t mr_xproc_request_id_new(void)
+{
+    uint64_t candidate = 0u;
+    ssize_t received;
+    do {
+        received = getrandom(&candidate, sizeof(candidate), GRND_NONBLOCK);
+    } while (received < 0 && errno == EINTR);
+
+    if (received != (ssize_t)sizeof(candidate)) {
+        struct timespec now;
+        if (clock_gettime(CLOCK_BOOTTIME, &now) != 0 || now.tv_sec < 0) {
+            return 0;
+        }
+        candidate = (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec;
+        candidate ^= (uint64_t)(unsigned long)getpid() << 21;
+    }
+    candidate &= 0x7fffffffffffffffull;
+    if (candidate == 0u) {
+        candidate = 1u;
+    }
+    if (candidate <= last_generated_request_id) {
+        if (last_generated_request_id >= (uint64_t)INT64_MAX) {
+            return 0;
+        }
+        candidate = last_generated_request_id + 1u;
+    }
+    last_generated_request_id = candidate;
+    return (int64_t)candidate;
+}
+
+int64_t mr_xproc_audit_confirmation(int64_t request_id, int64_t pid,
+                                    int64_t start_time, int64_t uid,
+                                    int64_t scope_hash, int64_t identity_hash,
+                                    int64_t region_digest)
+{
+    if (request_id <= 0 || pid < 2 || start_time <= 0 || uid <= 0 ||
+        (uint64_t)uid > UINT32_MAX || scope_hash <= 0 || identity_hash <= 0 ||
+        region_digest <= 0) {
+        return 1;
+    }
+    mr_xproc_audit_emit("confirmation", (uint64_t)request_id, (int32_t)pid,
+                        (uint64_t)start_time, (uint64_t)uid,
+                        (uint64_t)scope_hash, (uint64_t)identity_hash,
+                        (uint64_t)region_digest);
+    return 0;
+}
+
 static void close_child_stdout(void)
 {
     if (child_stdout >= 0) {
@@ -699,9 +910,11 @@ static void drain_output(void)
     }
 }
 
-int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t uid,
-                       int64_t identity_token, int64_t reviewed_bytes,
-                       int64_t reviewed_regions, int64_t max_bytes)
+int64_t mr_xproc_start(int64_t request_id, int64_t pid, int64_t start_time,
+                       int64_t uid, int64_t identity_hash,
+                       int64_t scope_hash, int64_t region_digest,
+                       int64_t reviewed_bytes, int64_t reviewed_regions,
+                       int64_t max_bytes)
 {
     /* Cleared on entry but set on every refusal path below: a caller that reads
      * mr_xproc_local_refusal() after a refusal must never see "none" (0), which
@@ -715,7 +928,15 @@ int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t uid,
     expected_pid = 0;
     expected_start_time = 0;
     expected_uid = 0;
+    expected_request_id = 0u;
+    expected_identity_hash = 0u;
+    expected_scope_hash = 0u;
+    expected_region_digest = 0u;
     reset_last_result();
+    if (request_id <= 0) {
+        local_refusal = MR_XPROC_LOCAL_BAD_IDENTITY;
+        return MR_XPROC_START_BAD_REQUEST;
+    }
     if (pid < 2 || pid > 0x7fffffff) {
         local_refusal = MR_XPROC_LOCAL_BAD_PID;
         return MR_XPROC_START_BAD_REQUEST;
@@ -724,7 +945,8 @@ int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t uid,
         local_refusal = MR_XPROC_LOCAL_BAD_START_TIME;
         return MR_XPROC_START_BAD_REQUEST;
     }
-    if (uid <= 0 || (uint64_t)uid > UINT32_MAX || identity_token <= 0) {
+    if (uid <= 0 || (uint64_t)uid > UINT32_MAX || identity_hash <= 0 ||
+        scope_hash <= 0 || region_digest <= 0) {
         local_refusal = MR_XPROC_LOCAL_BAD_IDENTITY;
         return MR_XPROC_START_BAD_REQUEST;
     }
@@ -746,17 +968,23 @@ int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t uid,
         return MR_XPROC_START_BAD_REQUEST;
     }
 
+    char request_text[24];
     char pid_text[16];
     char start_text[24];
     char uid_text[16];
     char identity_text[24];
+    char scope_text[24];
+    char digest_text[24];
     char reviewed_bytes_text[24];
     char reviewed_regions_text[16];
     char bytes_text[24];
+    (void)snprintf(request_text, sizeof(request_text), "%lld", (long long)request_id);
     (void)snprintf(pid_text, sizeof(pid_text), "%lld", (long long)pid);
     (void)snprintf(start_text, sizeof(start_text), "%lld", (long long)start_time);
     (void)snprintf(uid_text, sizeof(uid_text), "%lld", (long long)uid);
-    (void)snprintf(identity_text, sizeof(identity_text), "%lld", (long long)identity_token);
+    (void)snprintf(identity_text, sizeof(identity_text), "%lld", (long long)identity_hash);
+    (void)snprintf(scope_text, sizeof(scope_text), "%lld", (long long)scope_hash);
+    (void)snprintf(digest_text, sizeof(digest_text), "%lld", (long long)region_digest);
     (void)snprintf(reviewed_bytes_text, sizeof(reviewed_bytes_text), "%lld", (long long)reviewed_bytes);
     (void)snprintf(reviewed_regions_text, sizeof(reviewed_regions_text), "%lld", (long long)reviewed_regions);
     (void)snprintf(bytes_text, sizeof(bytes_text), "%lld", (long long)max_bytes);
@@ -780,16 +1008,23 @@ int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t uid,
     pid_t spawned = -1;
     int spawn_status = -1;
     if (actions_ok) {
+        mr_xproc_audit_emit("bridge_argv", (uint64_t)request_id,
+                            (int32_t)pid, (uint64_t)start_time,
+                            (uint64_t)uid, (uint64_t)scope_hash,
+                            (uint64_t)identity_hash, (uint64_t)region_digest);
         /* A literal argv. No shell, no string building from input, no path from
          * anything but the fixed install location. */
         char *const argv[] = {
             (char *)pkexec_path(),
             (char *)helper_path(),
             (char *)MR_XPROC_VERB,
+            request_text,
             pid_text,
             start_text,
             uid_text,
             identity_text,
+            scope_text,
+            digest_text,
             reviewed_bytes_text,
             reviewed_regions_text,
             bytes_text,
@@ -815,10 +1050,38 @@ int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t uid,
     expected_pid = pid;
     expected_start_time = start_time;
     expected_uid = uid;
+    expected_request_id = (uint64_t)request_id;
+    expected_identity_hash = (uint64_t)identity_hash;
+    expected_scope_hash = (uint64_t)scope_hash;
+    expected_region_digest = (uint64_t)region_digest;
     child_stdout = pipe_fds[0];
     output_used = 0;
     output_overflowed = 0;
     return MR_XPROC_START_OK;
+}
+
+static int result_matches_expected_target(int64_t verdict)
+{
+    if (expected_request_id == 0u || last_reason[0] == '\0') {
+        return 1;
+    }
+    if (last_request_id != expected_request_id ||
+        last_expected_identity_hash != expected_identity_hash ||
+        last_expected_scope_hash != expected_scope_hash ||
+        last_expected_region_digest != expected_region_digest ||
+        last_pid != expected_pid || last_start_time != expected_start_time ||
+        (last_uid >= 0 && last_uid != expected_uid)) {
+        return 0;
+    }
+    if (verdict == MR_XPROC_POLL_ACCEPTED || verdict == MR_XPROC_POLL_PARTIAL) {
+        return last_start_time_verified == 1 && last_uid == expected_uid &&
+               last_identity_hash_verified == 1 && last_scope_hash_verified == 1 &&
+               last_region_digest_verified == 1 &&
+               last_observed_identity_hash == expected_identity_hash &&
+               last_observed_scope_hash == expected_scope_hash &&
+               last_observed_region_digest == expected_region_digest;
+    }
+    return 1;
 }
 
 int64_t mr_xproc_poll(void)
@@ -861,13 +1124,8 @@ int64_t mr_xproc_poll(void)
     }
 
     int64_t verdict = classify(output_buffer, output_used, (int)last_exit_code);
-    if (expected_pid > 0 && last_reason[0] != '\0') {
-        if (last_pid != expected_pid || last_start_time != expected_start_time ||
-            (last_uid >= 0 && last_uid != expected_uid) ||
-            ((verdict == MR_XPROC_POLL_ACCEPTED || verdict == MR_XPROC_POLL_PARTIAL) &&
-             (last_start_time_verified != 1 || last_uid != expected_uid))) {
-            return MR_XPROC_POLL_OUTCOME_UNKNOWN;
-        }
+    if (!result_matches_expected_target(verdict)) {
+        return MR_XPROC_POLL_OUTCOME_UNKNOWN;
     }
     return verdict;
 }
@@ -895,5 +1153,25 @@ int64_t mr_xproc_test_classify(const char *stdout_text, int64_t exit_code)
 {
     const char *text = stdout_text == NULL ? "" : stdout_text;
     return classify(text, strlen(text), (int)exit_code);
+}
+
+int64_t mr_xproc_test_classify_expected(const char *stdout_text, int64_t exit_code,
+                                         int64_t request_id, int64_t pid,
+                                         int64_t start_time, int64_t uid,
+                                         int64_t identity_hash, int64_t scope_hash,
+                                         int64_t region_digest)
+{
+    expected_request_id = (uint64_t)request_id;
+    expected_pid = pid;
+    expected_start_time = start_time;
+    expected_uid = uid;
+    expected_identity_hash = (uint64_t)identity_hash;
+    expected_scope_hash = (uint64_t)scope_hash;
+    expected_region_digest = (uint64_t)region_digest;
+    const char *text = stdout_text == NULL ? "" : stdout_text;
+    int64_t verdict = classify(text, strlen(text), (int)exit_code);
+    return result_matches_expected_target(verdict)
+               ? verdict
+               : MR_XPROC_POLL_OUTCOME_UNKNOWN;
 }
 #endif

@@ -530,7 +530,8 @@ static int read_target_cmdline(int32_t pid, unsigned char *buffer, size_t size,
  * is false only in fixture tests; even there all four target UIDs must agree. */
 static const char *inspect_target(int32_t pid, uint64_t requester_uid,
                                   int enforce_requester, uint64_t *target_uid_out,
-                                  uint64_t *identity_token_out)
+                                  uint64_t *identity_token_out,
+                                  uint64_t *scope_token_out)
 {
     char status[MR_XPROC_LINE_BYTES];
     if (read_status(pid, status, sizeof(status)) != 0) {
@@ -597,6 +598,9 @@ static const char *inspect_target(int32_t pid, uint64_t requester_uid,
         *identity_token_out = mr_xproc_identity_token(
             pid, stat.start_time, uids[0], name, exe, cgroup,
             cmdline, cmdline_length);
+    }
+    if (scope_token_out != NULL) {
+        *scope_token_out = mr_xproc_scope_token(cgroup);
     }
     return NULL;
 }
@@ -704,6 +708,18 @@ static int is_special_mapping(const char *path)
     return path != NULL && path[0] == '[';
 }
 
+static int target_is_self(int32_t target_pid, int32_t helper_pid)
+{
+    return target_pid == helper_pid;
+}
+
+#ifdef MEMREDUCT_TESTING
+int mr_xproc_test_target_is_self(int32_t target_pid, int32_t helper_pid)
+{
+    return target_is_self(target_pid, helper_pid);
+}
+#endif
+
 static uint64_t page_size(void)
 {
     long value = sysconf(_SC_PAGESIZE);
@@ -715,6 +731,7 @@ struct mr_region_plan {
     size_t count;
     uint64_t bytes;
     uint64_t candidate_bytes;
+    uint64_t candidate_digest;
     uint32_t candidate_regions;
     uint32_t skipped_shared;
     uint32_t skipped_unreadable;
@@ -730,6 +747,7 @@ struct mr_region_plan {
 static int plan_regions(int32_t pid, uint64_t max_bytes, struct mr_region_plan *plan)
 {
     memset(plan, 0, sizeof(*plan));
+    uint64_t candidate_digest = mr_xproc_region_digest_init();
 
     char path[MR_XPROC_PATH_BYTES];
     if (proc_path(path, sizeof(path), pid, "maps") != 0) {
@@ -802,6 +820,9 @@ static int plan_regions(int32_t pid, uint64_t max_bytes, struct mr_region_plan *
         }
         plan->candidate_bytes += aligned_length;
         plan->candidate_regions++;
+        candidate_digest = mr_xproc_region_digest_add(
+            candidate_digest, aligned_start, aligned_end, perms,
+            (uint64_t)offset, device, (uint64_t)inode, name);
 
         if (length > max_bytes) {
             plan->skipped_too_large++;
@@ -826,6 +847,8 @@ static int plan_regions(int32_t pid, uint64_t max_bytes, struct mr_region_plan *
     if (read_error) {
         return -1;
     }
+    plan->candidate_digest = mr_xproc_region_digest_finish(
+        candidate_digest, plan->candidate_regions);
     if (plan->count == 0) {
         return 0;
     }
@@ -878,12 +901,22 @@ static const char *classify_status(int64_t status)
 struct mr_outcome {
     int64_t status;
     const char *reason;
+    uint64_t request_id;
     int32_t pid;
     /* The caller's claim, echoed back so the GUI can prove the helper answered
      * about the target it asked for. This is what the caller said, not what the
      * helper verified; `start_time_verified` is the separate answer. */
     uint64_t start_time;
     int start_time_verified;
+    uint64_t expected_identity_hash;
+    uint64_t observed_identity_hash;
+    int identity_hash_verified;
+    uint64_t expected_scope_hash;
+    uint64_t observed_scope_hash;
+    int scope_hash_verified;
+    uint64_t expected_region_digest;
+    uint64_t observed_region_digest;
+    int region_digest_verified;
     /* The target's real UID as read from the kernel, -1 while unknown. A
      * refusal that happens before the target is inspected must not print a
      * number that looks like an owner. */
@@ -905,11 +938,32 @@ struct mr_outcome {
 static void print_outcome(const struct mr_outcome *outcome)
 {
     emit(stdout, "MR_CROSSPROC_RESULT\n");
+    emit(stdout, "protocol_version=%u\n", (unsigned)MR_XPROC_PROTOCOL_VERSION);
+    emit(stdout, "protocol_marker=%s\n", MR_XPROC_PROTOCOL_MARKER);
     emit(stdout, "status=%s\n", classify_status(outcome->status));
     emit(stdout, "reason=%s\n", outcome->reason == NULL ? "none" : outcome->reason);
+    emit(stdout, "request_id=%llu\n", (unsigned long long)outcome->request_id);
     emit(stdout, "pid=%d\n", (int)outcome->pid);
     emit(stdout, "start_time=%llu\n", (unsigned long long)outcome->start_time);
     emit(stdout, "start_time_verified=%s\n", outcome->start_time_verified ? "true" : "false");
+    emit(stdout, "expected_identity_hash=%llu\n",
+         (unsigned long long)outcome->expected_identity_hash);
+    emit(stdout, "observed_identity_hash=%llu\n",
+         (unsigned long long)outcome->observed_identity_hash);
+    emit(stdout, "identity_hash_verified=%s\n",
+         outcome->identity_hash_verified ? "true" : "false");
+    emit(stdout, "expected_scope_hash=%llu\n",
+         (unsigned long long)outcome->expected_scope_hash);
+    emit(stdout, "observed_scope_hash=%llu\n",
+         (unsigned long long)outcome->observed_scope_hash);
+    emit(stdout, "scope_hash_verified=%s\n",
+         outcome->scope_hash_verified ? "true" : "false");
+    emit(stdout, "expected_region_digest=%llu\n",
+         (unsigned long long)outcome->expected_region_digest);
+    emit(stdout, "observed_region_digest=%llu\n",
+         (unsigned long long)outcome->observed_region_digest);
+    emit(stdout, "region_digest_verified=%s\n",
+         outcome->region_digest_verified ? "true" : "false");
     if (outcome->uid < 0) {
         emit(stdout, "uid=unknown\n");
     } else {
@@ -966,7 +1020,7 @@ static int refuse(struct mr_outcome *outcome, const char *reason)
 static int usage(void)
 {
     emit(stderr,
-         "usage: %s reclaim <pid> <start_time> <uid> <identity_token> <reviewed_bytes> <reviewed_regions> <max_bytes>\n"
+         "usage: %s reclaim <request_id> <pid> <start_time> <uid> <identity_hash> <scope_hash> <region_digest> <reviewed_bytes> <reviewed_regions> <max_bytes>\n"
          "All values are decimal and are treated as untrusted candidates;\n"
          "this helper re-verifies identity, ownership and mappings from the kernel.\n",
          MR_XPROC_HELPER_NAME);
@@ -978,40 +1032,51 @@ int main(int argc, char **argv)
     struct mr_outcome outcome;
     memset(&outcome, 0, sizeof(outcome));
 
-    /* Exactly eight arguments, one fixed verb. The final values are numeric
+    /* Exactly eleven arguments, one fixed verb. The final values are numeric
      * selection claims only; no path, command or arbitrary action is accepted. */
-    if (argc != 9) {
+    if (argc != 12) {
         return usage();
     }
     if (strcmp(argv[1], "reclaim") != 0) {
         return usage();
     }
 
+    uint64_t raw_request_id = 0;
     uint64_t raw_pid = 0;
     uint64_t raw_start_time = 0;
     uint64_t raw_uid = 0;
     uint64_t raw_identity_token = 0;
+    uint64_t raw_scope_token = 0;
+    uint64_t raw_region_digest = 0;
     uint64_t raw_reviewed_bytes = 0;
     uint64_t raw_reviewed_regions = 0;
     uint64_t raw_max_bytes = 0;
-    if (parse_u64(argv[2], 0x7fffffffull, &raw_pid) != 0 ||
-        parse_u64(argv[3], UINT64_MAX, &raw_start_time) != 0 ||
-        parse_u64(argv[4], UINT32_MAX, &raw_uid) != 0 ||
-        parse_u64(argv[5], 0x7fffffffffffffffull, &raw_identity_token) != 0 ||
-        parse_u64(argv[6], UINT64_MAX, &raw_reviewed_bytes) != 0 ||
-        parse_u64(argv[7], UINT32_MAX, &raw_reviewed_regions) != 0 ||
-        parse_u64(argv[8], MR_XPROC_MAX_BYTES, &raw_max_bytes) != 0) {
+    if (parse_u64(argv[2], 0x7fffffffffffffffull, &raw_request_id) != 0 ||
+        parse_u64(argv[3], 0x7fffffffull, &raw_pid) != 0 ||
+        parse_u64(argv[4], UINT64_MAX, &raw_start_time) != 0 ||
+        parse_u64(argv[5], UINT32_MAX, &raw_uid) != 0 ||
+        parse_u64(argv[6], 0x7fffffffffffffffull, &raw_identity_token) != 0 ||
+        parse_u64(argv[7], 0x7fffffffffffffffull, &raw_scope_token) != 0 ||
+        parse_u64(argv[8], 0x7fffffffffffffffull, &raw_region_digest) != 0 ||
+        parse_u64(argv[9], UINT64_MAX, &raw_reviewed_bytes) != 0 ||
+        parse_u64(argv[10], UINT32_MAX, &raw_reviewed_regions) != 0 ||
+        parse_u64(argv[11], MR_XPROC_MAX_BYTES, &raw_max_bytes) != 0) {
         return usage();
     }
-    if (raw_pid < 2 || raw_uid == 0 || raw_identity_token == 0 ||
+    if (raw_request_id == 0 || raw_pid < 2 || raw_uid == 0 ||
+        raw_identity_token == 0 || raw_scope_token == 0 || raw_region_digest == 0 ||
         ((raw_reviewed_bytes == 0u) != (raw_reviewed_regions == 0u)) ||
         raw_max_bytes < page_size()) {
         /* PID 1 is never a target, and a budget below one page cannot describe
          * a page-aligned range. */
         return usage();
     }
+    outcome.request_id = raw_request_id;
     outcome.pid = (int32_t)raw_pid;
     outcome.start_time = raw_start_time;
+    outcome.expected_identity_hash = raw_identity_token;
+    outcome.expected_scope_hash = raw_scope_token;
+    outcome.expected_region_digest = raw_region_digest;
     /* Unknown until the kernel tells us it matches. Nothing is verified yet. */
     outcome.start_time_verified = 0;
     outcome.uid = -1;
@@ -1044,7 +1109,7 @@ int main(int argc, char **argv)
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
-    if (outcome.pid == (int32_t)getpid()) {
+    if (target_is_self(outcome.pid, (int32_t)getpid())) {
         refuse(&outcome, "target_is_self");
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
@@ -1069,15 +1134,21 @@ int main(int argc, char **argv)
     }
     uint64_t target_uid = 0;
     uint64_t identity_token = 0;
+    uint64_t scope_token = 0;
     const char *target_error = inspect_target(outcome.pid, requester_uid,
                                               !test_skip_requester(), &target_uid,
-                                              &identity_token);
+                                              &identity_token, &scope_token);
     if (target_error != NULL) {
         refuse(&outcome, target_error);
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
-    if (target_uid != raw_uid || identity_token != raw_identity_token) {
+    outcome.observed_identity_hash = identity_token;
+    outcome.observed_scope_hash = scope_token;
+    outcome.identity_hash_verified = identity_token == raw_identity_token;
+    outcome.scope_hash_verified = scope_token == raw_scope_token;
+    if (target_uid != raw_uid || !outcome.identity_hash_verified ||
+        !outcome.scope_hash_verified) {
         refuse(&outcome, "target_identity_changed");
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
@@ -1144,11 +1215,17 @@ int main(int argc, char **argv)
 
     uint64_t pinned_uid = 0;
     uint64_t pinned_identity_token = 0;
+    uint64_t pinned_scope_token = 0;
     target_error = inspect_target(outcome.pid, requester_uid,
                                   !test_skip_requester(), &pinned_uid,
-                                  &pinned_identity_token);
+                                  &pinned_identity_token, &pinned_scope_token);
+    outcome.observed_identity_hash = pinned_identity_token;
+    outcome.observed_scope_hash = pinned_scope_token;
+    outcome.identity_hash_verified = pinned_identity_token == raw_identity_token;
+    outcome.scope_hash_verified = pinned_scope_token == raw_scope_token;
     if (target_error != NULL || pinned_uid != (uint64_t)outcome.uid ||
-        pinned_uid != raw_uid || pinned_identity_token != raw_identity_token) {
+        pinned_uid != raw_uid || !outcome.identity_hash_verified ||
+        !outcome.scope_hash_verified) {
         (void)close(pidfd);
         refuse(&outcome, target_error == NULL ? "target_identity_changed" : target_error);
         print_outcome(&outcome);
@@ -1172,8 +1249,11 @@ int main(int argc, char **argv)
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
+    outcome.observed_region_digest = plan.candidate_digest;
+    outcome.region_digest_verified = plan.candidate_digest == raw_region_digest;
     if (plan.candidate_bytes != raw_reviewed_bytes ||
-        plan.candidate_regions != raw_reviewed_regions) {
+        plan.candidate_regions != raw_reviewed_regions ||
+        !outcome.region_digest_verified) {
         (void)close(pidfd);
         refuse(&outcome, "target_mappings_changed");
         print_outcome(&outcome);
@@ -1191,6 +1271,9 @@ int main(int argc, char **argv)
     outcome.requested_bytes = plan.bytes;
 
     /* ---- 5. One syscall. Not a loop, not a retry, not a batch sequence. ---- */
+    mr_xproc_audit_emit("helper_pre_syscall", raw_request_id, outcome.pid,
+                        outcome.start_time, raw_uid, raw_scope_token,
+                        raw_identity_token, raw_region_digest);
     errno = 0;
     long advised = call_process_madvise(pidfd, plan.vectors, plan.count);
     int call_errno = errno;

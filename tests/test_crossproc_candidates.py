@@ -40,10 +40,15 @@ class CandidateScannerTest(unittest.TestCase):
             getattr(cls.library, name).restype = ctypes.c_char_p
         cls.library.mr_cand_state.argtypes = [ctypes.c_int64]
         cls.library.mr_cand_state.restype = ctypes.c_int64
-        for name in ("mr_cand_identity_token", "mr_cand_snapshot_select"):
+        for name in ("mr_cand_identity_token", "mr_cand_scope_token",
+                     "mr_cand_region_digest", "mr_cand_snapshot_select",
+                     "mr_cand_snapshot_bind_request", "mr_cand_snapshot_request_id"):
             getattr(cls.library, name).argtypes = [ctypes.c_int64]
             getattr(cls.library, name).restype = ctypes.c_int64
-        cls.library.mr_cand_snapshot_verify.argtypes = [ctypes.c_int64] * 6
+        cls.library.mr_cand_snapshot_request_id.argtypes = []
+        cls.library.mr_cand_snapshot_clear.argtypes = []
+        cls.library.mr_cand_snapshot_clear.restype = None
+        cls.library.mr_cand_snapshot_verify.argtypes = [ctypes.c_int64] * 9
         cls.library.mr_cand_snapshot_verify.restype = ctypes.c_int64
 
     @classmethod
@@ -110,6 +115,18 @@ class CandidateScannerTest(unittest.TestCase):
     def skipped(self, reason):
         return self.library.mr_cand_skipped(reason)
 
+    def select_snapshot(self, index, request_id=1234567):
+        self.assertEqual(self.library.mr_cand_snapshot_select(index), 0)
+        self.assertEqual(self.library.mr_cand_snapshot_bind_request(request_id), 0)
+        self.assertEqual(self.library.mr_cand_snapshot_request_id(), request_id)
+        return (
+            request_id, self.library.mr_cand_pid(index),
+            self.library.mr_cand_start_time(index), self.library.mr_cand_uid(index),
+            self.library.mr_cand_identity_token(index), self.library.mr_cand_scope_token(index),
+            self.library.mr_cand_region_digest(index),
+            self.library.mr_cand_reclaimable_bytes(index), self.library.mr_cand_regions(index),
+        )
+
     def test_same_uid_user_app_with_known_exe_and_app_cgroup_is_offered(self):
         self.add_process()
         self.assertEqual(self.scan(), 1)
@@ -159,13 +176,13 @@ class CandidateScannerTest(unittest.TestCase):
         self.add_process(pid=4243, name="pinta", exe="/usr/bin/pinta-b")
         self.assertEqual(self.scan(), 2)
         pid = self.library.mr_cand_pid(1)
-        start = self.library.mr_cand_start_time(1)
-        uid = self.library.mr_cand_uid(1)
-        token = self.library.mr_cand_identity_token(1)
-        size = self.library.mr_cand_reclaimable_bytes(1)
-        regions = self.library.mr_cand_regions(1)
+        values = self.select_snapshot(1, request_id=900001)
+        token = values[4]
+        scope = values[5]
+        digest = values[6]
         self.assertGreater(token, 0)
-        self.assertEqual(self.library.mr_cand_snapshot_select(1), 0)
+        self.assertGreater(scope, 0)
+        self.assertGreater(digest, 0)
 
         # A new list can have different rows and order. The confirmed target
         # remains the copied PID/start/UID/token, never "whatever is row 1 now".
@@ -174,25 +191,20 @@ class CandidateScannerTest(unittest.TestCase):
         self.assertEqual(self.scan(), 1)
         self.assertEqual(self.library.mr_cand_pid(0), pid)
         self.assertEqual(
-            self.library.mr_cand_snapshot_verify(pid, start, uid, token, size, regions),
+            self.library.mr_cand_snapshot_verify(*values),
             0,
         )
+        other_values = list(values)
+        other_values[1] = other_pid
         self.assertNotEqual(
-            self.library.mr_cand_snapshot_verify(
-                other_pid, start, uid, token, size, regions
-            ),
+            self.library.mr_cand_snapshot_verify(*other_values),
             0,
         )
 
     def test_snapshot_fails_closed_when_target_identity_changes(self):
         directory = self.add_process()
         self.assertEqual(self.scan(), 1)
-        values = (
-            self.library.mr_cand_pid(0), self.library.mr_cand_start_time(0),
-            self.library.mr_cand_uid(0), self.library.mr_cand_identity_token(0),
-            self.library.mr_cand_reclaimable_bytes(0), self.library.mr_cand_regions(0),
-        )
-        self.assertEqual(self.library.mr_cand_snapshot_select(0), 0)
+        values = self.select_snapshot(0, request_id=900002)
         with open(os.path.join(directory, "cmdline"), "wb") as handle:
             handle.write(b"/usr/bin/other\0--fixture\0")
         self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
@@ -200,12 +212,7 @@ class CandidateScannerTest(unittest.TestCase):
     def test_snapshot_fails_closed_when_scope_or_executable_changes(self):
         directory = self.add_process()
         self.assertEqual(self.scan(), 1)
-        values = (
-            self.library.mr_cand_pid(0), self.library.mr_cand_start_time(0),
-            self.library.mr_cand_uid(0), self.library.mr_cand_identity_token(0),
-            self.library.mr_cand_reclaimable_bytes(0), self.library.mr_cand_regions(0),
-        )
-        self.assertEqual(self.library.mr_cand_snapshot_select(0), 0)
+        values = self.select_snapshot(0, request_id=900003)
         with open(os.path.join(directory, "cgroup"), "w", encoding="utf-8") as handle:
             handle.write(
                 f"0::/user.slice/user-{UID}.slice/user@{UID}.service/"
@@ -216,12 +223,7 @@ class CandidateScannerTest(unittest.TestCase):
     def test_snapshot_fails_closed_when_start_time_changes(self):
         directory = self.add_process()
         self.assertEqual(self.scan(), 1)
-        values = (
-            self.library.mr_cand_pid(0), self.library.mr_cand_start_time(0),
-            self.library.mr_cand_uid(0), self.library.mr_cand_identity_token(0),
-            self.library.mr_cand_reclaimable_bytes(0), self.library.mr_cand_regions(0),
-        )
-        self.assertEqual(self.library.mr_cand_snapshot_select(0), 0)
+        values = self.select_snapshot(0, request_id=900004)
         with open(os.path.join(directory, "stat"), "w", encoding="utf-8") as handle:
             handle.write(stat_line(4242, "demo", 1, 78))
         self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
@@ -229,14 +231,34 @@ class CandidateScannerTest(unittest.TestCase):
     def test_snapshot_fails_closed_when_mapping_summary_changes(self):
         directory = self.add_process()
         self.assertEqual(self.scan(), 1)
-        values = (
-            self.library.mr_cand_pid(0), self.library.mr_cand_start_time(0),
-            self.library.mr_cand_uid(0), self.library.mr_cand_identity_token(0),
-            self.library.mr_cand_reclaimable_bytes(0), self.library.mr_cand_regions(0),
-        )
-        self.assertEqual(self.library.mr_cand_snapshot_select(0), 0)
+        values = self.select_snapshot(0, request_id=900005)
         with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
             handle.write("00400000-00402000 r--p 00000000 00:00 0\n")
+        self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
+
+    def test_region_digest_detects_same_sized_mapping_replacement(self):
+        directory = self.add_process()
+        self.assertEqual(self.scan(), 1)
+        values = self.select_snapshot(0, request_id=900006)
+        before_bytes = values[7]
+        before_regions = values[8]
+        with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
+            handle.write("00500000-00501000 r--p 00000000 00:00 0\n")
+        # Total bytes and region count are unchanged; only an exact map digest
+        # detects that the user confirmed a different virtual range.
+        self.assertEqual(before_bytes, 4096)
+        self.assertEqual(before_regions, 1)
+        self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
+
+    def test_request_id_is_bound_to_snapshot_and_cleared_on_refresh(self):
+        self.add_process()
+        self.assertEqual(self.scan(), 1)
+        values = self.select_snapshot(0, request_id=900007)
+        wrong_request = list(values)
+        wrong_request[0] += 1
+        self.assertNotEqual(self.library.mr_cand_snapshot_verify(*wrong_request), 0)
+        self.library.mr_cand_snapshot_clear()
+        self.assertEqual(self.library.mr_cand_snapshot_request_id(), -1)
         self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
 
     def test_candidate_display_name_preserves_valid_utf8(self):

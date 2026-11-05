@@ -93,6 +93,28 @@ else
     bin=''
 fi
 
+expected_xproc_protocol=''
+if ((have_xproc)); then
+    expected_xproc_protocol="$(sed -nE 's/^#define MR_XPROC_PROTOCOL_VERSION ([0-9]+)$/\1/p' native/crossproc_helper.h)"
+    [[ "$expected_xproc_protocol" =~ ^[0-9]+$ ]] || {
+        echo 'Could not read the expected Crossproc helper protocol version.' >&2
+        exit 1
+    }
+    [[ -f "$xproc_helper_source" && ! -L "$xproc_helper_source" && -x "$xproc_helper_source" ]] || {
+        if ((candidate_mode)); then
+            echo 'M0+M1 candidate requires an executable Crossproc helper binary.' >&2
+            exit 1
+        fi
+        echo 'Crossproc helper is not an executable regular file; refusing to install it.' >&2
+        exit 1
+    }
+    helper_protocol_marker="MR_XPROC_PROTOCOL_ABI=$expected_xproc_protocol;"
+    grep -aFq -- "$helper_protocol_marker" "$xproc_helper_source" || {
+        echo "Crossproc helper protocol mismatch: expected $expected_xproc_protocol." >&2
+        exit 1
+    }
+fi
+
 verify_system_directory() {
     local directory="$1" owner mode permissions
     [[ -d "$directory" && ! -L "$directory" ]] || {
@@ -150,7 +172,8 @@ if ((candidate_mode == 0)); then
     bin="${candidates[0]}"
 fi
 if ((preflight_only)); then
-    printf 'Candidate preflight passed: profile=m0+m1-candidate pagecache_gate=enabled crossproc_gate=enabled no_test_hooks=true install=not_run\n'
+    printf 'Candidate preflight passed: profile=m0+m1-candidate pagecache_gate=enabled crossproc_gate=enabled helper_protocol=%s no_test_hooks=true install=not_run\n' \
+        "$expected_xproc_protocol"
     exit 0
 fi
 

@@ -191,13 +191,46 @@ long long mr_runtime_xproc_candidate_identity_token(long long index)
     return mr_runtime_xproc_candidate_pid(index) < 0 ? -1 : 424242 + index * 101;
 }
 
-long long mr_runtime_xproc_start(long long pid, long long start_time, long long uid,
-                                  long long identity_token, long long reviewed_bytes,
+long long mr_runtime_xproc_candidate_scope_hash(long long index)
+{
+    return mr_runtime_xproc_candidate_pid(index) < 0 ? -1 : 710000 + index * 17;
+}
+
+long long mr_runtime_xproc_candidate_region_digest(long long index)
+{
+    return mr_runtime_xproc_candidate_pid(index) < 0 ? -1 : 820000 + index * 19;
+}
+
+static long long runtime_request_id = 9000000;
+
+long long mr_runtime_xproc_request_id_new(void)
+{
+    if (runtime_request_id == 0x7fffffffffffffffll) return 0;
+    runtime_request_id++;
+    return runtime_request_id;
+}
+
+long long mr_runtime_xproc_audit_confirmation(long long request_id, long long pid,
+                                               long long start_time, long long uid,
+                                               long long scope_hash, long long identity_hash,
+                                               long long region_digest)
+{
+    return request_id > 0 && pid >= 2 && start_time > 0 && uid > 0 &&
+           scope_hash > 0 && identity_hash > 0 && region_digest > 0 ? 0 : 1;
+}
+
+long long mr_runtime_xproc_start(long long request_id, long long pid,
+                                  long long start_time, long long uid,
+                                  long long identity_hash, long long scope_hash,
+                                  long long region_digest, long long reviewed_bytes,
                                   long long reviewed_regions, long long max_bytes)
 {
     if (mr_runtime_xproc_simulation_enabled() == 0 || xproc_mock_in_flight != 0 ||
-        (pid != 4242 && pid != 4243) || start_time != 7700 + (pid - 4242) ||
-        uid != (long long)geteuid() || identity_token != 424242 + (pid - 4242) * 101 ||
+        request_id <= 0 || (pid != 4242 && pid != 4243) ||
+        start_time != 7700 + (pid - 4242) || uid != (long long)geteuid() ||
+        identity_hash != 424242 + (pid - 4242) * 101 ||
+        scope_hash != 710000 + (pid - 4242) * 17 ||
+        region_digest != 820000 + (pid - 4242) * 19 ||
         reviewed_bytes != (pid == 4242 ? 64ll * 1024ll * 1024ll : 48ll * 1024ll * 1024ll) ||
         reviewed_regions != (pid == 4242 ? 3 : 2) ||
         max_bytes <= 0 || max_bytes > 64ll * 1024ll * 1024ll) {

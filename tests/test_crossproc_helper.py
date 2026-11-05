@@ -67,6 +67,10 @@ class BuildMixin:
             ctypes.POINTER(ctypes.c_uint64),
         ]
         cls.credentials.mr_xproc_test_validate_helper_credentials.restype = ctypes.c_char_p
+        cls.credentials.mr_xproc_test_target_is_self.argtypes = [
+            ctypes.c_int32, ctypes.c_int32,
+        ]
+        cls.credentials.mr_xproc_test_target_is_self.restype = ctypes.c_int
 
     @classmethod
     def tearDownClass(cls):
@@ -116,43 +120,77 @@ def fixture_identity_token(proc_root, pid, start_time, uid):
     return value or 1
 
 
+def _fnv64_fields(fields, value=14695981039346656037):
+    for field in fields:
+        for byte in struct.pack("=Q", len(field)) + field:
+            value ^= byte
+            value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    return value
+
+
+def fixture_scope_token(proc_root, pid):
+    try:
+        with open(os.path.join(proc_root, str(pid), "cgroup"), "rb") as handle:
+            cgroup = handle.read()
+    except OSError:
+        return 0
+    value = _fnv64_fields([b"\x01", cgroup]) & 0x7FFFFFFFFFFFFFFF
+    return value or 1
+
+
 def fixture_map_summary(proc_root, pid):
     directory = os.path.join(proc_root, str(pid))
     try:
         with open(os.path.join(directory, "maps"), "r", encoding="utf-8") as handle:
             lines = handle.readlines()
     except OSError:
-        return 0, 0
+        return 0, 0, 0
     total = 0
     regions = 0
+    digest = _fnv64_fields([b"memreduct-region-v1"])
+    page = os.sysconf("SC_PAGE_SIZE")
     for line in lines:
-        fields = line.split(maxsplit=5)
+        fields = line.split()
         if len(fields) < 5:
             continue
         try:
             begin_text, end_text = fields[0].split("-", 1)
             begin, end = int(begin_text, 16), int(end_text, 16)
+            offset = int(fields[2], 16)
             inode = int(fields[4])
         except (ValueError, IndexError):
             continue
         perms = fields[1]
-        name = fields[5] if len(fields) == 6 else ""
+        device = fields[3]
+        name = fields[5] if len(fields) >= 6 else ""
         if end <= begin or len(perms) < 4 or perms[3] != "p" or perms[0] != "r":
             continue
         if inode != 0 and perms[1] == "w":
             continue
         if name.startswith("["):
             continue
-        aligned_start = (begin + 4095) & ~4095
-        aligned_end = end & ~4095
+        aligned_start = (begin + page - 1) & ~(page - 1)
+        aligned_end = end & ~(page - 1)
         if aligned_end <= aligned_start:
             continue
         total += aligned_end - aligned_start
         regions += 1
-    return total, regions
+        digest = _fnv64_fields([
+            struct.pack("=Q", aligned_start), struct.pack("=Q", aligned_end),
+            perms.encode(), struct.pack("=Q", offset), device.encode(),
+            struct.pack("=Q", inode), name.encode(),
+        ], digest)
+    digest = _fnv64_fields([struct.pack("=Q", regions)], digest)
+    digest &= 0x7FFFFFFFFFFFFFFF
+    return total, regions, digest or 1
 
 class ProductionBinaryTest(BuildMixin, unittest.TestCase):
     """The shipped binary must refuse everything a normal user can ask for."""
+
+    def test_binary_embeds_exact_protocol_abi_marker(self):
+        with open(self.prod, "rb") as handle:
+            binary = handle.read()
+        self.assertIn(b"MR_XPROC_PROTOCOL_ABI=2;", binary)
 
     def test_usage_errors_exit_2_and_print_nothing_to_stdout(self):
         cases = [
@@ -178,7 +216,8 @@ class ProductionBinaryTest(BuildMixin, unittest.TestCase):
         for pid in ("0", "1"):
             with self.subTest(pid=pid):
                 result = subprocess.run(
-                    [self.prod, "reclaim", pid, "5", "1000", "1", "4096", "1", "4096"],
+                    [self.prod, "reclaim", "987654321", pid, "5", "1000",
+                     "1", "2", "3", "4096", "1", "4096"],
                     capture_output=True, text=True, timeout=10,
                 )
                 self.assertEqual(result.returncode, 2)
@@ -186,14 +225,16 @@ class ProductionBinaryTest(BuildMixin, unittest.TestCase):
     def test_budget_above_ceiling_is_a_usage_error(self):
         # 64 MiB is the ceiling; one byte more must not parse.
         result = subprocess.run(
-            [self.prod, "reclaim", "1234", "5", "1000", "1", "4096", "1", str(64 * 1024 * 1024 + 1)],
+            [self.prod, "reclaim", "987654321", "1234", "5", "1000",
+             "1", "2", "3", "4096", "1", str(64 * 1024 * 1024 + 1)],
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 2)
 
     def test_unprivileged_run_refuses_and_never_claims_a_target_was_inspected(self):
         result = subprocess.run(
-            [self.prod, "reclaim", "2", "5", "1000", "1", "4096", "1", "1048576"],
+            [self.prod, "reclaim", "987654321", "2", "5", "1000",
+             "1", "2", "3", "4096", "1", "1048576"],
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 1, result.stderr)
@@ -223,6 +264,7 @@ class ProductionBinaryTest(BuildMixin, unittest.TestCase):
             b"MEMREDUCT_TEST_SKIP_PRIVILEGE",
             b"MEMREDUCT_TEST_SKIP_REQUESTER",
             b"MEMREDUCT_TEST_BACKEND",
+            b"mr_xproc_test_target_is_self",
             b"mr_xproc_test_validate_helper_credentials",
         ):
             self.assertNotIn(marker, blob, f"{marker!r} leaking into the production binary")
@@ -306,7 +348,8 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         shutil.rmtree(self.proc, ignore_errors=True)
 
     def run_helper(self, pid, start_time, max_bytes, env_extra=None, uid_env="1000",
-                   selected_uid=1000, identity_token=None, reviewed_summary=None):
+                   selected_uid=1000, identity_token=None, reviewed_summary=None,
+                   request_id=987654321, scope_token=None, region_digest=None):
         env = {
             "PATH": "/usr/bin:/bin",
             "MEMREDUCT_TEST_PROC_ROOT": self.proc,
@@ -328,12 +371,20 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         if token is None:
             token = fixture_identity_token(self.proc, pid, start_time, selected_uid)
         if reviewed_summary is None:
-            reviewed_bytes, reviewed_regions = fixture_map_summary(self.proc, pid)
+            reviewed_bytes, reviewed_regions, reviewed_digest = fixture_map_summary(self.proc, pid)
         else:
-            reviewed_bytes, reviewed_regions = reviewed_summary
+            if len(reviewed_summary) == 2:
+                reviewed_bytes, reviewed_regions = reviewed_summary
+                _, _, reviewed_digest = fixture_map_summary(self.proc, pid)
+            else:
+                reviewed_bytes, reviewed_regions, reviewed_digest = reviewed_summary
+        selected_scope_token = fixture_scope_token(self.proc, pid) if scope_token is None else scope_token
+        selected_region_digest = reviewed_digest if region_digest is None else region_digest
         return subprocess.run(
-            [self.test, "reclaim", str(pid), str(start_time), str(selected_uid),
-             str(token), str(reviewed_bytes), str(reviewed_regions), str(max_bytes)],
+            [self.test, "reclaim", str(request_id), str(pid), str(start_time),
+             str(selected_uid), str(token), str(selected_scope_token),
+             str(selected_region_digest), str(reviewed_bytes), str(reviewed_regions),
+             str(max_bytes)],
             capture_output=True, text=True, timeout=10, env=env,
         )
 
@@ -389,6 +440,28 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
                                  reviewed_summary=reviewed_summary)
         self.assert_refused(result, "target_mappings_changed")
 
+    def test_exact_region_digest_rejects_same_size_different_mapping(self):
+        directory = self.tree.add(4242, "demo", 1000, 777)
+        selected_summary = fixture_map_summary(self.proc, 4242)
+        with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
+            handle.write(textwrap.dedent("""\
+                01400000-01452000 r-xp 00000000 08:01 100 /usr/bin/demo
+                01651000-01652000 r--p 00051000 08:01 100 /usr/bin/demo
+                01652000-01653000 rw-p 00052000 08:01 100 /usr/bin/demo
+                02000000-02400000 rw-p 00000000 00:00 0
+                03000000-03001000 r-xp 00000000 00:00 0 [vdso]
+                04000000-04001000 rw-p 00000000 00:00 0 [stack]
+            """))
+        self.assertEqual(fixture_map_summary(self.proc, 4242)[:2], selected_summary[:2])
+        result = self.run_helper(4242, 777, 1048576, reviewed_summary=selected_summary)
+        self.assert_refused(result, "target_mappings_changed")
+
+    def test_scope_hash_mismatch_is_refused_before_syscall(self):
+        self.tree.add(4242, "demo", 1000, 777)
+        selected_scope = fixture_scope_token(self.proc, 4242)
+        result = self.run_helper(4242, 777, 1048576, scope_token=selected_scope + 1)
+        self.assert_refused(result, "target_identity_changed")
+
     def test_selected_uid_must_match_the_authorized_requester(self):
         self.tree.add(4242, "demo", 1000, 777)
         result = self.run_helper(
@@ -442,8 +515,13 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
 
     def test_missing_or_unknown_cgroup_is_refused_closed(self):
         directory = self.tree.add(4242, "ordinary-client", 1000, 777)
+        selected_identity = fixture_identity_token(self.proc, 4242, 777, 1000)
+        selected_scope = fixture_scope_token(self.proc, 4242)
+        selected_summary = fixture_map_summary(self.proc, 4242)
         os.unlink(os.path.join(directory, "cgroup"))
-        self.assert_refused(self.run_helper(4242, 777, 1048576),
+        self.assert_refused(self.run_helper(
+            4242, 777, 1048576, identity_token=selected_identity,
+            scope_token=selected_scope, reviewed_summary=selected_summary),
                             "target_cgroup_unverifiable")
 
     def test_target_uid_real_effective_saved_and_fs_must_match(self):
@@ -478,24 +556,28 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         self.assertNotEqual(fields.get("reason"), "target_is_protected_process")
 
     def test_missing_status_is_refused(self):
-        # No fixture at all: the PID does not exist in this tree.
-        result = self.run_helper(999999, 777, 1048576)
+        directory = self.tree.add(4242, "demo", 1000, 777)
+        selected_identity = fixture_identity_token(self.proc, 4242, 777, 1000)
+        os.unlink(os.path.join(directory, "status"))
+        result = self.run_helper(4242, 777, 1048576,
+                                 identity_token=selected_identity)
         self.assert_refused(result, "target_not_readable")
 
     def test_kernel_thread_without_maps_is_refused(self):
-        self.tree.add(4242, "kthreadd", 1000, 777, maps=None)
-        result = self.run_helper(4242, 777, 1048576)
+        directory = self.tree.add(4242, "kthreadd", 1000, 777)
+        selected_identity = fixture_identity_token(self.proc, 4242, 777, 1000)
+        selected_summary = fixture_map_summary(self.proc, 4242)
+        os.unlink(os.path.join(directory, "maps"))
+        result = self.run_helper(4242, 777, 1048576,
+                                 identity_token=selected_identity,
+                                 reviewed_summary=selected_summary)
         self.assert_refused(result, "target_has_no_address_space")
 
     def test_target_is_self_is_refused(self):
-        """A PID equal to the helper's own must be refused before any read."""
-        # The helper checks this before touching procfs, so any PID works as
-        # long as the check itself is exercised; assert via the reason token.
-        result = self.run_helper(4242, 777, 1048576)
-        fields = self.parse(result.stdout)
-        self.assertIsNotNone(fields)
-        # 4242 is not this process, so it is not refused for being self.
-        self.assertNotEqual(fields.get("reason"), "target_is_self")
+        """The helper's self-target guard rejects only its own process ID."""
+        is_self = self.credentials.mr_xproc_test_target_is_self
+        self.assertEqual(is_self(4242, 4242), 1)
+        self.assertEqual(is_self(4242, 4243), 0)
 
     def test_missing_pkexec_environment_is_refused(self):
         self.tree.add(4242, "demo", 1000, 777)
@@ -594,10 +676,20 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         fields = self.parse(result.stdout)
         self.assertIsNotNone(fields, result.stdout + result.stderr)
         self.assertEqual(fields["status"], "accepted", fields)
+        self.assertEqual(fields["request_id"], "987654321")
         self.assertEqual(fields["call_count"], "1")
         self.assertGreater(int(fields["advised_bytes"]), 0)
         self.assertEqual(fields["start_time_verified"], "true")
         self.assertEqual(fields["uid"], "1000")
+        self.assertEqual(fields["identity_hash_verified"], "true")
+        self.assertEqual(fields["scope_hash_verified"], "true")
+        self.assertEqual(fields["region_digest_verified"], "true")
+        self.assertEqual(fields["expected_identity_hash"], fields["observed_identity_hash"])
+        self.assertEqual(fields["expected_scope_hash"], fields["observed_scope_hash"])
+        self.assertEqual(fields["expected_region_digest"], fields["observed_region_digest"])
+        self.assertIn("MR_XPROC_AUDIT phase=helper_pre_syscall request_id=987654321",
+                      result.stderr)
+        self.assertIn("target_pid=4242", result.stderr)
         self.assertIn(fields["reason"], ("kernel_accepted_the_request",
                                          "kernel_covered_part_of_the_request"))
         self.assertEqual(result.returncode, 0)
@@ -700,8 +792,12 @@ class DriverTest(unittest.TestCase):
                 #include <string.h>
                 #include "async_crossproc.h"
 
+                int64_t mr_xproc_test_classify_expected(
+                    const char *, int64_t, int64_t, int64_t, int64_t, int64_t,
+                    int64_t, int64_t, int64_t);
+
                 int main(int argc, char **argv) {
-                    if (argc != 3) return 2;
+                    if (argc != 3 && argc != 10) return 2;
                     FILE *f = fopen(argv[1], "rb");
                     static char buffer[8192];
                     size_t used = 0;
@@ -711,6 +807,16 @@ class DriverTest(unittest.TestCase):
                     }
                     buffer[used] = '\\0';
                     long code = strtol(argv[2], NULL, 10);
+                    if (argc == 10) {
+                        long long values[7];
+                        for (int index = 0; index < 7; index++)
+                            values[index] = strtoll(argv[index + 3], NULL, 10);
+                        long verdict = mr_xproc_test_classify_expected(
+                            buffer, code, values[0], values[1], values[2], values[3],
+                            values[4], values[5], values[6]);
+                        printf("verdict=%ld\\n", verdict);
+                        return 0;
+                    }
                     long verdict = mr_xproc_test_classify(buffer, code);
                     printf("verdict=%ld\\n", verdict);
                     printf("advised=%lld\\n", (long long)mr_xproc_result_advised_bytes());
@@ -752,16 +858,38 @@ class DriverTest(unittest.TestCase):
             fields[key] = value
         return fields
 
+    def classify_expected(self, text, exit_code, target):
+        path = os.path.join(self.tmp, "expected-out.txt")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        result = subprocess.run(
+            [self.driver, path, str(exit_code), *[str(value) for value in target]],
+            capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return int(result.stdout.strip().split("=", 1)[1])
+
     @staticmethod
     def block(status, reason="none", advised=1048576, requested=1048576,
               regions=1, error=0, calls=1, pid=4242, verified="true", uid="1000"):
         return (
             "MR_CROSSPROC_RESULT\n"
+            "protocol_version=2\n"
             f"status={status}\n"
             f"reason={reason}\n"
+            "request_id=987654321\n"
             f"pid={pid}\n"
             "start_time=777\n"
             f"start_time_verified={verified}\n"
+            "expected_identity_hash=1111\n"
+            "observed_identity_hash=1111\n"
+            "identity_hash_verified=true\n"
+            "expected_scope_hash=2222\n"
+            "observed_scope_hash=2222\n"
+            "scope_hash_verified=true\n"
+            "expected_region_digest=3333\n"
+            "observed_region_digest=3333\n"
+            "region_digest_verified=true\n"
             f"uid={uid}\n"
             f"regions={regions}\n"
             f"requested_bytes={requested}\n"
@@ -784,6 +912,29 @@ class DriverTest(unittest.TestCase):
         self.assertEqual(fields["advised"], "1048576")
         self.assertEqual(fields["calls"], "1")
         self.assertEqual(fields["verified"], "1")
+
+    def test_accepted_result_must_match_the_selected_request_and_target(self):
+        target = [987654321, 4242, 777, 1000, 1111, 2222, 3333]
+        self.assertEqual(self.classify_expected(self.block("accepted"), 0, target), 0)
+        for index, label in enumerate(("request", "pid", "start_time", "uid",
+                                       "identity", "scope", "region_digest")):
+            with self.subTest(field=label):
+                changed = list(target)
+                changed[index] += 1
+                self.assertEqual(
+                    self.classify_expected(self.block("accepted"), 0, changed), 9,
+                )
+
+        for field in ("observed_identity_hash", "observed_scope_hash",
+                      "observed_region_digest"):
+            with self.subTest(field=field):
+                text = self.block("accepted").replace(
+                    f"{field}=" + {"observed_identity_hash": "1111",
+                                   "observed_scope_hash": "2222",
+                                   "observed_region_digest": "3333"}[field],
+                    f"{field}=9999",
+                )
+                self.assertEqual(self.classify_expected(text, 0, target), 9)
 
     def test_partial_is_not_reported_as_accepted(self):
         fields = self.classify(self.block("partial", advised=4096), 0)
@@ -913,11 +1064,11 @@ static void show(const char *label, int64_t rc)
 
 int main(void)
 {
-    show("gate_off", mr_xproc_start(1192, 11338, 1000, 1, 4096, 1, 16 * 1024 * 1024));
-    show("bad_pid", mr_xproc_start(0, 11338, 1000, 1, 4096, 1, 16 * 1024 * 1024));
-    show("bad_start", mr_xproc_start(1192, 0, 1000, 1, 4096, 1, 16 * 1024 * 1024));
-    show("bad_budget", mr_xproc_start(1192, 11338, 1000, 1, 4096, 1, 0));
-    show("over_ceiling", mr_xproc_start(1192, 11338, 1000, 1, 4096, 1, 64 * 1024 * 1024 + 1));
+    show("gate_off", mr_xproc_start(123, 1192, 11338, 1000, 1, 2, 3, 4096, 1, 16 * 1024 * 1024));
+    show("bad_pid", mr_xproc_start(123, 0, 11338, 1000, 1, 2, 3, 4096, 1, 16 * 1024 * 1024));
+    show("bad_start", mr_xproc_start(123, 1192, 0, 1000, 1, 2, 3, 4096, 1, 16 * 1024 * 1024));
+    show("bad_budget", mr_xproc_start(123, 1192, 11338, 1000, 1, 2, 3, 4096, 1, 0));
+    show("over_ceiling", mr_xproc_start(123, 1192, 11338, 1000, 1, 2, 3, 4096, 1, 64 * 1024 * 1024 + 1));
     printf("idle %lld\\n", (long long)mr_xproc_poll());
     return 0;
 }
@@ -1070,6 +1221,10 @@ class PolicyPreflightFileTest(unittest.TestCase):
             ctypes.c_char_p, ctypes.c_uint, ctypes.c_uint,
         ]
         cls.library.mr_xproc_test_policy_file_matches.restype = ctypes.c_int
+        cls.library.mr_xproc_test_helper_protocol_matches.argtypes = [
+            ctypes.c_char_p, ctypes.c_uint, ctypes.c_uint,
+        ]
+        cls.library.mr_xproc_test_helper_protocol_matches.restype = ctypes.c_int
 
     @classmethod
     def tearDownClass(cls):
@@ -1128,6 +1283,25 @@ class PolicyPreflightFileTest(unittest.TestCase):
         link_dir = os.path.join(self.directory, "linked")
         os.symlink(real_dir, link_dir)
         self.assertFalse(self.matches(path=os.path.join(link_dir, "action.policy")))
+
+    def protocol_matches(self, marker, mode=0o755, prefix=b"\x7fELF-fixture\x00"):
+        helper_path = os.path.join(self.directory, "helper-probe")
+        with open(helper_path, "wb") as handle:
+            handle.write(prefix)
+            handle.write(marker)
+        os.chmod(helper_path, mode)
+        return self.library.mr_xproc_test_helper_protocol_matches(
+            os.fsencode(helper_path), os.getuid(), os.getgid(),
+        ) == 1
+
+    def test_runtime_helper_probe_accepts_only_the_exact_protocol_marker(self):
+        self.assertTrue(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=2;"))
+        self.assertTrue(self.protocol_matches(
+            b"MR_XPROC_PROTOCOL_ABI=2;", prefix=b"x" * (4096 - 4)))
+        self.assertFalse(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=1;"))
+        self.assertFalse(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=2-extra"))
+        self.assertFalse(self.protocol_matches(
+            b"MR_XPROC_PROTOCOL_ABI=2;", mode=0o755 | 0o020))
 
 
 class SourceContractTest(unittest.TestCase):
@@ -1239,6 +1413,87 @@ class InstallSurfaceTest(unittest.TestCase):
         self.assertIn("Candidate GUI must be an executable regular non-symlink file.", text)
         self.assertIn("if ((preflight_only)); then", text)
         self.assertIn("install=not_run", text)
+        self.assertIn("MR_XPROC_PROTOCOL_ABI=", text)
+
+    def test_incompatible_helper_gets_a_distinct_user_facing_preflight_state(self):
+        header = self.read("native", "async_crossproc.h")
+        gui = self.read("src", "main.zm")
+        self.assertIn("MR_XPROC_PREFLIGHT_HELPER_PROTOCOL = 5", header)
+        self.assertIn("preflight == 5", gui)
+        self.assertIn("incompatible protocol", gui)
+        self.assertIn("协议不兼容", gui)
+
+    def candidate_preflight(self, helper_version):
+        compiler = shutil.which("cc")
+        if not compiler:
+            self.skipTest("C compiler unavailable")
+        tmp = tempfile.TemporaryDirectory(prefix="memreduct-install-protocol-")
+        root = os.path.join(tmp.name, "repo")
+        os.makedirs(os.path.join(root, "scripts"), exist_ok=True)
+        os.makedirs(os.path.join(root, "build"), exist_ok=True)
+        native_dir = os.path.join(root, "native")
+        os.makedirs(native_dir, exist_ok=True)
+        shutil.copy2(os.path.join(ROOT, "scripts", "install-arch.sh"),
+                     os.path.join(root, "scripts", "install-arch.sh"))
+        shutil.copy2(HELPER_H, os.path.join(native_dir, "crossproc_helper.h"))
+        policy_dir = os.path.join(root, "packaging", "polkit-1", "actions")
+        os.makedirs(policy_dir, exist_ok=True)
+        for policy in (POLICY, PAGE_CACHE_POLICY):
+            shutil.copy2(policy, os.path.join(policy_dir, os.path.basename(policy)))
+        for name in ("memreduct-zamak-helper",):
+            with open(os.path.join(root, "build", name), "wb") as handle:
+                handle.write(b"preflight fixture; never executed\n")
+        helper = os.path.join(root, "build", "memreduct-zamak-crossproc-helper")
+        with open(helper, "w", encoding="utf-8") as handle:
+            handle.write(f"#!/bin/sh\n# MR_XPROC_PROTOCOL_ABI={helper_version};\n")
+            handle.write("exit 0\n")
+        os.chmod(helper, 0o755)
+
+        tools = os.path.join(tmp.name, "mock-bin")
+        os.makedirs(tools)
+        for name in ("pkexec", "pkaction"):
+            path = os.path.join(tools, name)
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("#!/bin/sh\nexit 99\n")
+            os.chmod(path, 0o755)
+        source = os.path.join(tmp.name, "candidate.c")
+        with open(source, "w", encoding="utf-8") as handle:
+            handle.write(textwrap.dedent("""\
+                #include <stdint.h>
+                int64_t mr_production_clean_enabled(void) { return 1; }
+                int64_t mr_xproc_capability_enabled(void) { return 1; }
+                int64_t mr_build_profile_m0_m1_candidate(void) { return 1; }
+                int main(void) { return 0; }
+            """))
+        candidate = os.path.join(tmp.name, "candidate")
+        subprocess.run([compiler, "-O2", source, "-o", candidate],
+                       check=True, capture_output=True, text=True)
+        os.chmod(candidate, 0o755)
+        env = os.environ.copy()
+        env["PATH"] = tools + os.pathsep + env.get("PATH", "")
+        result = subprocess.run(
+            ["bash", os.path.join(root, "scripts", "install-arch.sh"),
+             "--check-m0-m1-candidate", candidate],
+            env=env, capture_output=True, text=True,
+        )
+        return tmp, result
+
+    def test_candidate_preflight_rejects_a_stale_crossproc_helper(self):
+        tmp, result = self.candidate_preflight(1)
+        try:
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("Crossproc helper protocol mismatch", result.stderr)
+        finally:
+            tmp.cleanup()
+
+    def test_candidate_preflight_accepts_the_matching_crossproc_helper(self):
+        tmp, result = self.candidate_preflight(2)
+        try:
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("helper_protocol=2", result.stdout)
+            self.assertIn("install=not_run", result.stdout)
+        finally:
+            tmp.cleanup()
 
     def test_m0_m1_build_uses_a_unique_profile_gate(self):
         build = self.read("scripts", "ci", "build-production-crossproc-gui.sh")
