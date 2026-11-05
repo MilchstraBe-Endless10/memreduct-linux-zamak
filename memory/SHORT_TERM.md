@@ -1,6 +1,18 @@
 # 短期记忆 / Latest Handoff
 
-## 2026-11-05 — M1.3 新隔离 Pinta 目标已准备，等待目标级授权
+## 2026-11-05 — M1.3 目标绑定修复与 M0+M1 本地候选
+
+- **代码提交：**本地分支 `codex/m13-fault-repair`，提交 `247b51465a9a067b269d595741cfa5cd29ff2ca6`，Tree `54be50458f111cfd5df55355367dab0d33d3def9`，父 `425d87df41364d73627bccd8dac8c1db707da8c4`。本提交加入单次预算选择、Space 键盘处理及 Xvfb 回归；父提交 `425d87d` 实现目标快照绑定。文档与记忆分开提交。
+- **重要安全背景：**所有者报告此前一次 M1.3 内核调用接受了 16 MiB 建议，但实际 PID 与那次授权的 PID 不一致。该次结果按目标身份完整性失败记录，不能算日常清理成功；本轮没有重试该目标或任何其他目标。
+- **代码修复：**选中候选时固定 PID、start_time、UID、comm/exe/cmdline/cgroup 指纹以及映射摘要；重扫排序不会更换目标，发起授权前及 helper 内再次独立核验。目标退出或身份、scope、映射变化即拒绝，不回退到同名进程。每次操作可选 16/32/64 MiB，默认 16 MiB；helper 仍强制 64 MiB 上限，实际建议量取预算与复核映射量较小值；新目标重置预算，单次调用，不自动重试。
+- **隔离交互证据：**CI GUI 的 Xvfb 测试覆盖鼠标 64 MiB、键盘 32 MiB、确认页取消及 mock 部分结果；输出中 `requested_bytes=33554432`、`advised_bytes=16777216`、`mock=true`、`call_count=0`，没有 helper 或 syscall。截图及哈希在 AI 产出目录 `报告与研究/MemReduct-M1-3-2026-11-05/continuation-2026-11-05-02/xvfb-budget-ui-r3/`。本轮的生产候选在隔离 Xvfb/X11、`MEMREDUCT_CI`/`MEMREDUCT_TEST` 未设置时打开可见窗口，按 GTK 关闭按钮退出 0，日志为空；没有触发清理。这些不是生产 Polkit/真实回收证据。
+- **验证：**治理 34 项 PASS；Python/C 安全测试 203 项执行，202 PASS、1 项因文件系统拒绝超长路径而 skip；所有 `scripts/*.sh` 与 `scripts/ci/*.sh` 语法通过；Zamak 0.2.0 check/build 通过、test 81/81。候选只读安装预检通过，`ldd` 无缺失库。M0+M1 GUI 候选二进制 SHA-256 `55a533c028e0faf845df074cb01f13c45889bab4df4d5feb076a9309208b4e34`；page-cache helper `b0652c8ac3ae70576e39b71fbdcd047a7c57f23873fec2e45b1b691b34c45a5e`，Crossproc helper `03044920f438892e3279f276921d673f5a2cb996699e8b599acafb0a8997867a`。完整新候选、组件 SHA、日志及生产 GUI smoke 结果在 AI 产出目录 `报告与研究/MemReduct-M1-3-2026-11-05/continuation-2026-11-05-03/m0-m1-candidate-final/`。
+- **只读安装状态：**主机 page-cache helper 是 root:root 0755，SHA 与候选相同；两份策略为 root:root 0644、SHA 与候选相同，两个 Polkit action 均被识别。但主机现有 Crossproc helper 虽为 root:root 0755，其 SHA `ae7fecede5dd7230e4fc6769f3b408ba7fb4a7f95088ed6a026d2f6d5f787339` 与候选 `03044920f438892e3279f276921d673f5a2cb996699e8b599acafb0a8997867a` 不同。不要用新 M0+M1 GUI 调用这份旧 helper；需另行授权更新并验证。此次没有写系统文件。
+- **边界与完成度：**这不是安装后产品验收。此次没有启动当前版本 Hyprland GUI，没有运行 Polkit、helper、page-cache 写入或 `MADV_PAGEOUT`，没有安装/卸载，也没有 GitHub push。整页 Windows 3.5.2 1:1 仍 **NOT PASS**；新修复尚缺一轮目标身份一致的生产端到端清理验收。
+
+## 历史快照（2026-11-05 — M1.3 新隔离 Pinta 目标准备）
+
+### 目标准备历史快照（身份不一致事件之前）
 
 - 在新的唯一用户 scope 下启动了空白 Pinta，使用 AI 输出目录内独立 XDG profile，没有传入文件路径。只读核验确认命令行为 dotnet + Pinta.dll、UID 四元组一致、启动时间及专属 scope 与预期相符；目标身份和当时的 smaps/maps 观察保存在私有文件 `报告与研究/MemReduct-M1-3-2026-11-05/pkcheck-diagnostic/test-target-r1/target-candidate.md`，避免把本机 PID 写入公开仓库记忆。
 - 只读内存映射统计不代表可回收量；拟申请的操作上限为 16 MiB。未启动 Mem Reduct GUI、pkexec、Crossproc helper 或任何回收 syscall；旧 Pinta 实例未触碰。

@@ -1,7 +1,16 @@
 # 中期记忆 / Roadmap State
-更新时间：2026-11-04；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+更新时间：2026-11-05；当前真实状态以本节为准，后续各节均为有日期的历史快照。
 
-## 2026-11-04 当前补充：M1.3 生产 Wayland 选择/取消通过，日常回收仍未授权
+## 2026-11-05 当前补充：M1.3 目标绑定修复及 M0+M1 候选
+
+- 所有者报告此前一轮 `MADV_PAGEOUT` 虽被内核接受 16 MiB 建议，但实际 PID 与该次一次性授权的 PID 不一致。该结果属于目标完整性失败，不能作为日常应用清理通过证据；本地没有重放该操作。
+- 基础目标快照绑定位于父提交 `425d87df41364d73627bccd8dac8c1db707da8c4`；本轮新增预算/输入改动提交 `247b51465a9a067b269d595741cfa5cd29ff2ca6`（Tree `54be50458f111cfd5df55355367dab0d33d3def9`）。整合代码把候选快照绑定至 PID、start_time、UID、comm/exe/cmdline/cgroup 指纹和已复核映射摘要；授权前与特权 helper 内再验证，目标失效时拒绝，不切换至同名进程。预算为单次 16/32/64 MiB（默认 16 MiB，helper 64 MiB 硬上限），不保存、不重试，实际建议范围还受复核映射限制。
+- 本地 `m0+m1-candidate` 有两个真实生产 gate 且移除了测试 hooks，M0 页缓存和 M1 跨进程路径都进入候选构建。安装模式与只读 preflight 已有源码；preflight 通过，但本轮未安装候选、未执行卸载/回滚验证。
+- 主机只读核验发现 page-cache helper 与两份策略匹配候选 SHA，两个 Polkit action 可见；已安装 Crossproc helper 为 root:root 0755，但 SHA 与候选不符。当前候选不得直接连接该旧 helper；先取得精确更新授权并更新/验证 Crossproc helper，且保留 M0 文件。
+- Xvfb GUI 测试覆盖鼠标/键盘预算选择、取消及 mock 部分结果，零 helper/零 syscall；此前 Wayland 选择/风险/取消证据属于较旧构建，不能算本修复的 Wayland 端到端验收。当前构建的 Hyprland 输入和身份匹配真实日常回收仍未验收。
+- 本轮治理 34 PASS、Python/C 203 项中 202 PASS/1 环境路径限制 skip、Shell 语法 PASS；M0+M1 二进制与 helper 的 SHA、Zamak 日志及截图记录在 `memory/SHORT_TERM.md`。Windows 3.5.2 整页 1:1 仍 NOT PASS。没有远端写入、Polkit 请求、真实清理、Swap/ZRAM 操作。
+
+## 历史快照（2026-11-04 — M1.3 生产 Wayland 选择/取消通过，日常回收仍未授权）
 
 - 在所有者批准的本机 Hyprland 测试中，隔离 XDG profile 的空白 Pinta 进程 PID `1874718`（UID 四元组 1000，start_time `41781042`，exe `/usr/share/dotnet/dotnet`，用户 `app-pinta-m13-test-r2.scope`）通过未启用 `MEMREDUCT_CI`/`MEMREDUCT_TEST` 的生产 M0+M1 候选进入真实候选列表，index 22/32。GUI 显示其身份、790 个私有 region 及映射长度估计，并成功打开 PAGEOUT 风险页。
 - 点击 Cancel 后界面明确显示请求未开始，requested/advised bytes、regions、helper calls 均为 0；没有 Polkit、helper、`process_madvise` 或其他进程操作。Mem Reduct 测试窗正常退出 0；Pinta 的精确临时 scope 随后停止且进程退出。证据、PNG 与哈希清单见 `memory/SHORT_TERM.md` 最新条目所列 `continuation-2026-11-04-02/m0-m1-candidate/real-wayland/`。

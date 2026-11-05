@@ -176,7 +176,7 @@ A third issue is a design correction rather than a bug: `mr_xproc_test_classify(
 
 167 Python tests (1 skipped: a >PATH_MAX path the filesystem rejects), 76 Zamak tests, `zam check`, GUI build, all shell syntax. Live enumeration against this host: 512 procfs entries scanned, 32 candidates, 7 protected skipped. The production binary contains no `MEMREDUCT_TEST_*` switch and no `mr_xproc_test_*` symbol.
 
-### What is still required before any real reclaim
+### What was still required before any real reclaim (historical checkpoint)
 
 1. The product owner authorizes installing the root-owned helper and its Polkit action.
 2. The product owner authorizes one interactive, authenticated `MADV_PAGEOUT`.
@@ -194,3 +194,23 @@ A third issue is a design correction rather than a bug: `mr_xproc_test_classify(
 - **Harness issue:** Issue #12 records an outer orchestration script that misreported normal `SystemExit(0)` as exit code 2. No such orchestration source is present in this worktree or the inspected `p3c-integrate` worktree; its available untracked M1.2 runner tests use `subprocess.run(...).returncode` and contain no such exception mapping. The source could not be repaired or tested here, and the real syscall was not repeated.
 
 ADR status remains **PROPOSED**; this amendment records observed results and a local implementation checkpoint, not production approval or release readiness.
+
+## Amendment: bind a reclaim request to the reviewed target (2026-11-05)
+
+- The owner reported a prior M1.3 run where the kernel accepted one 16 MiB advice but the operated PID did not match the one-time authorized PID. Treat that run as a target-integrity failure, not a successful daily-app test; it was not repeated during this checkpoint.
+- The selection path now copies an immutable target snapshot: PID, `/proc` start time, UID, process identity fingerprint (comm, executable, command line, and cgroup), and the reviewed eligible mapping byte/region summary. The confirmation view and budget use this copied record; a later candidate-list reorder cannot change the selected target.
+- The unprivileged side revalidates the snapshot before starting authorization. The helper treats all request fields as untrusted, compares the requested UID to `PKEXEC_UID`, independently re-derives the process identity and supported application scope, pins the PID with `pidfd`, and checks the reviewed mapping summary again before its single syscall. A changed or exited target is refused; it is never replaced by another same-name process.
+- The numeric identity fingerprint is a stale-selection detector, not an authorization token. It does not replace Polkit, root-owned helper path checks, capability checks, UID/cgroup/executable rules, or the helper's own mapping plan. The helper remains limited to one `MADV_PAGEOUT` call, with no automatic retry.
+- Regression coverage now exercises same-name candidates, list reordering/rescan, changed PID/start time/UID identity inputs, executable/cmdline/scope changes, and a changed reviewed mapping summary. These remain fixture/stub tests and do not invoke a real kernel reclaim syscall.
+- The local `m0+m1-candidate` build has both production gates enabled and excludes CI/test hooks. The Arch installer adds a gate-checked nonwriting preflight and an explicit candidate install mode. Only the preflight was exercised; installation and the binary were not run on the host. Existing installed files therefore remain unchanged.
+- Local verification on the source worktree: governance 34 checks, Python 203 tests (one filesystem-length skip), Zamak 0.2.0 check and 81 tests, Shell syntax, Arch native build, candidate GUI build, and candidate installer preflight pass. The artifact and SHA-256 manifest are stored outside the repository as recorded in `memory/SHORT_TERM.md`.
+- No current daily-app target was selected or operated. No Polkit request, helper invocation, `MADV_PAGEOUT`, page-cache write, install/uninstall, Swap/ZRAM change, or active desktop operation occurred in this checkpoint. The production candidate was only opened and closed in isolated Xvfb/X11 with test hooks unset; it exited 0 with an empty GTK log. Windows 3.5.2 full-page pixel identity remains **NOT PASS**.
+
+### Amendment: selectable per-operation ceiling (2026-11-05)
+
+- The confirmation view now offers 16, 32, or 64 MiB per operation. 16 MiB is the default; 64 MiB is a hard UI/helper ceiling, not an unbounded budget. The effective request is `min(selected ceiling, reviewed eligible mapping bytes)`, and the helper still constructs and validates the mapping plan itself.
+- The choice is transient for one confirmation and is not persisted or silently reused after a new target selection. The selected PID/start-time/UID/identity/mapping snapshot remains the target binding; changing the ceiling cannot select or substitute a different process.
+- Tab, Space, Left/Right and mouse selection are handled on the confirmation view. Isolated Xvfb evidence on the CI GUI shows mouse selection of 64 MiB and keyboard selection of 32 MiB reaching the mock bridge with the chosen byte values; Escape cancellation starts no request. The test mock reports zero helper calls and zero syscalls. This is interaction evidence, not a Polkit or kernel-operation test.
+- Current local M0+M1 build has both action gates enabled and CI/test hooks excluded. Its preflight is read-only and passed. The real-action candidate was not launched or installed; no Polkit, helper, page-cache write, or `MADV_PAGEOUT` was run. Install/rollback, real Hyprland input, and daily-app reclaim remain unverified.
+
+ADR status remains **PROPOSED**; this amendment records a local implementation and test checkpoint, not owner approval of installation or a claim of daily-use readiness.
