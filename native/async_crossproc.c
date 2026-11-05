@@ -57,12 +57,16 @@ static int64_t last_regions;
 static int64_t last_error_code;
 static int64_t last_call_count;
 static int64_t last_pid;
+static int64_t last_start_time;
 static int64_t last_start_time_verified;
 static int64_t last_uid;
 static int64_t last_exit_code = -1;
 static int64_t last_signal;
 static char last_reason[MR_XPROC_REASON_BYTES];
 static int64_t local_refusal;
+static int64_t expected_pid;
+static int64_t expected_start_time;
+static int64_t expected_uid;
 
 /* ---------------------------------------------------------------------------
  * Capability switch.
@@ -365,6 +369,8 @@ struct parsed_result {
     int64_t error_code;
     int64_t calls;
     int64_t pid;
+    uint64_t start_time;
+    int start_time_seen;
     int verified;
     int uid_known;
     int64_t uid;
@@ -476,6 +482,9 @@ static int parse_result(const char *text, size_t length, struct parsed_result *o
                 } else if (key_is(cursor, line_len, "pid", &value, &value_len)) {
                     out->pid_seen++;
                     (void)parse_i64_text(value, value_len, &out->pid);
+                } else if (key_is(cursor, line_len, "start_time", &value, &value_len)) {
+                    out->start_time_seen++;
+                    (void)parse_u64_text(value, value_len, &out->start_time);
                 } else if (key_is(cursor, line_len, "start_time_verified", &value, &value_len)) {
                     out->verified_seen++;
                     out->verified = (value_len == 4 && memcmp(value, "true", 4) == 0);
@@ -507,7 +516,8 @@ static int result_is_complete(const struct parsed_result *parsed)
            parsed->advised_seen == 1 && parsed->requested_seen == 1 &&
            parsed->regions_seen == 1 && parsed->error_seen == 1 &&
            parsed->calls_seen == 1 && parsed->pid_seen == 1 &&
-           parsed->verified_seen == 1 && parsed->uid_seen == 1;
+           parsed->start_time_seen == 1 && parsed->verified_seen == 1 &&
+           parsed->uid_seen == 1 && parsed->start_time > 0;
 }
 
 static int text_equals(const char *text, size_t length, const char *literal)
@@ -545,6 +555,7 @@ static void reset_last_result(void)
     last_error_code = 0;
     last_call_count = 0;
     last_pid = 0;
+    last_start_time = 0;
     last_start_time_verified = 0;
     last_uid = -1;
     last_exit_code = -1;
@@ -567,6 +578,7 @@ static int64_t classify(const char *text, size_t length, int exit_code)
         last_error_code = parsed.error_code;
         last_call_count = parsed.calls;
         last_pid = parsed.pid;
+        last_start_time = (int64_t)parsed.start_time;
         last_start_time_verified = parsed.verified;
         last_uid = parsed.uid_known ? parsed.uid : -1;
         size_t copy = parsed.reason_len < sizeof(last_reason) - 1u
@@ -641,6 +653,7 @@ const char *mr_xproc_local_refusal_name(void)
         case MR_XPROC_LOCAL_BAD_BUDGET: return "bad_budget";
         case MR_XPROC_LOCAL_NOT_INSTALLED: return "not_installed";
         case MR_XPROC_LOCAL_NOT_ENABLED: return "not_enabled";
+        case MR_XPROC_LOCAL_BAD_IDENTITY: return "bad_identity";
         default: return "none";
     }
 }
@@ -686,7 +699,9 @@ static void drain_output(void)
     }
 }
 
-int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t max_bytes)
+int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t uid,
+                       int64_t identity_token, int64_t reviewed_bytes,
+                       int64_t reviewed_regions, int64_t max_bytes)
 {
     /* Cleared on entry but set on every refusal path below: a caller that reads
      * mr_xproc_local_refusal() after a refusal must never see "none" (0), which
@@ -697,6 +712,9 @@ int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t max_bytes)
     if (child_pid > 0) {
         return MR_XPROC_START_BUSY;
     }
+    expected_pid = 0;
+    expected_start_time = 0;
+    expected_uid = 0;
     reset_last_result();
     if (pid < 2 || pid > 0x7fffffff) {
         local_refusal = MR_XPROC_LOCAL_BAD_PID;
@@ -704,6 +722,15 @@ int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t max_bytes)
     }
     if (start_time <= 0) {
         local_refusal = MR_XPROC_LOCAL_BAD_START_TIME;
+        return MR_XPROC_START_BAD_REQUEST;
+    }
+    if (uid <= 0 || (uint64_t)uid > UINT32_MAX || identity_token <= 0) {
+        local_refusal = MR_XPROC_LOCAL_BAD_IDENTITY;
+        return MR_XPROC_START_BAD_REQUEST;
+    }
+    if (reviewed_bytes <= 0 || reviewed_regions <= 0 ||
+        (uint64_t)reviewed_regions > UINT32_MAX) {
+        local_refusal = MR_XPROC_LOCAL_BAD_IDENTITY;
         return MR_XPROC_START_BAD_REQUEST;
     }
     if (max_bytes <= 0 || (uint64_t)max_bytes > MR_XPROC_MAX_BYTES) {
@@ -721,9 +748,17 @@ int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t max_bytes)
 
     char pid_text[16];
     char start_text[24];
+    char uid_text[16];
+    char identity_text[24];
+    char reviewed_bytes_text[24];
+    char reviewed_regions_text[16];
     char bytes_text[24];
     (void)snprintf(pid_text, sizeof(pid_text), "%lld", (long long)pid);
     (void)snprintf(start_text, sizeof(start_text), "%lld", (long long)start_time);
+    (void)snprintf(uid_text, sizeof(uid_text), "%lld", (long long)uid);
+    (void)snprintf(identity_text, sizeof(identity_text), "%lld", (long long)identity_token);
+    (void)snprintf(reviewed_bytes_text, sizeof(reviewed_bytes_text), "%lld", (long long)reviewed_bytes);
+    (void)snprintf(reviewed_regions_text, sizeof(reviewed_regions_text), "%lld", (long long)reviewed_regions);
     (void)snprintf(bytes_text, sizeof(bytes_text), "%lld", (long long)max_bytes);
 
     int pipe_fds[2];
@@ -753,6 +788,10 @@ int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t max_bytes)
             (char *)MR_XPROC_VERB,
             pid_text,
             start_text,
+            uid_text,
+            identity_text,
+            reviewed_bytes_text,
+            reviewed_regions_text,
             bytes_text,
             NULL
         };
@@ -773,6 +812,9 @@ int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t max_bytes)
     }
 
     child_pid = spawned;
+    expected_pid = pid;
+    expected_start_time = start_time;
+    expected_uid = uid;
     child_stdout = pipe_fds[0];
     output_used = 0;
     output_overflowed = 0;
@@ -818,7 +860,16 @@ int64_t mr_xproc_poll(void)
         return MR_XPROC_POLL_OUTCOME_UNKNOWN;
     }
 
-    return classify(output_buffer, output_used, (int)last_exit_code);
+    int64_t verdict = classify(output_buffer, output_used, (int)last_exit_code);
+    if (expected_pid > 0 && last_reason[0] != '\0') {
+        if (last_pid != expected_pid || last_start_time != expected_start_time ||
+            (last_uid >= 0 && last_uid != expected_uid) ||
+            ((verdict == MR_XPROC_POLL_ACCEPTED || verdict == MR_XPROC_POLL_PARTIAL) &&
+             (last_start_time_verified != 1 || last_uid != expected_uid))) {
+            return MR_XPROC_POLL_OUTCOME_UNKNOWN;
+        }
+    }
+    return verdict;
 }
 
 int64_t mr_xproc_result_status(void) { return last_status; }
@@ -828,6 +879,7 @@ int64_t mr_xproc_result_regions(void) { return last_regions; }
 int64_t mr_xproc_result_error_code(void) { return last_error_code; }
 int64_t mr_xproc_result_call_count(void) { return last_call_count; }
 int64_t mr_xproc_result_pid(void) { return last_pid; }
+int64_t mr_xproc_result_start_time(void) { return last_start_time; }
 int64_t mr_xproc_result_start_time_verified(void) { return last_start_time_verified; }
 int64_t mr_xproc_result_uid(void) { return last_uid; }
 int64_t mr_xproc_result_exit_code(void) { return last_exit_code; }

@@ -8,7 +8,7 @@
  *   3. tests/                     — Python and C regressions.
  *
  * It deliberately describes no path argument, no address range, no advice
- * number and no signal. The helper accepts one verb and three decimal numbers,
+ * number and no signal. The helper accepts one verb and seven decimal numbers,
  * and everything that decides whether memory is touched is re-derived by the
  * helper from the kernel.
  */

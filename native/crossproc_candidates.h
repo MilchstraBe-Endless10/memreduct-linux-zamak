@@ -21,11 +21,12 @@
 /* Hard ceilings, mirroring the helper's own. Enumeration must never be able to
  * turn into a system-wide sweep, so both the entry count and the work spent per
  * entry are bounded. */
-#define MR_CAND_MAX 32u
+#define MR_CAND_MAX 256u
 #define MR_CAND_NAME_BYTES 64u
 #define MR_CAND_PATH_BYTES 256u
 #define MR_CAND_PROC_PATH_BYTES 4096u
-#define MR_CAND_MAX_PROC_ENTRIES 512u
+#define MR_CAND_CMDLINE_BYTES 8192u
+#define MR_CAND_MAX_PROC_ENTRIES 4096u
 
 /* Why a process was not offered as a candidate. Reported, never silently
  * dropped, so the UI can explain an empty list. */
@@ -50,6 +51,7 @@ struct mr_cand_entry {
     uint64_t start_time;
     uint64_t uid;
     uint64_t reclaimable_bytes;
+    uint64_t identity_token;
     uint32_t regions;
     char state;
     char name[MR_CAND_NAME_BYTES];
@@ -106,6 +108,16 @@ int64_t mr_cand_uid(int64_t index);
 int64_t mr_cand_state(int64_t index);
 int64_t mr_cand_reclaimable_bytes(int64_t index);
 int64_t mr_cand_regions(int64_t index);
+int64_t mr_cand_identity_token(int64_t index);
+/* Pin the currently displayed scan row as the user's immutable selection.
+ * A later scan cannot change this snapshot. */
+int64_t mr_cand_snapshot_select(int64_t index);
+/* Re-read /proc and compare the pinned PID/start/UID/executable/cgroup/command
+ * identity and reviewed mapping summary. Zero means the exact snapshot still
+ * matches; every other value means fail closed. */
+int64_t mr_cand_snapshot_verify(int64_t pid, int64_t start_time, int64_t uid,
+                                int64_t identity_token, int64_t bytes,
+                                int64_t regions);
 /* Owned by the scan slot: valid until the next scan, never freed by the caller. */
 const char *mr_cand_name(int64_t index);
 /* Basename of the verified /proc/<pid>/exe target; never returns the path. */

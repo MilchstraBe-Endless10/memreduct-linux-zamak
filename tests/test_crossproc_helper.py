@@ -17,6 +17,7 @@ import tempfile
 import textwrap
 import unittest
 import ctypes
+import struct
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NATIVE = os.path.join(ROOT, "native")
@@ -87,6 +88,69 @@ class BuildMixin:
         return fields
 
 
+def fixture_identity_token(proc_root, pid, start_time, uid):
+    """Mirror the shared C selection fingerprint for bounded test fixtures."""
+    directory = os.path.join(proc_root, str(pid))
+    try:
+        with open(os.path.join(directory, "status"), "rb") as handle:
+            status = handle.read()
+        comm = next(line[5:].lstrip(b" \t") for line in status.splitlines()
+                    if line.startswith(b"Name:"))
+        exe = os.readlink(os.path.join(directory, "exe")).encode()
+        with open(os.path.join(directory, "cgroup"), "rb") as handle:
+            cgroup = handle.read()
+        with open(os.path.join(directory, "cmdline"), "rb") as handle:
+            cmdline = handle.read()
+    except OSError:
+        return 1
+    value = 14695981039346656037
+    fields = [
+        b"\x01", struct.pack("=i", pid), struct.pack("=Q", start_time),
+        struct.pack("=Q", uid), comm, exe, cgroup, cmdline,
+    ]
+    for field in fields:
+        for byte in struct.pack("=Q", len(field)) + field:
+            value ^= byte
+            value = (value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    value &= 0x7FFFFFFFFFFFFFFF
+    return value or 1
+
+
+def fixture_map_summary(proc_root, pid):
+    directory = os.path.join(proc_root, str(pid))
+    try:
+        with open(os.path.join(directory, "maps"), "r", encoding="utf-8") as handle:
+            lines = handle.readlines()
+    except OSError:
+        return 0, 0
+    total = 0
+    regions = 0
+    for line in lines:
+        fields = line.split(maxsplit=5)
+        if len(fields) < 5:
+            continue
+        try:
+            begin_text, end_text = fields[0].split("-", 1)
+            begin, end = int(begin_text, 16), int(end_text, 16)
+            inode = int(fields[4])
+        except (ValueError, IndexError):
+            continue
+        perms = fields[1]
+        name = fields[5] if len(fields) == 6 else ""
+        if end <= begin or len(perms) < 4 or perms[3] != "p" or perms[0] != "r":
+            continue
+        if inode != 0 and perms[1] == "w":
+            continue
+        if name.startswith("["):
+            continue
+        aligned_start = (begin + 4095) & ~4095
+        aligned_end = end & ~4095
+        if aligned_end <= aligned_start:
+            continue
+        total += aligned_end - aligned_start
+        regions += 1
+    return total, regions
+
 class ProductionBinaryTest(BuildMixin, unittest.TestCase):
     """The shipped binary must refuse everything a normal user can ask for."""
 
@@ -98,9 +162,9 @@ class ProductionBinaryTest(BuildMixin, unittest.TestCase):
             ["reclaim", "1234", "5"],
             ["poke", "1234", "5", "4096"],
             ["reclaim", "1234", "5", "4096", "extra"],
-            ["reclaim", "12x4", "5", "4096"],
-            ["reclaim", "1234", "-5", "4096"],
-            ["reclaim", "1234", "5", "0"],
+            ["reclaim", "12x4", "5", "1000", "1", "4096", "1", "4096"],
+            ["reclaim", "1234", "-5", "1000", "1", "4096", "1", "4096"],
+            ["reclaim", "1234", "5", "1000", "1", "4096", "1", "0"],
         ]
         for argv in cases:
             with self.subTest(argv=argv):
@@ -114,7 +178,7 @@ class ProductionBinaryTest(BuildMixin, unittest.TestCase):
         for pid in ("0", "1"):
             with self.subTest(pid=pid):
                 result = subprocess.run(
-                    [self.prod, "reclaim", pid, "5", "4096"],
+                    [self.prod, "reclaim", pid, "5", "1000", "1", "4096", "1", "4096"],
                     capture_output=True, text=True, timeout=10,
                 )
                 self.assertEqual(result.returncode, 2)
@@ -122,14 +186,14 @@ class ProductionBinaryTest(BuildMixin, unittest.TestCase):
     def test_budget_above_ceiling_is_a_usage_error(self):
         # 64 MiB is the ceiling; one byte more must not parse.
         result = subprocess.run(
-            [self.prod, "reclaim", "1234", "5", str(64 * 1024 * 1024 + 1)],
+            [self.prod, "reclaim", "1234", "5", "1000", "1", "4096", "1", str(64 * 1024 * 1024 + 1)],
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 2)
 
     def test_unprivileged_run_refuses_and_never_claims_a_target_was_inspected(self):
         result = subprocess.run(
-            [self.prod, "reclaim", "2", "5", "1048576"],
+            [self.prod, "reclaim", "2", "5", "1000", "1", "4096", "1", "1048576"],
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 1, result.stderr)
@@ -212,6 +276,8 @@ class FixtureProc:
                 f"0::/user.slice/user-{uid}.slice/user@{uid}.service/"
                 f"app.slice/app-{name}.scope\n"
             )
+        with open(os.path.join(directory, "cmdline"), "wb") as handle:
+            handle.write(f"/usr/bin/{name}".encode() + b"\0--fixture\0")
         if maps is not None:
             with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
                 handle.write(maps)
@@ -239,7 +305,8 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.proc, ignore_errors=True)
 
-    def run_helper(self, pid, start_time, max_bytes, env_extra=None, uid_env="1000"):
+    def run_helper(self, pid, start_time, max_bytes, env_extra=None, uid_env="1000",
+                   selected_uid=1000, identity_token=None, reviewed_summary=None):
         env = {
             "PATH": "/usr/bin:/bin",
             "MEMREDUCT_TEST_PROC_ROOT": self.proc,
@@ -257,8 +324,16 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
             env["PKEXEC_UID"] = uid_env
         if env_extra:
             env.update(env_extra)
+        token = identity_token
+        if token is None:
+            token = fixture_identity_token(self.proc, pid, start_time, selected_uid)
+        if reviewed_summary is None:
+            reviewed_bytes, reviewed_regions = fixture_map_summary(self.proc, pid)
+        else:
+            reviewed_bytes, reviewed_regions = reviewed_summary
         return subprocess.run(
-            [self.test, "reclaim", str(pid), str(start_time), str(max_bytes)],
+            [self.test, "reclaim", str(pid), str(start_time), str(selected_uid),
+             str(token), str(reviewed_bytes), str(reviewed_regions), str(max_bytes)],
             capture_output=True, text=True, timeout=10, env=env,
         )
 
@@ -276,6 +351,51 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         # Caller claims a different start_time: the PID now means something else.
         result = self.run_helper(4242, 778, 1048576)
         self.assert_refused(result, "start_time_mismatch")
+
+    def test_selection_fingerprint_rejects_changed_same_pid_application(self):
+        directory = self.tree.add(4242, "demo", 1000, 777)
+        selected_token = fixture_identity_token(self.proc, 4242, 777, 1000)
+        with open(os.path.join(directory, "cmdline"), "wb") as handle:
+            handle.write(b"/usr/bin/other-app\0--fixture\0")
+        result = self.run_helper(4242, 777, 1048576, identity_token=selected_token)
+        self.assert_refused(result, "target_identity_changed")
+
+    def test_selection_fingerprint_rejects_changed_scope_or_executable(self):
+        for pid, changed_file, changed_value in (
+            (4242, "cgroup", b"0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-other.scope\n"),
+            (4243, "exe", b"/usr/bin/other-app"),
+        ):
+            with self.subTest(changed_file=changed_file):
+                directory = self.tree.add(pid, "demo", 1000, 777)
+                selected_token = fixture_identity_token(self.proc, pid, 777, 1000)
+                if changed_file == "cgroup":
+                    with open(os.path.join(directory, changed_file), "wb") as handle:
+                        handle.write(changed_value)
+                else:
+                    os.unlink(os.path.join(directory, "exe"))
+                    os.symlink(changed_value.decode(), os.path.join(directory, "exe"))
+                result = self.run_helper(pid, 777, 1048576,
+                                         identity_token=selected_token)
+                self.assert_refused(result, "target_identity_changed")
+
+    def test_reviewed_mapping_summary_must_still_match_after_authorization(self):
+        directory = self.tree.add(4242, "demo", 1000, 777)
+        selected_token = fixture_identity_token(self.proc, 4242, 777, 1000)
+        reviewed_summary = fixture_map_summary(self.proc, 4242)
+        with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
+            handle.write("00400000-00401000 r--p 00000000 00:00 0\n")
+        result = self.run_helper(4242, 777, 1048576,
+                                 identity_token=selected_token,
+                                 reviewed_summary=reviewed_summary)
+        self.assert_refused(result, "target_mappings_changed")
+
+    def test_selected_uid_must_match_the_authorized_requester(self):
+        self.tree.add(4242, "demo", 1000, 777)
+        result = self.run_helper(
+            4242, 777, 1048576, env_extra={"MEMREDUCT_TEST_SKIP_REQUESTER": "0"},
+            uid_env="1000", selected_uid=1001,
+        )
+        self.assert_refused(result, "selected_uid_mismatch")
 
     def test_other_uid_target_is_refused_even_with_matching_start_time(self):
         self.tree.add(4242, "demo", 2000, 777)
@@ -389,7 +509,8 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         self.tree.add(4242, "demo", real_uid, 777)
         env = {"MEMREDUCT_TEST_SKIP_REQUESTER": "0"}
         claimed = real_uid + 1
-        result = self.run_helper(4242, 777, 1048576, env_extra=env, uid_env=str(claimed))
+        result = self.run_helper(4242, 777, 1048576, env_extra=env,
+                                 uid_env=str(claimed), selected_uid=claimed)
         self.assert_refused(result, "target_other_uid")
 
     def test_matching_requester_uid_passes_the_cross_check(self):
@@ -713,6 +834,8 @@ class DriverTest(unittest.TestCase):
             "target_other_uid", "target_is_root_owned", "target_is_ancestor",
             "ancestry_unverifiable", "target_has_no_address_space",
             "target_maps_unreadable", "target_identity_changed",
+            "target_identity_unverifiable", "target_mappings_changed",
+            "selected_uid_mismatch",
         ):
             with self.subTest(reason=reason):
                 fields = self.classify(self.block("refused", reason=reason, advised=0,
@@ -790,11 +913,11 @@ static void show(const char *label, int64_t rc)
 
 int main(void)
 {
-    show("gate_off", mr_xproc_start(1192, 11338, 16 * 1024 * 1024));
-    show("bad_pid", mr_xproc_start(0, 11338, 16 * 1024 * 1024));
-    show("bad_start", mr_xproc_start(1192, 0, 16 * 1024 * 1024));
-    show("bad_budget", mr_xproc_start(1192, 11338, 0));
-    show("over_ceiling", mr_xproc_start(1192, 11338, 64 * 1024 * 1024 + 1));
+    show("gate_off", mr_xproc_start(1192, 11338, 1000, 1, 4096, 1, 16 * 1024 * 1024));
+    show("bad_pid", mr_xproc_start(0, 11338, 1000, 1, 4096, 1, 16 * 1024 * 1024));
+    show("bad_start", mr_xproc_start(1192, 0, 1000, 1, 4096, 1, 16 * 1024 * 1024));
+    show("bad_budget", mr_xproc_start(1192, 11338, 1000, 1, 4096, 1, 0));
+    show("over_ceiling", mr_xproc_start(1192, 11338, 1000, 1, 4096, 1, 64 * 1024 * 1024 + 1));
     printf("idle %lld\\n", (long long)mr_xproc_poll());
     return 0;
 }
@@ -1104,6 +1227,16 @@ class InstallSurfaceTest(unittest.TestCase):
         self.assertIn('chmod 0755 "$xproc_helper_target"', text)
         self.assertIn('chown 0:0 "$xproc_policy_target"', text)
         self.assertIn('chmod 0644 "$xproc_policy_target"', text)
+
+    def test_candidate_install_has_gate_checked_nonwriting_preflight(self):
+        text = self.read("scripts", "install-arch.sh")
+        self.assertIn("--m0-m1-candidate", text)
+        self.assertIn("--check-m0-m1-candidate", text)
+        self.assertIn("mr_production_clean_enabled", text)
+        self.assertIn("mr_xproc_capability_enabled", text)
+        self.assertIn("Candidate GUI must be an executable regular non-symlink file.", text)
+        self.assertIn("if ((preflight_only)); then", text)
+        self.assertIn("install=not_run", text)
 
     def test_uninstall_removes_every_new_file(self):
         text = self.read("scripts", "uninstall-arch.sh")

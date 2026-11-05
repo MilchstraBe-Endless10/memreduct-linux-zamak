@@ -10,6 +10,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NATIVE = os.path.join(ROOT, "native")
 UID = 1000
+CANDIDATE_CAP = 256
 
 
 def stat_line(pid, comm, ppid, start_time):
@@ -39,6 +40,11 @@ class CandidateScannerTest(unittest.TestCase):
             getattr(cls.library, name).restype = ctypes.c_char_p
         cls.library.mr_cand_state.argtypes = [ctypes.c_int64]
         cls.library.mr_cand_state.restype = ctypes.c_int64
+        for name in ("mr_cand_identity_token", "mr_cand_snapshot_select"):
+            getattr(cls.library, name).argtypes = [ctypes.c_int64]
+            getattr(cls.library, name).restype = ctypes.c_int64
+        cls.library.mr_cand_snapshot_verify.argtypes = [ctypes.c_int64] * 6
+        cls.library.mr_cand_snapshot_verify.restype = ctypes.c_int64
 
     @classmethod
     def tearDownClass(cls):
@@ -92,6 +98,9 @@ class CandidateScannerTest(unittest.TestCase):
             )
         with open(os.path.join(directory, "cgroup"), "w", encoding="utf-8") as handle:
             handle.write(cgroup)
+        argv0 = (exe or f"/usr/bin/{name}").encode("utf-8")
+        with open(os.path.join(directory, "cmdline"), "wb") as handle:
+            handle.write(argv0 + b"\0--fixture\0")
         return directory
 
     def scan(self):
@@ -106,19 +115,35 @@ class CandidateScannerTest(unittest.TestCase):
         self.assertEqual(self.scan(), 1)
 
     def test_dotnet_application_in_user_scope_is_not_protected(self):
-        self.add_process(
+        directory = self.add_process(
             name="dotnet", exe="/usr/share/dotnet/dotnet",
             cgroup=(f"0::/user.slice/user-{UID}.slice/user@{UID}.service/"
                     "app.slice/app-pinta-m13-test.scope\n"),
         )
+        with open(os.path.join(directory, "cmdline"), "wb") as handle:
+            handle.write(b"/usr/bin/dotnet\0/usr/lib/pinta/Pinta.dll\0")
         self.assertEqual(self.scan(), 1)
+        self.assertEqual(self.library.mr_cand_app_name(0), b"Pinta")
 
     def test_candidate_list_limit_is_reported(self):
-        for index in range(33):
+        for index in range(CANDIDATE_CAP + 1):
             self.add_process(pid=4242 + index, name=f"demo-{index}",
                              exe=f"/usr/bin/demo-{index}")
-        self.assertEqual(self.scan(), 32)
+        self.assertEqual(self.scan(), CANDIDATE_CAP)
         self.assertEqual(self.skipped(10), 1)
+
+    def test_candidate_after_previous_32_row_limit_is_offered(self):
+        for index in range(40):
+            self.add_process(pid=5000 + index, name=f"demo-{index}",
+                             exe=f"/usr/bin/demo-{index}")
+        self.add_process(
+            pid=9000, name="dotnet", exe="/usr/share/dotnet/dotnet",
+            cgroup=(f"0::/user.slice/user-{UID}.slice/user@{UID}.service/"
+                    "app.slice/app-pinta-m13-test.scope\n"),
+        )
+        self.assertEqual(self.scan(), 41)
+        offered = [self.library.mr_cand_name(index) for index in range(41)]
+        self.assertIn(b"dotnet", offered)
 
     def test_candidate_exposes_snapshot_state_and_executable_basename_without_path(self):
         self.add_process(name="editor", exe="/home/alice/Private Projects/editor")
@@ -128,6 +153,91 @@ class CandidateScannerTest(unittest.TestCase):
         self.assertEqual(self.library.mr_cand_state(0), ord("S"))
         self.assertEqual(self.library.mr_cand_app_name(-1), b"")
         self.assertEqual(self.library.mr_cand_state(-1), -1)
+
+    def test_selection_snapshot_survives_a_rescan_and_same_name_candidates(self):
+        self.add_process(pid=4242, name="pinta", exe="/usr/bin/pinta-a")
+        self.add_process(pid=4243, name="pinta", exe="/usr/bin/pinta-b")
+        self.assertEqual(self.scan(), 2)
+        pid = self.library.mr_cand_pid(1)
+        start = self.library.mr_cand_start_time(1)
+        uid = self.library.mr_cand_uid(1)
+        token = self.library.mr_cand_identity_token(1)
+        size = self.library.mr_cand_reclaimable_bytes(1)
+        regions = self.library.mr_cand_regions(1)
+        self.assertGreater(token, 0)
+        self.assertEqual(self.library.mr_cand_snapshot_select(1), 0)
+
+        # A new list can have different rows and order. The confirmed target
+        # remains the copied PID/start/UID/token, never "whatever is row 1 now".
+        other_pid = self.library.mr_cand_pid(0)
+        os.unlink(os.path.join(self.proc, str(other_pid), "status"))
+        self.assertEqual(self.scan(), 1)
+        self.assertEqual(self.library.mr_cand_pid(0), pid)
+        self.assertEqual(
+            self.library.mr_cand_snapshot_verify(pid, start, uid, token, size, regions),
+            0,
+        )
+        self.assertNotEqual(
+            self.library.mr_cand_snapshot_verify(
+                other_pid, start, uid, token, size, regions
+            ),
+            0,
+        )
+
+    def test_snapshot_fails_closed_when_target_identity_changes(self):
+        directory = self.add_process()
+        self.assertEqual(self.scan(), 1)
+        values = (
+            self.library.mr_cand_pid(0), self.library.mr_cand_start_time(0),
+            self.library.mr_cand_uid(0), self.library.mr_cand_identity_token(0),
+            self.library.mr_cand_reclaimable_bytes(0), self.library.mr_cand_regions(0),
+        )
+        self.assertEqual(self.library.mr_cand_snapshot_select(0), 0)
+        with open(os.path.join(directory, "cmdline"), "wb") as handle:
+            handle.write(b"/usr/bin/other\0--fixture\0")
+        self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
+
+    def test_snapshot_fails_closed_when_scope_or_executable_changes(self):
+        directory = self.add_process()
+        self.assertEqual(self.scan(), 1)
+        values = (
+            self.library.mr_cand_pid(0), self.library.mr_cand_start_time(0),
+            self.library.mr_cand_uid(0), self.library.mr_cand_identity_token(0),
+            self.library.mr_cand_reclaimable_bytes(0), self.library.mr_cand_regions(0),
+        )
+        self.assertEqual(self.library.mr_cand_snapshot_select(0), 0)
+        with open(os.path.join(directory, "cgroup"), "w", encoding="utf-8") as handle:
+            handle.write(
+                f"0::/user.slice/user-{UID}.slice/user@{UID}.service/"
+                "app.slice/app-another.scope\n"
+            )
+        self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
+
+    def test_snapshot_fails_closed_when_start_time_changes(self):
+        directory = self.add_process()
+        self.assertEqual(self.scan(), 1)
+        values = (
+            self.library.mr_cand_pid(0), self.library.mr_cand_start_time(0),
+            self.library.mr_cand_uid(0), self.library.mr_cand_identity_token(0),
+            self.library.mr_cand_reclaimable_bytes(0), self.library.mr_cand_regions(0),
+        )
+        self.assertEqual(self.library.mr_cand_snapshot_select(0), 0)
+        with open(os.path.join(directory, "stat"), "w", encoding="utf-8") as handle:
+            handle.write(stat_line(4242, "demo", 1, 78))
+        self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
+
+    def test_snapshot_fails_closed_when_mapping_summary_changes(self):
+        directory = self.add_process()
+        self.assertEqual(self.scan(), 1)
+        values = (
+            self.library.mr_cand_pid(0), self.library.mr_cand_start_time(0),
+            self.library.mr_cand_uid(0), self.library.mr_cand_identity_token(0),
+            self.library.mr_cand_reclaimable_bytes(0), self.library.mr_cand_regions(0),
+        )
+        self.assertEqual(self.library.mr_cand_snapshot_select(0), 0)
+        with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
+            handle.write("00400000-00402000 r--p 00000000 00:00 0\n")
+        self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
 
     def test_candidate_display_name_preserves_valid_utf8(self):
         self.add_process(name="编辑器", exe="/usr/bin/编辑器")

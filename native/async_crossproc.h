@@ -4,7 +4,7 @@
  *
  * The GUI never holds privilege. This module is the only place that spawns the
  * privileged helper, and it does so through pkexec with a literal argv: one
- * fixed helper path, one fixed verb, and three decimal numbers. There is no
+ * fixed helper path, one fixed verb, and seven decimal identity/budget numbers. There is no
  * shell, no path from input, and no way to ask for a different action.
  *
  * Two behaviours are deliberate and tested:
@@ -63,7 +63,8 @@ enum mr_xproc_local_reason {
     MR_XPROC_LOCAL_BAD_START_TIME = 2,
     MR_XPROC_LOCAL_BAD_BUDGET = 3,
     MR_XPROC_LOCAL_NOT_INSTALLED = 4,   /* helper or policy missing */
-    MR_XPROC_LOCAL_NOT_ENABLED = 5      /* this build cannot do it */
+    MR_XPROC_LOCAL_NOT_ENABLED = 5,     /* this build cannot do it */
+    MR_XPROC_LOCAL_BAD_IDENTITY = 6     /* selected snapshot is incomplete */
 };
 
 /* Is the privileged chain present and usable right now? Read-only: stat on the
@@ -83,10 +84,12 @@ int64_t mr_xproc_preflight(void);
  * compiled with the capability switched off. */
 int64_t mr_xproc_enabled(void);
 
-/* Start one reclaim for exactly this target. All three values come from
- * mr_cand_scan plus the user's choice; the helper re-verifies all of them.
+/* Start one reclaim for exactly this immutable selection. The helper compares
+ * the numeric identity fingerprint against fresh procfs data after Polkit.
  * Returns an mr_xproc_start value. */
-int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t max_bytes);
+int64_t mr_xproc_start(int64_t pid, int64_t start_time, int64_t uid,
+                       int64_t identity_token, int64_t reviewed_bytes,
+                       int64_t reviewed_regions, int64_t max_bytes);
 
 /* Poll the running child. Returns an mr_xproc_poll value. Safe to call when
  * idle, which answers MR_XPROC_POLL_IDLE. */
@@ -101,6 +104,7 @@ int64_t mr_xproc_result_regions(void);
 int64_t mr_xproc_result_error_code(void);
 int64_t mr_xproc_result_call_count(void);
 int64_t mr_xproc_result_pid(void);
+int64_t mr_xproc_result_start_time(void);
 int64_t mr_xproc_result_start_time_verified(void);
 int64_t mr_xproc_result_uid(void);
 /* The pkexec child status, kept separately from the helper's result block.

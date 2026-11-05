@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include "crossproc_candidates.h"
+#include "crossproc_identity.h"
 #include "crossproc_protection.h"
 
 #ifndef MR_CAND_PROC_ROOT
@@ -90,6 +91,17 @@ static int read_text(const char *path, char *buffer, size_t size)
             break;
         }
         total += got;
+    }
+    if ((size_t)total + 1u >= size) {
+        char extra;
+        ssize_t got;
+        do {
+            got = read(fd, &extra, 1u);
+        } while (got < 0 && errno == EINTR);
+        if (got != 0) {
+            (void)close(fd);
+            return -1;
+        }
     }
     buffer[total] = '\0';
     (void)close(fd);
@@ -313,6 +325,108 @@ static int read_exe(int32_t pid, char *out, size_t size)
     return 0;
 }
 
+static int read_cgroup(int32_t pid, char *out, size_t size)
+{
+    char path[MR_CAND_PROC_PATH_BYTES];
+    if (snprintf(path, sizeof(path), "%s/%d/cgroup", cand_proc_root, (int)pid) >=
+        (int)sizeof(path)) {
+        return -1;
+    }
+    return read_text(path, out, size);
+}
+
+/* Preserve the exact argv bytes for identity binding. A very large or empty
+ * cmdline cannot be represented in the bounded snapshot and is therefore not
+ * offered. The bytes stay in memory only and are never logged or displayed. */
+static int read_cmdline(int32_t pid, unsigned char *out, size_t size,
+                        size_t *length_out)
+{
+    char path[MR_CAND_PROC_PATH_BYTES];
+    if (size == 0u || length_out == NULL ||
+        snprintf(path, sizeof(path), "%s/%d/cmdline", cand_proc_root, (int)pid) >=
+            (int)sizeof(path)) {
+        return -1;
+    }
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) {
+        return -1;
+    }
+    size_t used = 0;
+    for (;;) {
+        if (used == size) {
+            char extra;
+            ssize_t got;
+            do {
+                got = read(fd, &extra, 1u);
+            } while (got < 0 && errno == EINTR);
+            (void)close(fd);
+            if (got != 0) {
+                return -1;
+            }
+            break;
+        }
+        ssize_t got = read(fd, out + used, size - used);
+        if (got < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            (void)close(fd);
+            return -1;
+        }
+        if (got == 0) {
+            (void)close(fd);
+            break;
+        }
+        used += (size_t)got;
+    }
+    if (used == 0u) {
+        return -1;
+    }
+    *length_out = used;
+    return 0;
+}
+
+static void candidate_app_label(const char *exe, const unsigned char *cmdline,
+                                size_t cmdline_length, char *out, size_t out_size)
+{
+    const char *selected = NULL;
+    size_t selected_length = 0;
+    size_t suffix_length = 0;
+    size_t offset = 0;
+    while (offset < cmdline_length) {
+        size_t length = strnlen((const char *)cmdline + offset, cmdline_length - offset);
+        const char *argument = (const char *)cmdline + offset;
+        const char *base = strrchr(argument, '/');
+        base = base == NULL ? argument : base + 1;
+        size_t base_length = length - (size_t)(base - argument);
+        if ((base_length > 4u && strncmp(base + base_length - 4u, ".dll", 4u) == 0) ||
+            (base_length > 3u && strncmp(base + base_length - 3u, ".py", 3u) == 0) ||
+            (base_length > 4u && strncmp(base + base_length - 4u, ".jar", 4u) == 0)) {
+            selected = base;
+            selected_length = base_length;
+            suffix_length = base_length > 4u &&
+                strncmp(base + base_length - 4u, ".dll", 4u) == 0 ? 4u :
+                base_length > 4u && strncmp(base + base_length - 4u, ".jar", 4u) == 0 ? 4u : 3u;
+            break;
+        }
+        offset += length + 1u;
+    }
+    if (selected == NULL) {
+        selected = strrchr(exe, '/');
+        selected = selected == NULL ? exe : selected + 1;
+        selected_length = strlen(selected);
+    } else if (selected_length > suffix_length) {
+        selected_length -= suffix_length;
+    }
+    size_t copy = selected_length < out_size - 1u ? selected_length : out_size - 1u;
+    memcpy(out, selected, copy);
+    out[copy] = '\0';
+    /* The label is display text only; identity uses the full raw cmdline. */
+    char safe[MR_CAND_NAME_BYTES];
+    copy_display_text(safe, sizeof(safe), out);
+    memcpy(out, safe, strlen(safe) + 1u);
+}
+
 /* Same truncation problem the helper documents: the comm field in
  * /proc/<pid>/stat is capped at 15 characters, so "dbus-broker-launcher"
  * arrives as "dbus-broker-lau" and a naive name comparison misses it — this was
@@ -320,7 +434,8 @@ static int read_exe(int32_t pid, char *out, size_t size)
  * basename is checked too. Keeping this in step with the helper matters: a row
  * this enumeration offers and the helper then refuses is a confusing product. */
 static int pid_safety(int32_t pid, const char *comm, uint64_t uid,
-                      char *exe_out, size_t exe_size)
+                      char *exe_out, size_t exe_size,
+                      char *cgroup_out, size_t cgroup_size)
 {
     if (mr_cand_name_is_protected(comm)) {
         return 1;
@@ -333,13 +448,10 @@ static int pid_safety(int32_t pid, const char *comm, uint64_t uid,
         return exe_protected;
     }
 
-    char path[MR_CAND_PROC_PATH_BYTES];
-    char cgroup[4096];
-    if (snprintf(path, sizeof(path), "%s/%d/cgroup", cand_proc_root, (int)pid) >= (int)sizeof(path) ||
-        read_text(path, cgroup, sizeof(cgroup)) != 0) {
+    if (read_cgroup(pid, cgroup_out, cgroup_size) != 0) {
         return -1;
     }
-    int cgroup_result = mr_xproc_cgroup_text_is_user_app(cgroup, (uint32_t)uid);
+    int cgroup_result = mr_xproc_cgroup_text_is_user_app(cgroup_out, (uint32_t)uid);
     return cgroup_result == 1 ? 0 : cgroup_result == 0 ? 1 : -1;
 }
 
@@ -511,7 +623,9 @@ int mr_cand_scan(struct mr_cand_list *out)
             continue;
         }
         char exe[MR_CAND_PATH_BYTES];
-        int safety = pid_safety(pid, status.name, status.uid, exe, sizeof(exe));
+        char cgroup[4096];
+        int safety = pid_safety(pid, status.name, status.uid, exe, sizeof(exe),
+                                cgroup, sizeof(cgroup));
         if (safety != 0) {
             if (safety > 0) {
                 out->skipped_protected++;
@@ -543,24 +657,27 @@ int mr_cand_scan(struct mr_cand_list *out)
 
         struct mr_cand_entry *slot = &out->entries[out->count];
         memset(slot, 0, sizeof(*slot));
+        unsigned char cmdline[MR_CAND_CMDLINE_BYTES];
+        size_t cmdline_length = 0;
+        uint64_t start_time = 0;
+        if (read_start_time(pid, &start_time) != 0 ||
+            read_cmdline(pid, cmdline, sizeof(cmdline), &cmdline_length) != 0) {
+            out->skipped_unreadable++;
+            continue;
+        }
         slot->pid = pid;
         slot->uid = status.uid;
         slot->state = status.state;
         slot->reclaimable_bytes = reclaimable;
         slot->regions = regions;
+        slot->start_time = start_time;
+        slot->identity_token = mr_xproc_identity_token(
+            pid, start_time, status.uid, status.name, exe, cgroup,
+            cmdline, cmdline_length);
         copy_display_text(slot->name, sizeof(slot->name), status.name);
-        if (read_start_time(pid, &slot->start_time) != 0) {
-            /* Without a start_time the helper cannot verify identity, so the row
-             * would be unusable. Drop it rather than offer a row that always
-             * fails after authorization. */
-            memset(slot, 0, sizeof(*slot));
-            out->skipped_unreadable++;
-            continue;
-        }
         memcpy(slot->exe, exe, strlen(exe) + 1u);
-        const char *app_name = strrchr(exe, '/');
-        app_name = app_name == NULL ? exe : app_name + 1;
-        copy_display_text(slot->app_name, sizeof(slot->app_name), app_name);
+        candidate_app_label(exe, cmdline, cmdline_length,
+                            slot->app_name, sizeof(slot->app_name));
         out->count++;
     }
     (void)closedir(dir);
@@ -587,6 +704,8 @@ int mr_cand_at(const struct mr_cand_list *list, uint32_t index,
  * ------------------------------------------------------------------------- */
 
 static struct mr_cand_list scan_slot;
+static struct mr_cand_entry selected_snapshot;
+static int selected_snapshot_valid;
 
 int64_t mr_cand_scan_run(void)
 {
@@ -659,6 +778,77 @@ int64_t mr_cand_regions(int64_t index)
         return -1;
     }
     return (int64_t)scan_slot.entries[index].regions;
+}
+
+int64_t mr_cand_identity_token(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return -1;
+    }
+    return (int64_t)scan_slot.entries[index].identity_token;
+}
+
+static int live_snapshot_matches(const struct mr_cand_entry *expected)
+{
+    struct cand_status status;
+    char exe[MR_CAND_PATH_BYTES];
+    char cgroup[4096];
+    unsigned char cmdline[MR_CAND_CMDLINE_BYTES];
+    size_t cmdline_length = 0;
+    uint64_t start_time = 0;
+    uint64_t bytes = 0;
+    uint32_t regions = 0;
+
+    if (expected == NULL || read_status(expected->pid, &status) != 0 ||
+        status.state == 'Z' || status.state == 'X' || status.state == 'x' ||
+        status.uid != cand_own_uid() || read_start_time(expected->pid, &start_time) != 0 ||
+        start_time != expected->start_time ||
+        pid_safety(expected->pid, status.name, status.uid, exe, sizeof(exe),
+                   cgroup, sizeof(cgroup)) != 0 ||
+        read_cmdline(expected->pid, cmdline, sizeof(cmdline), &cmdline_length) != 0 ||
+        sum_reclaimable(expected->pid, &bytes, &regions) != 0) {
+        return -1;
+    }
+    if (bytes != expected->reclaimable_bytes || regions != expected->regions) {
+        return -1;
+    }
+    uint64_t token = mr_xproc_identity_token(
+        expected->pid, start_time, status.uid, status.name, exe, cgroup,
+        cmdline, cmdline_length);
+    return token == expected->identity_token ? 0 : -1;
+}
+
+int64_t mr_cand_snapshot_select(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        selected_snapshot_valid = 0;
+        return 1;
+    }
+    selected_snapshot = scan_slot.entries[index];
+    selected_snapshot_valid = 1;
+    if (live_snapshot_matches(&selected_snapshot) != 0) {
+        selected_snapshot_valid = 0;
+        memset(&selected_snapshot, 0, sizeof(selected_snapshot));
+        return 2;
+    }
+    return 0;
+}
+
+int64_t mr_cand_snapshot_verify(int64_t pid, int64_t start_time, int64_t uid,
+                                int64_t identity_token, int64_t bytes,
+                                int64_t regions)
+{
+    if (!selected_snapshot_valid || pid < 2 || start_time <= 0 || uid < 0 ||
+        identity_token <= 0 || bytes <= 0 || regions <= 0 ||
+        selected_snapshot.pid != pid ||
+        selected_snapshot.start_time != (uint64_t)start_time ||
+        selected_snapshot.uid != (uint64_t)uid ||
+        selected_snapshot.identity_token != (uint64_t)identity_token ||
+        selected_snapshot.reclaimable_bytes != (uint64_t)bytes ||
+        selected_snapshot.regions != (uint32_t)regions) {
+        return 1;
+    }
+    return live_snapshot_matches(&selected_snapshot) == 0 ? 0 : 2;
 }
 
 /* The per-index name. Zamak can read it through the same pointer the status line

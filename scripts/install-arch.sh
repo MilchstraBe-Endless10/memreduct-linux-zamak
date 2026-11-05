@@ -5,6 +5,27 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
+candidate_gui=''
+candidate_mode=0
+preflight_only=0
+usage() {
+    printf 'Usage: %s [--m0-m1-candidate ABSOLUTE_GUI_PATH | --check-m0-m1-candidate ABSOLUTE_GUI_PATH]\n' "$0" >&2
+    exit 2
+}
+if (($#)); then
+    (($# == 2)) || usage
+    case "$1" in
+        --m0-m1-candidate) candidate_mode=1 ;;
+        --check-m0-m1-candidate) candidate_mode=1; preflight_only=1 ;;
+        *) usage ;;
+    esac
+    candidate_gui="$2"
+    [[ "$candidate_gui" == /* ]] || {
+        echo 'Candidate GUI path must be absolute.' >&2
+        exit 2
+    }
+fi
+
 helper_source='build/memreduct-zamak-helper'
 policy_source='packaging/polkit-1/actions/io.github.milchstrasse_endless10.memreduct.zamak.policy'
 # Cross-process reclaim is a separate privileged surface: its own binary, its
@@ -40,6 +61,35 @@ if [[ -e "$xproc_helper_source" || -e "$xproc_policy_source" ]]; then
     else
         echo 'WARN Polkit pkexec/pkaction is unavailable; cross-process helper will not be installed.' >&2
     fi
+fi
+if ((candidate_mode)) && ((have_xproc == 0)); then
+    echo 'M0+M1 candidate installation requires the cross-process helper, policy, pkexec, and pkaction.' >&2
+    exit 1
+fi
+
+if ((candidate_mode)); then
+    [[ -f "$candidate_gui" && ! -L "$candidate_gui" && -x "$candidate_gui" ]] || {
+        echo 'Candidate GUI must be an executable regular non-symlink file.' >&2
+        exit 1
+    }
+    command -v nm >/dev/null 2>&1 && command -v strings >/dev/null 2>&1 || {
+        echo 'Candidate validation requires nm and strings.' >&2
+        exit 1
+    }
+    candidate_symbols="$(nm "$candidate_gui")"
+    [[ "$(grep -c ' T mr_production_clean_enabled$' <<<"$candidate_symbols")" == 1 &&
+       "$(grep -c ' T mr_xproc_capability_enabled$' <<<"$candidate_symbols")" == 1 ]] || {
+        echo 'Candidate GUI does not contain both enabled M0 and M1 gates.' >&2
+        exit 1
+    }
+    if grep -Eq 'production_(clean|crossproc)_gate_default|mr_gui_test_|mr_ci_emit|mr_start_reclaim_mock|mr_(xproc|cand)_test_' <<<"$candidate_symbols" ||
+       strings "$candidate_gui" | grep -Eq 'MEMREDUCT_CI|MEMREDUCT_TEST'; then
+        echo 'Candidate GUI contains a disabled gate or test hook.' >&2
+        exit 1
+    fi
+    bin="$candidate_gui"
+else
+    bin=''
 fi
 
 verify_system_directory() {
@@ -81,7 +131,7 @@ verify_existing_target() {
     fi
 }
 
-if ((have_xproc)); then
+if ((have_xproc)) && ((preflight_only == 0)); then
     for directory in /usr /usr/libexec /usr/share /usr/share/polkit-1 /usr/share/polkit-1/actions; do
         verify_system_directory "$directory"
     done
@@ -89,13 +139,19 @@ if ((have_xproc)); then
     verify_existing_target "$xproc_policy_target" '644'
 fi
 
-mapfile -t candidates < <(find build -maxdepth 1 -type f -name 'memreduct_zamak-[0-9a-f]*' -perm /111 | sort)
-((${#candidates[@]})) || { echo 'Zamak GUI binary not found in build/' >&2; exit 1; }
-if ((${#candidates[@]} > 1)); then
-    echo 'Multiple GUI binaries found. Remove stale build binaries and run build-arch.sh again.' >&2
-    exit 1
+if ((candidate_mode == 0)); then
+    mapfile -t candidates < <(find build -maxdepth 1 -type f -name 'memreduct_zamak-[0-9a-f]*' -perm /111 | sort)
+    ((${#candidates[@]})) || { echo 'Zamak GUI binary not found in build/' >&2; exit 1; }
+    if ((${#candidates[@]} > 1)); then
+        echo 'Multiple Zamak GUI binaries found. Select a profile or rebuild in a clean tree.' >&2
+        exit 1
+    fi
+    bin="${candidates[0]}"
 fi
-bin="${candidates[0]}"
+if ((preflight_only)); then
+    printf 'Candidate preflight passed: profile=m0+m1-candidate pagecache_gate=enabled crossproc_gate=enabled no_test_hooks=true install=not_run\n'
+    exit 0
+fi
 
 # Install into a private staging directory first, then move into place, so a
 # failure part-way cannot leave a half-written privileged helper behind.

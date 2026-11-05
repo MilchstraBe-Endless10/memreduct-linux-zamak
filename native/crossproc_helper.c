@@ -12,7 +12,7 @@
  * is untrusted. Everything that decides whether memory is touched is re-derived
  * from the kernel here: the requester's UID, the target's real UID, its
  * start_time, its liveness, its ancestry, and its actual mappings. Nothing is
- * accepted from argv except three decimal numbers and one fixed verb. There is
+ * accepted from argv except seven decimal numbers and one fixed verb. There is
  * no path argument, no shell, no address range, no signal, and no retry.
  *
  * The kernel only accepts an advice request. The number it returns is a length
@@ -43,6 +43,7 @@
 #include <linux/capability.h>
 
 #include "crossproc_helper.h"
+#include "crossproc_identity.h"
 #include "crossproc_protection.h"
 
 /* Install path. Fixed; never derived from input. The Polkit action pins this
@@ -71,6 +72,7 @@
 #define MR_XPROC_PATH_BYTES 4096u
 #define MR_XPROC_LINE_BYTES 4096u
 #define MR_XPROC_COMM_BYTES 64u
+#define MR_XPROC_CMDLINE_BYTES 8192u
 /* One syscall, one target, one vector array. These are ceilings, not defaults:
  * a caller may ask for less, never more. */
 #define MR_XPROC_MAX_IOVECS 32u
@@ -476,11 +478,59 @@ static int read_target_cgroup(int32_t pid, char *buffer, size_t size)
     return 0;
 }
 
+static int read_target_cmdline(int32_t pid, unsigned char *buffer, size_t size,
+                               size_t *length_out)
+{
+    char path[MR_XPROC_PATH_BYTES];
+    if (size == 0u || length_out == NULL ||
+        proc_path(path, sizeof(path), pid, "cmdline") != 0) {
+        return -1;
+    }
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) {
+        return -1;
+    }
+    size_t used = 0;
+    for (;;) {
+        if (used == size) {
+            char extra;
+            ssize_t got;
+            do {
+                got = read(fd, &extra, 1u);
+            } while (got < 0 && errno == EINTR);
+            (void)close(fd);
+            if (got != 0) {
+                return -1;
+            }
+            break;
+        }
+        ssize_t got = read(fd, buffer + used, size - used);
+        if (got < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            (void)close(fd);
+            return -1;
+        }
+        if (got == 0) {
+            (void)close(fd);
+            break;
+        }
+        used += (size_t)got;
+    }
+    if (used == 0u) {
+        return -1;
+    }
+    *length_out = used;
+    return 0;
+}
+
 /* Fail closed unless the process is a same-UID user application whose kernel
  * identity can be re-derived from status, exe, and cgroup. `enforce_requester`
  * is false only in fixture tests; even there all four target UIDs must agree. */
 static const char *inspect_target(int32_t pid, uint64_t requester_uid,
-                                  int enforce_requester, uint64_t *target_uid_out)
+                                  int enforce_requester, uint64_t *target_uid_out,
+                                  uint64_t *identity_token_out)
 {
     char status[MR_XPROC_LINE_BYTES];
     if (read_status(pid, status, sizeof(status)) != 0) {
@@ -535,6 +585,18 @@ static const char *inspect_target(int32_t pid, uint64_t requester_uid,
     }
     if (user_app == 0) {
         return "target_in_protected_cgroup";
+    }
+    struct mr_proc_stat stat;
+    unsigned char cmdline[MR_XPROC_CMDLINE_BYTES];
+    size_t cmdline_length = 0;
+    if (read_stat(pid, &stat) != 0 ||
+        read_target_cmdline(pid, cmdline, sizeof(cmdline), &cmdline_length) != 0) {
+        return "target_identity_unverifiable";
+    }
+    if (identity_token_out != NULL) {
+        *identity_token_out = mr_xproc_identity_token(
+            pid, stat.start_time, uids[0], name, exe, cgroup,
+            cmdline, cmdline_length);
     }
     return NULL;
 }
@@ -636,12 +698,10 @@ enum mr_region_skip {
 
 static int is_special_mapping(const char *path)
 {
-    if (path == NULL || path[0] != '[') {
-        return 0;
-    }
-    return strcmp(path, "[vdso]") == 0 || strcmp(path, "[vvar]") == 0 ||
-           strcmp(path, "[vsyscall]") == 0 || strcmp(path, "[stack]") == 0 ||
-           strcmp(path, "[vvar_vclock]") == 0 || strcmp(path, "[uprobes]") == 0;
+    /* The UI scanner excludes every kernel-labelled mapping, including newer
+     * labels this helper may not know yet. Keep the privileged filter equally
+     * narrow so its reviewed map summary is comparable. */
+    return path != NULL && path[0] == '[';
 }
 
 static uint64_t page_size(void)
@@ -654,6 +714,8 @@ struct mr_region_plan {
     struct iovec vectors[MR_XPROC_MAX_IOVECS];
     size_t count;
     uint64_t bytes;
+    uint64_t candidate_bytes;
+    uint32_t candidate_regions;
     uint32_t skipped_shared;
     uint32_t skipped_unreadable;
     uint32_t skipped_writable_file;
@@ -681,7 +743,7 @@ static int plan_regions(int32_t pid, uint64_t max_bytes, struct mr_region_plan *
     const uint64_t alignment = page_size();
     char line[MR_XPROC_LINE_BYTES];
 
-    while (plan->count < MR_XPROC_MAX_IOVECS && fgets(line, sizeof(line), maps) != NULL) {
+    while (fgets(line, sizeof(line), maps) != NULL) {
         unsigned long long begin = 0;
         unsigned long long end = 0;
         char perms[8] = {0};
@@ -722,15 +784,6 @@ static int plan_regions(int32_t pid, uint64_t max_bytes, struct mr_region_plan *
             plan->skipped_special++;
             continue;
         }
-        if (length > max_bytes) {
-            plan->skipped_too_large++;
-            continue;
-        }
-        if (plan->bytes + length > max_bytes) {
-            plan->skipped_budget++;
-            continue;
-        }
-
         /* Kernel advice takes page-aligned ranges; round inward so the range is
          * entirely inside the mapping. */
         uint64_t aligned_start = ((uint64_t)begin + alignment - 1u) & ~(alignment - 1u);
@@ -740,10 +793,33 @@ static int plan_regions(int32_t pid, uint64_t max_bytes, struct mr_region_plan *
             continue;
         }
 
+        uint64_t aligned_length = aligned_end - aligned_start;
+        if (UINT64_MAX - plan->candidate_bytes < aligned_length ||
+            plan->candidate_regions == UINT32_MAX) {
+            (void)fclose(maps);
+            errno = EOVERFLOW;
+            return -1;
+        }
+        plan->candidate_bytes += aligned_length;
+        plan->candidate_regions++;
+
+        if (length > max_bytes) {
+            plan->skipped_too_large++;
+            continue;
+        }
+        if (plan->bytes + aligned_length > max_bytes) {
+            plan->skipped_budget++;
+            continue;
+        }
+        if (plan->count >= MR_XPROC_MAX_IOVECS) {
+            plan->skipped_budget++;
+            continue;
+        }
+
         plan->vectors[plan->count].iov_base = (void *)(uintptr_t)aligned_start;
-        plan->vectors[plan->count].iov_len = (size_t)(aligned_end - aligned_start);
+        plan->vectors[plan->count].iov_len = (size_t)aligned_length;
         plan->count++;
-        plan->bytes += aligned_end - aligned_start;
+        plan->bytes += aligned_length;
     }
     int read_error = ferror(maps);
     (void)fclose(maps);
@@ -890,8 +966,8 @@ static int refuse(struct mr_outcome *outcome, const char *reason)
 static int usage(void)
 {
     emit(stderr,
-         "usage: %s reclaim <pid> <start_time> <max_bytes>\n"
-         "All three values are decimal and are treated as untrusted candidates;\n"
+         "usage: %s reclaim <pid> <start_time> <uid> <identity_token> <reviewed_bytes> <reviewed_regions> <max_bytes>\n"
+         "All values are decimal and are treated as untrusted candidates;\n"
          "this helper re-verifies identity, ownership and mappings from the kernel.\n",
          MR_XPROC_HELPER_NAME);
     return 2;
@@ -902,10 +978,9 @@ int main(int argc, char **argv)
     struct mr_outcome outcome;
     memset(&outcome, 0, sizeof(outcome));
 
-    /* Exactly four arguments, one fixed verb. No option parsing, no "--", no
-     * free-form text, so nothing here can be turned into an argument-injection
-     * or path-injection surface. */
-    if (argc != 5) {
+    /* Exactly eight arguments, one fixed verb. The final values are numeric
+     * selection claims only; no path, command or arbitrary action is accepted. */
+    if (argc != 9) {
         return usage();
     }
     if (strcmp(argv[1], "reclaim") != 0) {
@@ -914,13 +989,23 @@ int main(int argc, char **argv)
 
     uint64_t raw_pid = 0;
     uint64_t raw_start_time = 0;
+    uint64_t raw_uid = 0;
+    uint64_t raw_identity_token = 0;
+    uint64_t raw_reviewed_bytes = 0;
+    uint64_t raw_reviewed_regions = 0;
     uint64_t raw_max_bytes = 0;
     if (parse_u64(argv[2], 0x7fffffffull, &raw_pid) != 0 ||
         parse_u64(argv[3], UINT64_MAX, &raw_start_time) != 0 ||
-        parse_u64(argv[4], MR_XPROC_MAX_BYTES, &raw_max_bytes) != 0) {
+        parse_u64(argv[4], UINT32_MAX, &raw_uid) != 0 ||
+        parse_u64(argv[5], 0x7fffffffffffffffull, &raw_identity_token) != 0 ||
+        parse_u64(argv[6], UINT64_MAX, &raw_reviewed_bytes) != 0 ||
+        parse_u64(argv[7], UINT32_MAX, &raw_reviewed_regions) != 0 ||
+        parse_u64(argv[8], MR_XPROC_MAX_BYTES, &raw_max_bytes) != 0) {
         return usage();
     }
-    if (raw_pid < 2 || raw_max_bytes < page_size()) {
+    if (raw_pid < 2 || raw_uid == 0 || raw_identity_token == 0 ||
+        ((raw_reviewed_bytes == 0u) != (raw_reviewed_regions == 0u)) ||
+        raw_max_bytes < page_size()) {
         /* PID 1 is never a target, and a budget below one page cannot describe
          * a page-aligned range. */
         return usage();
@@ -944,6 +1029,11 @@ int main(int argc, char **argv)
         real_uid, effective_uid, capability, pkexec_uid, &requester_uid);
     if (credential_error != NULL) {
         refuse(&outcome, credential_error);
+        print_outcome(&outcome);
+        return status_exit_code(outcome.status);
+    }
+    if (!test_skip_requester() && raw_uid != requester_uid) {
+        refuse(&outcome, "selected_uid_mismatch");
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
@@ -978,10 +1068,17 @@ int main(int argc, char **argv)
         return status_exit_code(outcome.status);
     }
     uint64_t target_uid = 0;
+    uint64_t identity_token = 0;
     const char *target_error = inspect_target(outcome.pid, requester_uid,
-                                              !test_skip_requester(), &target_uid);
+                                              !test_skip_requester(), &target_uid,
+                                              &identity_token);
     if (target_error != NULL) {
         refuse(&outcome, target_error);
+        print_outcome(&outcome);
+        return status_exit_code(outcome.status);
+    }
+    if (target_uid != raw_uid || identity_token != raw_identity_token) {
+        refuse(&outcome, "target_identity_changed");
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
@@ -1046,9 +1143,12 @@ int main(int argc, char **argv)
     }
 
     uint64_t pinned_uid = 0;
+    uint64_t pinned_identity_token = 0;
     target_error = inspect_target(outcome.pid, requester_uid,
-                                  !test_skip_requester(), &pinned_uid);
-    if (target_error != NULL || pinned_uid != (uint64_t)outcome.uid) {
+                                  !test_skip_requester(), &pinned_uid,
+                                  &pinned_identity_token);
+    if (target_error != NULL || pinned_uid != (uint64_t)outcome.uid ||
+        pinned_uid != raw_uid || pinned_identity_token != raw_identity_token) {
         (void)close(pidfd);
         refuse(&outcome, target_error == NULL ? "target_identity_changed" : target_error);
         print_outcome(&outcome);
@@ -1069,6 +1169,13 @@ int main(int argc, char **argv)
     if (planned < 0) {
         (void)close(pidfd);
         refuse(&outcome, "target_maps_unreadable");
+        print_outcome(&outcome);
+        return status_exit_code(outcome.status);
+    }
+    if (plan.candidate_bytes != raw_reviewed_bytes ||
+        plan.candidate_regions != raw_reviewed_regions) {
+        (void)close(pidfd);
+        refuse(&outcome, "target_mappings_changed");
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }

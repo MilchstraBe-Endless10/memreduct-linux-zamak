@@ -186,11 +186,20 @@ long long mr_runtime_xproc_candidate_state(long long index)
     return mr_runtime_xproc_candidate_pid(index) < 0 ? -1 : 'S';
 }
 
-long long mr_runtime_xproc_start(long long pid, long long start_time,
-                                  long long max_bytes)
+long long mr_runtime_xproc_candidate_identity_token(long long index)
+{
+    return mr_runtime_xproc_candidate_pid(index) < 0 ? -1 : 424242 + index * 101;
+}
+
+long long mr_runtime_xproc_start(long long pid, long long start_time, long long uid,
+                                  long long identity_token, long long reviewed_bytes,
+                                  long long reviewed_regions, long long max_bytes)
 {
     if (mr_runtime_xproc_simulation_enabled() == 0 || xproc_mock_in_flight != 0 ||
         (pid != 4242 && pid != 4243) || start_time != 7700 + (pid - 4242) ||
+        uid != (long long)geteuid() || identity_token != 424242 + (pid - 4242) * 101 ||
+        reviewed_bytes != (pid == 4242 ? 8ll * 1024ll * 1024ll : 4ll * 1024ll * 1024ll) ||
+        reviewed_regions != (pid == 4242 ? 3 : 2) ||
         max_bytes <= 0 || max_bytes > 16ll * 1024ll * 1024ll) {
         return 2;
     }

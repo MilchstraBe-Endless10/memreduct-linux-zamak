@@ -25,11 +25,18 @@ long long mr_runtime_xproc_candidate_regions(long long index) { (void)index; ret
 const char *mr_runtime_xproc_candidate_name(long long index) { (void)index; return ""; }
 const char *mr_runtime_xproc_candidate_app_name(long long index) { (void)index; return ""; }
 long long mr_runtime_xproc_candidate_state(long long index) { (void)index; return 0; }
+long long mr_runtime_xproc_candidate_identity_token(long long index) { (void)index; return -1; }
 long long mr_runtime_xproc_start(long long pid, long long start_time,
-                                 long long max_bytes)
+                                 long long uid, long long identity_token,
+                                 long long reviewed_bytes,
+                                 long long reviewed_regions, long long max_bytes)
 {
     (void)pid;
     (void)start_time;
+    (void)uid;
+    (void)identity_token;
+    (void)reviewed_bytes;
+    (void)reviewed_regions;
     (void)max_bytes;
     return 3; /* fail closed; production never enables the simulated path */
 }

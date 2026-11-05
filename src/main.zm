@@ -29,7 +29,8 @@ extern fn mr_runtime_xproc_candidate_regions(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_name(index: i64) -> string
 extern fn mr_runtime_xproc_candidate_app_name(index: i64) -> string
 extern fn mr_runtime_xproc_candidate_state(index: i64) -> i64
-extern fn mr_runtime_xproc_start(pid: i64, start_time: i64, max_bytes: i64) -> i64
+extern fn mr_runtime_xproc_candidate_identity_token(index: i64) -> i64
+extern fn mr_runtime_xproc_start(pid: i64, start_time: i64, uid: i64, identity_token: i64, reviewed_bytes: i64, reviewed_regions: i64, max_bytes: i64) -> i64
 extern fn mr_runtime_xproc_poll() -> i64
 extern fn mr_runtime_xproc_stage() -> i64
 extern fn mr_runtime_xproc_result_advised_bytes() -> i64
@@ -64,6 +65,9 @@ extern fn mr_cand_start_time(index: i64) -> i64
 extern fn mr_cand_uid(index: i64) -> i64
 extern fn mr_cand_reclaimable_bytes(index: i64) -> i64
 extern fn mr_cand_regions(index: i64) -> i64
+extern fn mr_cand_identity_token(index: i64) -> i64
+extern fn mr_cand_snapshot_select(index: i64) -> i64
+extern fn mr_cand_snapshot_verify(pid: i64, start_time: i64, uid: i64, identity_token: i64, bytes: i64, regions: i64) -> i64
 extern fn mr_cand_name(index: i64) -> string
 extern fn mr_cand_app_name(index: i64) -> string
 extern fn mr_cand_state(index: i64) -> i64
@@ -71,7 +75,7 @@ extern fn mr_cand_state(index: i64) -> i64
 # whether the chain is actually installed right now.
 extern fn mr_xproc_enabled() -> i64
 extern fn mr_xproc_preflight() -> i64
-extern fn mr_xproc_start(pid: i64, start_time: i64, max_bytes: i64) -> i64
+extern fn mr_xproc_start(pid: i64, start_time: i64, uid: i64, identity_token: i64, reviewed_bytes: i64, reviewed_regions: i64, max_bytes: i64) -> i64
 extern fn mr_xproc_poll() -> i64
 extern fn mr_xproc_result_advised_bytes() -> i64
 extern fn mr_xproc_result_requested_bytes() -> i64
@@ -153,6 +157,11 @@ struct MainWindow:
     xproc_target_pid: i64
     xproc_target_start_time: i64
     xproc_target_uid: i64
+    xproc_target_identity_token: i64
+    xproc_target_bytes: i64
+    xproc_target_regions: i64
+    xproc_target_name: string
+    xproc_target_app_name: string
     xproc_before_available: i64
     xproc_after_available: i64
     xproc_advised_bytes: i64
@@ -346,6 +355,7 @@ fn xproc_result_name(state: i64) -> string:
     if state == 23: return "busy"
     if state == 24: return "authorization-cancelled"
     if state == 25: return "authorization-failed"
+    if state == 26: return "target-identity-changed"
     "in-progress"
 
 fn xproc_result_text(zh: bool, state: i64, simulated: bool) -> string:
@@ -373,6 +383,7 @@ fn xproc_result_text(zh: bool, state: i64, simulated: bool) -> string:
     if state == 23: return label(zh, "Another memory operation is already running.", "已有其他内存操作正在运行。")
     if state == 24: return label(zh, "Authorization was cancelled; no helper result was received and no retry was made.", "已取消授权；未收到 helper 结果，也不会自动重试。")
     if state == 25: return label(zh, "Polkit could not authorize or start the fixed helper; no retry was made.", "Polkit 未能授权或启动固定 helper；不会自动重试。")
+    if state == 26: return label(zh, "The selected process changed or disappeared; no request was started.", "所选进程身份已变化或退出；未启动请求。")
     label(zh, "Cross-process reclaim is in progress.", "跨进程回收正在进行。")
 
 fn xproc_exit_detail(zh: bool, exit_code: i64, signal: i64) -> string:
@@ -467,6 +478,10 @@ fn xproc_candidate_state(s: &MainWindow, index: i64) -> i64:
     if s.xproc_simulation: return mr_runtime_xproc_candidate_state(index)
     mr_cand_state(index)
 
+fn xproc_candidate_identity_token(s: &MainWindow, index: i64) -> i64:
+    if s.xproc_simulation: return mr_runtime_xproc_candidate_identity_token(index)
+    mr_cand_identity_token(index)
+
 fn xproc_candidate_state_text(zh: bool, state: i64) -> string:
     if state == 82: return label(zh, "running", "运行中")
     if state == 83: return label(zh, "sleeping", "休眠中")
@@ -485,6 +500,11 @@ fn xproc_scan(s: &mut MainWindow):
     s.xproc_target_pid = -1
     s.xproc_target_start_time = -1
     s.xproc_target_uid = -1
+    s.xproc_target_identity_token = -1
+    s.xproc_target_bytes = -1
+    s.xproc_target_regions = -1
+    s.xproc_target_name = ""
+    s.xproc_target_app_name = ""
     s.xproc_preflight = -1
     s.xproc_scan_status = -1
     s.xproc_state = 0
@@ -508,13 +528,46 @@ fn xproc_scan(s: &mut MainWindow):
 fn xproc_set_selected(s: &mut MainWindow, index: i64):
     let count = xproc_count(s)
     if index < 0 or index >= count: return
+    let pid = xproc_pid(s, index)
+    let start_time = xproc_start_time(s, index)
+    let uid = xproc_uid(s, index)
+    let identity_token = xproc_candidate_identity_token(s, index)
+    let candidate_bytes = xproc_candidate_bytes(s, index)
+    let regions = xproc_candidate_regions(s, index)
+    let name = xproc_candidate_name(s, index)
+    let app_name = xproc_candidate_app_name(s, index)
+    if pid < 2 or start_time <= 0 or uid < 0 or identity_token <= 0 or candidate_bytes <= 0 or regions <= 0:
+        s.xproc_selected = -1
+        s.status = label(s.zh, "This process snapshot is incomplete; refresh the list.", "进程快照不完整；请刷新列表。")
+        if s.test_mode: mr_runtime_emit(f"CI_XPROC_SELECT rejected=true index={index} reason=incomplete-snapshot helper_calls=0")
+        s.canvas.redraw()
+        return
+    if not s.xproc_simulation and mr_cand_snapshot_select(index) != 0:
+        s.xproc_selected = -1
+        s.xproc_target_pid = -1
+        s.xproc_target_start_time = -1
+        s.xproc_target_uid = -1
+        s.xproc_target_identity_token = -1
+        s.xproc_target_bytes = -1
+        s.xproc_target_regions = -1
+        s.xproc_target_name = ""
+        s.xproc_target_app_name = ""
+        s.status = label(s.zh, "This process changed; refresh the list and select it again.", "进程状态已变化；请刷新列表后重新选择。")
+        if s.test_mode: mr_runtime_emit(f"CI_XPROC_SELECT rejected=true index={index} reason=stale-at-selection pid={pid} helper_calls=0")
+        s.canvas.redraw()
+        return
     s.xproc_selected = index
-    s.xproc_target_pid = xproc_pid(s, index)
-    s.xproc_target_start_time = xproc_start_time(s, index)
-    s.xproc_target_uid = xproc_uid(s, index)
+    s.xproc_target_pid = pid
+    s.xproc_target_start_time = start_time
+    s.xproc_target_uid = uid
+    s.xproc_target_identity_token = identity_token
+    s.xproc_target_bytes = candidate_bytes
+    s.xproc_target_regions = regions
+    s.xproc_target_name = name
+    s.xproc_target_app_name = app_name
     if index < s.xproc_scroll: s.xproc_scroll = index
     if index >= s.xproc_scroll + 4: s.xproc_scroll = index - 3
-    if s.test_mode: mr_runtime_emit(f"CI_XPROC_SELECT index={index} pid={xproc_pid(s, index)} uid={xproc_uid(s, index)} start_time={xproc_start_time(s, index)} process={xproc_candidate_name(s, index)} app={xproc_candidate_app_name(s, index)} process_state={xproc_candidate_state_text(false, xproc_candidate_state(s, index))} regions={xproc_candidate_regions(s, index)} candidate_bytes={xproc_candidate_bytes(s, index)} selected=true")
+    if s.test_mode: mr_runtime_emit(f"CI_XPROC_SELECT index={index} pid={pid} uid={uid} start_time={start_time} identity_token={identity_token} process={s.xproc_target_name} app={s.xproc_target_app_name} process_state={xproc_candidate_state_text(false, xproc_candidate_state(s, index))} regions={regions} candidate_bytes={candidate_bytes} selected=true snapshot=pinned")
 
 fn xproc_local_failure(s: &mut MainWindow, state: i64):
     s.xproc_state = state
@@ -562,10 +615,10 @@ fn xproc_start_selected(s: &mut MainWindow):
     if xproc_operation_busy(s) or clean_operation_busy(s.clean_state):
         xproc_local_failure(s, 23)
         return
-    if s.xproc_selected < 0 or s.xproc_target_pid <= 0 or s.xproc_target_start_time <= 0 or s.xproc_target_uid < 0:
+    if s.xproc_selected < 0 or s.xproc_target_pid <= 0 or s.xproc_target_start_time <= 0 or s.xproc_target_uid < 0 or s.xproc_target_identity_token <= 0 or s.xproc_target_bytes <= 0 or s.xproc_target_regions <= 0:
         xproc_local_failure(s, 20)
         return
-    let budget = xproc_budget(xproc_candidate_bytes(s, s.xproc_selected))
+    let budget = xproc_budget(s.xproc_target_bytes)
     if budget <= 0:
         xproc_local_failure(s, 20)
         return
@@ -579,10 +632,18 @@ fn xproc_start_selected(s: &mut MainWindow):
         s.canvas.redraw()
         return
     s.xproc_before_available = before.available
+    if not s.xproc_simulation:
+        let snapshot_status = mr_cand_snapshot_verify(
+            s.xproc_target_pid, s.xproc_target_start_time, s.xproc_target_uid,
+            s.xproc_target_identity_token, s.xproc_target_bytes, s.xproc_target_regions)
+        if snapshot_status != 0:
+            xproc_local_failure(s, 26)
+            if s.test_mode: mr_runtime_emit(f"CI_XPROC_START blocked=target-snapshot-changed status={snapshot_status} selected_pid={s.xproc_target_pid} selected_start_time={s.xproc_target_start_time} selected_uid={s.xproc_target_uid} helper_calls=0 authorization_started=false")
+            return
     let start_result = if s.xproc_simulation:
-        mr_runtime_xproc_start(s.xproc_target_pid, s.xproc_target_start_time, budget)
+        mr_runtime_xproc_start(s.xproc_target_pid, s.xproc_target_start_time, s.xproc_target_uid, s.xproc_target_identity_token, s.xproc_target_bytes, s.xproc_target_regions, budget)
     else:
-        mr_xproc_start(s.xproc_target_pid, s.xproc_target_start_time, budget)
+        mr_xproc_start(s.xproc_target_pid, s.xproc_target_start_time, s.xproc_target_uid, s.xproc_target_identity_token, s.xproc_target_bytes, s.xproc_target_regions, budget)
     if start_result != 0:
         let mut state = 20
         if start_result == 1: state = 23
@@ -595,7 +656,7 @@ fn xproc_start_selected(s: &mut MainWindow):
     s.status = xproc_waiting_text(s.zh, s.xproc_state, s.xproc_simulation)
     if s.test_mode:
         let backend = if s.xproc_simulation: "mock" else: "pkexec"
-        mr_runtime_emit(f"CI_XPROC_START started=true backend={backend} pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} max_bytes={budget} observed_memavailable_before_kib={s.xproc_before_available} authorization_each_run=true automatic_retry=false")
+        mr_runtime_emit(f"CI_XPROC_START started=true backend={backend} pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} identity_token={s.xproc_target_identity_token} max_bytes={budget} reviewed_candidate_bytes={s.xproc_target_bytes} reviewed_regions={s.xproc_target_regions} observed_memavailable_before_kib={s.xproc_before_available} authorization_each_run=true automatic_retry=false")
     s.canvas.redraw()
 
 fn xproc_confirm_cancel(s: &mut MainWindow):
@@ -1040,19 +1101,20 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
             elif visible > 0:
                 p.text(panel.x + 9.0, panel.y + 197.0, label(s.zh, "Only user app scopes are listed; identity is checked again.", "仅列出用户应用作用域；操作前会再次核验身份。"), secondary, size=8.0)
         xproc_button(p, xproc_picker_refresh_rect(&panel), label(s.zh, "Refresh", "刷新"), s.xproc_focus == 1, not xproc_operation_busy(s), fg, disabled, border, surface, hot)
-        let can_continue = s.xproc_selected >= 0 and not xproc_operation_busy(s)
+        let can_continue = s.xproc_selected >= 0 and s.xproc_target_identity_token > 0 and not xproc_operation_busy(s)
         xproc_button(p, xproc_picker_continue_rect(&panel), label(s.zh, "Continue…", "继续……"), s.xproc_focus == 2, can_continue, fg, disabled, border, surface, hot)
         xproc_button(p, xproc_picker_cancel_rect(&panel), label(s.zh, "Close", "关闭"), s.xproc_focus == 3, true, fg, disabled, border, surface, hot)
     elif s.xproc_view == 2:
-        let name = xproc_candidate_name(s, s.xproc_selected)
-        let budget = xproc_budget(xproc_candidate_bytes(s, s.xproc_selected))
+        let name = s.xproc_target_name
+        let budget = xproc_budget(s.xproc_target_bytes)
         p.text(panel.x + 9.0, panel.y + 27.0, label(s.zh, "Confirm one process and one bounded request.", "请确认单个进程和有限范围请求。"), fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 45.0, f"{name}  PID {s.xproc_target_pid}  UID {s.xproc_target_uid}", fg, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 61.0, f"Up to {xproc_bytes(budget)} over eligible private mappings.", secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 88.0, label(s.zh, "The helper rechecks UID, executable, app scope,", "helper 会重新核验 UID、可执行文件、应用作用域，"), secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 102.0, label(s.zh, "start time and protected-process rules.", "启动时间和受保护进程规则。"), secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 132.0, label(s.zh, "PAGEOUT can cause swap, disk I/O and visible", "PAGEOUT 可能造成 swap、磁盘 I/O 和明显"), secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 146.0, label(s.zh, "latency. No released amount is guaranteed.", "延迟；不保证释放任何数量。"), secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 60.0, f"Application: {s.xproc_target_app_name}", secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 75.0, f"Up to {xproc_bytes(budget)} over {s.xproc_target_regions} reviewed regions.", secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 101.0, label(s.zh, "The helper rechecks UID, executable, app scope,", "helper 会重新核验 UID、可执行文件、应用作用域，"), secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 115.0, label(s.zh, "start time and protected-process rules.", "启动时间和受保护进程规则。"), secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 143.0, label(s.zh, "PAGEOUT can cause swap, disk I/O and visible", "PAGEOUT 可能造成 swap、磁盘 I/O 和明显"), secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 157.0, label(s.zh, "latency. No released amount is guaranteed.", "延迟；不保证释放任何数量。"), secondary, size=8.0)
         p.text(panel.x + 9.0, panel.y + 176.0, label(s.zh, "MemAvailable change is observational only.", "MemAvailable 变化仅供观察，不代表因果。"), secondary, size=8.0)
         xproc_button(p, xproc_confirm_accept_rect(&panel), label(s.zh, "Authorize and run", "授权并执行"), s.xproc_focus == 0, true, fg, disabled, border, surface, hot)
         xproc_button(p, xproc_confirm_cancel_rect(&panel), label(s.zh, "Cancel", "取消"), s.xproc_focus != 0, true, fg, disabled, border, surface, hot)
@@ -1471,7 +1533,7 @@ fn activate(s: &mut MainWindow, target: f64):
         elif target == 811.0 and s.xproc_selected >= 0:
             s.xproc_view = 2
             s.xproc_focus = 0
-            if s.test_mode: mr_runtime_emit(f"CI_XPROC_CONFIRM open=true pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} max_bytes={xproc_budget(xproc_candidate_bytes(s, s.xproc_selected))} explicit_user_choice=true")
+            if s.test_mode: mr_runtime_emit(f"CI_XPROC_CONFIRM open=true pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} identity_token={s.xproc_target_identity_token} application={s.xproc_target_app_name} max_bytes={xproc_budget(s.xproc_target_bytes)} regions={s.xproc_target_regions} explicit_user_choice=true immutable_snapshot=true")
         elif target == 812.0:
             s.xproc_view = 0
             s.status = label(s.zh, "Target selection cancelled", "已取消目标选择")
@@ -1961,6 +2023,8 @@ fn main():
         xproc_selected: -1, xproc_scroll: 0, xproc_focus: 0,
         xproc_preflight: -1, xproc_scan_status: -1,
         xproc_target_pid: -1, xproc_target_start_time: -1, xproc_target_uid: -1,
+        xproc_target_identity_token: -1, xproc_target_bytes: -1, xproc_target_regions: -1,
+        xproc_target_name: "", xproc_target_app_name: "",
         xproc_before_available: -1, xproc_after_available: -1,
         xproc_advised_bytes: 0, xproc_requested_bytes: 0, xproc_regions: 0,
         xproc_error_code: 0, xproc_call_count: 0,
