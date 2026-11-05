@@ -334,6 +334,9 @@ fn xproc_budget_label(bytes: i64) -> string:
         return f"{tenths // 10}.{tenths % 10} MiB"
     f"{bytes} bytes"
 
+fn xproc_confirmation_start_time(zh: bool, start_time: i64) -> string:
+    label(zh, f"Start time: {start_time}", f"启动时间：{start_time}")
+
 fn xproc_result_state(poll: i64) -> i64:
     if poll == 0: return 10
     if poll == 1: return 11
@@ -1132,9 +1135,9 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
         let budget = xproc_budget(s.xproc_target_bytes, s.xproc_budget_choice)
         p.text(panel.x + 9.0, panel.y + 27.0, label(s.zh, "Confirm one process and one bounded request.", "请确认单个进程和有限范围请求。"), fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 45.0, f"{name}  PID {s.xproc_target_pid}  UID {s.xproc_target_uid}", fg, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 60.0, f"Application: {s.xproc_target_app_name}", secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 73.0, f"Up to {xproc_budget_label(budget)} across {s.xproc_target_regions} reviewed regions.", secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 86.0, label(s.zh, "Per-run maximum; capped by reviewed mappings:", "本次操作上限；受已复核映射量限制："), secondary, size=7.0)
+        p.text(panel.x + 9.0, panel.y + 60.0, xproc_confirmation_start_time(s.zh, s.xproc_target_start_time), secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 73.0, f"Application: {s.xproc_target_app_name}", secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 86.0, f"Up to {xproc_budget_label(budget)} across {s.xproc_target_regions} reviewed regions.", secondary, size=8.0)
         for choice in 0..3:
             let rect = xproc_budget_rect(choice, &panel)
             let base_amount = if choice == 0: "16 MiB" elif choice == 1: "32 MiB" else: "64 MiB"
@@ -1335,6 +1338,10 @@ fn test_xproc_budget_and_result_mapping_are_fail_closed():
     assert(xproc_result_name(23) == "busy")
     assert(xproc_result_name(24) == "authorization-cancelled")
     assert(xproc_result_name(25) == "authorization-failed")
+
+fn test_xproc_confirmation_displays_the_selected_start_time():
+    assert(xproc_confirmation_start_time(false, 44158696) == "Start time: 44158696")
+    assert(xproc_confirmation_start_time(true, 44158696) == "启动时间：44158696")
 
 fn test_xproc_candidate_process_state_text_is_explicit():
     assert(xproc_candidate_state_text(false, 82) == "running")
