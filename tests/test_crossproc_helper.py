@@ -1235,6 +1235,7 @@ class InstallSurfaceTest(unittest.TestCase):
         self.assertIn("mr_production_clean_enabled", text)
         self.assertIn("mr_xproc_capability_enabled", text)
         self.assertIn("mr_build_profile_m0_m1_candidate", text)
+        self.assertIn("P2C_FONT_CANDIDATE", text)
         self.assertIn("Candidate GUI must be an executable regular non-symlink file.", text)
         self.assertIn("if ((preflight_only)); then", text)
         self.assertIn("install=not_run", text)
@@ -1246,6 +1247,18 @@ class InstallSurfaceTest(unittest.TestCase):
         self.assertIn("mr_build_profile_m0_m1_candidate", build)
         self.assertIn("mr_build_profile_m0_m1_candidate", gate)
         self.assertIn("return mr_build_profile_m0_m1_candidate();", gate)
+
+    def test_production_manifests_swap_out_the_ci_gtk_window_wrapper(self):
+        manifest = self.read("zam.toml")
+        self.assertIn('"native/gui_window_ci.c"', manifest)
+        self.assertNotIn('"native/gui_window.c"', manifest)
+        for name in ("build-production-gui.sh", "build-production-clean-gui.sh",
+                     "build-production-crossproc-gui.sh"):
+            build = self.read("scripts", "ci", name)
+            self.assertIn('"native/gui_window_ci.c"', build)
+            self.assertIn('"native/gui_window_prod.c"', build)
+        production_wrapper = self.read("native", "gui_window_prod.c")
+        self.assertIn("MR_GUI_PRODUCTION", production_wrapper)
 
     def test_preflight_rejects_gate_symbols_without_exact_profile(self):
         compiler = shutil.which("cc")

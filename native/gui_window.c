@@ -4,6 +4,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef MR_GUI_PRODUCTION
+/* This translation unit is shared with CI. Production builds include it through
+ * gui_window_prod.c, whose inert macros erase environment names and diagnostic
+ * arguments before compilation. In particular, CI_CONTROLS cannot trigger
+ * compositor operations in the shipped binary. */
+#define getenv(...) NULL
+#define fprintf(...) ((void)0)
+#define fputs(...) ((void)0)
+#define fflush(...) ((void)0)
+#endif
+
 /* Stable GTK3/GLib ABI declarations keep this bridge independent of Gtk headers. */
 typedef struct _GtkWidget GtkWidget;
 typedef struct _GtkHeaderBar GtkHeaderBar;
@@ -142,8 +153,6 @@ static int settings_geometry_prepared;
 static int main_geometry_prepared;
 static int gtk_version_logged;
 static unsigned long settings_scroll_handler_id;
-static int64_t settings_scroll_x;
-static int64_t settings_scroll_y;
 static int64_t settings_scroll_taken_x;
 static int64_t settings_scroll_taken_y;
 static double settings_scroll_smooth_remainder;
@@ -320,6 +329,7 @@ int64_t mr_gui_set_compat_font(void)
 }
 
 /* Keep the main canvas at the client top edge while preserving its source x inset. */
+#ifndef MR_GUI_PRODUCTION
 /* One-shot structural dump of a toplevel, gated on MEMREDUCT_CI. The probe that
  * worked standalone did not work here, and guessing at the tree twice already
  * cost a rebuild each time; this prints what is actually there. */
@@ -404,6 +414,13 @@ static void dump_window_tree(GtkWindow *window, const char *tag)
     dump_window_node(root, tag, 0, 0, 0, 6);
     fflush(stderr);
 }
+#else
+static void dump_window_tree(GtkWindow *window, const char *tag)
+{
+    (void)window;
+    (void)tag;
+}
+#endif
 
 /* Wayland compositors draw no server-side decorations, so a GTK3 toplevel has no
  * title bar unless the client supplies one. The Windows original is an ordinary
@@ -518,6 +535,7 @@ static int settings_content_height = 0;
 static int apply_content_size_contract(GtkWindow *window, int content_width,
                                        int content_height, const char *tag)
 {
+    (void)tag;
     if (window == NULL || content_width <= 0 || content_height <= 0) {
         return 0;
     }
@@ -602,6 +620,7 @@ static int on_settle_dump(void *data)
  * drives the same GTK entry points the buttons use, so the CI log proves the plumbing
  * works instead of only proving that a button is painted.
  */
+#ifndef MR_GUI_PRODUCTION
 struct mr_control_step {
     int step;
     GtkWindow *window;
@@ -667,6 +686,12 @@ static void schedule_control_probe(GtkWindow *window)
     state->window = window;
     g_timeout_add(1200, on_control_step, state);
 }
+#else
+static void schedule_control_probe(GtkWindow *window)
+{
+    (void)window;
+}
+#endif
 
 static int on_first_idle(void *data)
 {
@@ -1029,6 +1054,12 @@ int64_t mr_gui_window_mode(int64_t show_settings)
         }
         const char *holder_type = holder == NULL ? "(null)" : g_type_name_from_instance(holder);
         const char *holder_name = holder == NULL ? "(null)" : gtk_widget_get_name(holder);
+#ifdef MR_GUI_PRODUCTION
+        (void)child_count;
+        (void)child_index;
+        (void)holder_type;
+        (void)holder_name;
+#endif
         if (getenv("MEMREDUCT_CI") != NULL) {
             fprintf(stderr,
                     "CI_SETTINGS_WIDGET_TREE root_type=%s children=%u holder_candidates=%u holder_type=%s holder_name=%s\n",

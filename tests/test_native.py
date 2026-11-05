@@ -577,6 +577,34 @@ class TestCiMarkerOutputPath(unittest.TestCase):
         self.assertEqual(loud.stderr, 'CI_PRODUCTION_START\n')
 
 
+class TestProductionGtkWindowBridge(unittest.TestCase):
+    def test_production_wrapper_has_no_environment_control_or_ci_logs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            library = pathlib.Path(temp) / 'libgui-window-production.so'
+            gtk_flags = subprocess.run(
+                ['pkg-config', '--cflags', '--libs', 'gtk+-3.0'],
+                check=True, capture_output=True, text=True,
+            ).stdout.split()
+            subprocess.run(
+                ['cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', '-pedantic',
+                 '-shared', '-fPIC', str(ROOT / 'native/gui_window_prod.c'),
+                 *gtk_flags, '-o', str(library)],
+                check=True, capture_output=True, text=True,
+            )
+            strings = subprocess.run(
+                ['strings', str(library)], check=True, capture_output=True, text=True,
+            ).stdout
+            for hook in ('MEMREDUCT_CI', 'MEMREDUCT_TEST', 'P2C_FONT_CANDIDATE',
+                         'CI_WINDOW_CONTROL', 'CI_TREE_DEPTH'):
+                self.assertNotIn(hook, strings)
+            symbols = subprocess.run(
+                ['nm', '-u', str(library)], check=True, capture_output=True, text=True,
+            ).stdout
+            for control in ('gtk_window_iconify', 'gtk_window_deiconify',
+                            'gtk_window_maximize', 'gtk_window_unmaximize'):
+                self.assertNotIn(control, symbols)
+
+
 class TestSelfReclaim(unittest.TestCase):
     """ADR-0006 action 2, self mode: page out this process only, no privilege.
 

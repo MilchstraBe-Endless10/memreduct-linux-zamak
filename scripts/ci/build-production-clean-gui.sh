@@ -39,6 +39,7 @@ assert old in s, "default gate not listed; zam.toml changed upstream?"
 for source_old, source_new in (
     ('"native/gui_test.c"', '"native/gui_runtime_prod.c"'),
     ('"native/async_privileged.c"', '"native/async_privileged_production.c"'),
+    ('"native/gui_window_ci.c"', '"native/gui_window_prod.c"'),
 ):
     assert s.count(source_old) == 1, f"expected exactly one {source_old} entry"
     s = s.replace(source_old, source_new)
@@ -46,6 +47,7 @@ p.write_text(s.replace(old, new))
 PY
 grep -q 'gui_runtime_prod.c' "$work/zam.toml"
 grep -q 'async_privileged_production.c' "$work/zam.toml"
+grep -q 'gui_window_prod.c' "$work/zam.toml"
 ! grep -q 'gui_test.c' "$work/zam.toml"
 grep -q 'production_clean_gate_enabled.c' "$work/zam.toml"
 ! grep -q 'production_clean_gate_default.c' "$work/zam.toml"
@@ -77,7 +79,7 @@ if grep -Eq 'mr_gui_test_|mr_ci_emit|mr_start_reclaim_mock|mr_(xproc|cand)_test_
   echo 'test or fake-authorization symbol leaked into production-clean GUI' >&2
   exit 1
 fi
-if strings "$artifact_dir/memreduct-zamak-production-clean" | grep -Eq 'MEMREDUCT_CI|MEMREDUCT_TEST'; then
+if strings "$artifact_dir/memreduct-zamak-production-clean" | grep -Eq 'MEMREDUCT_CI|MEMREDUCT_TEST|P2C_FONT_CANDIDATE'; then
   echo 'test-only environment hook leaked into production-clean GUI' >&2
   exit 1
 fi

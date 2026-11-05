@@ -46,6 +46,7 @@ text = path.read_text()
 replacements = {
     '"native/gui_test.c"': '"native/gui_runtime_prod.c"',
     '"native/async_privileged.c"': '"native/async_privileged_production.c"',
+    '"native/gui_window_ci.c"': '"native/gui_window_prod.c"',
 }
 for old, new in replacements.items():
     assert text.count(old) == 1, f"expected exactly one {old} entry"
@@ -55,6 +56,7 @@ PY
 cp "$work/zam.toml" "$artifact_dir/production-zam.toml"
 grep -q 'gui_runtime_prod.c' "$artifact_dir/production-zam.toml"
 grep -q 'async_privileged_production.c' "$artifact_dir/production-zam.toml"
+grep -q 'gui_window_prod.c' "$artifact_dir/production-zam.toml"
 ! grep -q 'gui_test.c' "$artifact_dir/production-zam.toml"
 cd "$work"
 zam build . 2>&1 | tee "$artifact_dir/production-zam-build.log"
@@ -70,7 +72,7 @@ if grep -Eq 'mr_gui_test_|mr_ci_emit|mr_start_reclaim_mock|mr_(xproc|cand)_test_
   printf 'Test or fake-authorization symbol leaked into production GUI.\n' >&2
   exit 1
 fi
-if strings "$artifact_dir/memreduct-zamak-production" | grep -Eq 'MEMREDUCT_CI|MEMREDUCT_TEST'; then
+if strings "$artifact_dir/memreduct-zamak-production" | grep -Eq 'MEMREDUCT_CI|MEMREDUCT_TEST|P2C_FONT_CANDIDATE'; then
   printf 'Test-only environment hook leaked into production GUI.\n' >&2
   exit 1
 fi
