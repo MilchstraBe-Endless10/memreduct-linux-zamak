@@ -1234,9 +1234,66 @@ class InstallSurfaceTest(unittest.TestCase):
         self.assertIn("--check-m0-m1-candidate", text)
         self.assertIn("mr_production_clean_enabled", text)
         self.assertIn("mr_xproc_capability_enabled", text)
+        self.assertIn("mr_build_profile_m0_m1_candidate", text)
         self.assertIn("Candidate GUI must be an executable regular non-symlink file.", text)
         self.assertIn("if ((preflight_only)); then", text)
         self.assertIn("install=not_run", text)
+
+    def test_m0_m1_build_uses_a_unique_profile_gate(self):
+        build = self.read("scripts", "ci", "build-production-crossproc-gui.sh")
+        gate = self.read("native", "production_clean_gate_m0_m1_candidate.c")
+        self.assertIn("production_clean_gate_m0_m1_candidate.c", build)
+        self.assertIn("mr_build_profile_m0_m1_candidate", build)
+        self.assertIn("mr_build_profile_m0_m1_candidate", gate)
+        self.assertIn("return mr_build_profile_m0_m1_candidate();", gate)
+
+    def test_preflight_rejects_gate_symbols_without_exact_profile(self):
+        compiler = shutil.which("cc")
+        if not compiler:
+            self.skipTest("C compiler unavailable")
+        with tempfile.TemporaryDirectory(prefix="memreduct-install-preflight-") as tmp:
+            root = os.path.join(tmp, "repo")
+            os.makedirs(os.path.join(root, "scripts"), exist_ok=True)
+            os.makedirs(os.path.join(root, "build"), exist_ok=True)
+            policy_dir = os.path.join(root, "packaging", "polkit-1", "actions")
+            os.makedirs(policy_dir, exist_ok=True)
+            shutil.copy2(os.path.join(ROOT, "scripts", "install-arch.sh"),
+                         os.path.join(root, "scripts", "install-arch.sh"))
+            shutil.copy2(POLICY, os.path.join(policy_dir, os.path.basename(POLICY)))
+            shutil.copy2(PAGE_CACHE_POLICY,
+                         os.path.join(policy_dir, os.path.basename(PAGE_CACHE_POLICY)))
+            for name in ("memreduct-zamak-helper", "memreduct-zamak-crossproc-helper"):
+                path = os.path.join(root, "build", name)
+                with open(path, "wb") as handle:
+                    handle.write(b"preflight fixture; never executed\n")
+            tools = os.path.join(tmp, "mock-bin")
+            os.makedirs(tools)
+            for name in ("pkexec", "pkaction"):
+                path = os.path.join(tools, name)
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write("#!/bin/sh\nexit 99\n")
+                os.chmod(path, 0o755)
+            source = os.path.join(tmp, "candidate.c")
+            with open(source, "w", encoding="utf-8") as handle:
+                handle.write(textwrap.dedent("""\
+                    #include <stdint.h>
+                    int64_t mr_production_clean_enabled(void) { return 1; }
+                    int64_t mr_xproc_capability_enabled(void) { return 1; }
+                    int main(void) { return 0; }
+                """))
+            candidate = os.path.join(tmp, "candidate")
+            subprocess.run([compiler, "-O2", source, "-o", candidate],
+                           check=True, capture_output=True, text=True)
+            os.chmod(candidate, 0o755)
+            env = os.environ.copy()
+            env["PATH"] = tools + os.pathsep + env.get("PATH", "")
+            result = subprocess.run(
+                ["bash", os.path.join(root, "scripts", "install-arch.sh"),
+                 "--check-m0-m1-candidate", candidate],
+                env=env, capture_output=True, text=True,
+            )
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("exact M0+M1 candidate profile marker", result.stderr)
 
     def test_uninstall_removes_every_new_file(self):
         text = self.read("scripts", "uninstall-arch.sh")

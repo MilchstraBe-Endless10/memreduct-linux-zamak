@@ -1,5 +1,14 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-05 — 修正 M0+M1 构建身份与安装预检
+
+- **根因：**旧的 `--check-m0-m1-candidate` 只验证 `mr_production_clean_enabled` 与 `mr_xproc_capability_enabled` 两个通用符号。普通生产 GUI 可含有这些符号但 M0 gate 仍关闭，因此旧预检会误收 M0-only/错误 profile 二进制。
+- **源码修复：**新增 `native/production_clean_gate_m0_m1_candidate.c`；只有 `build-production-crossproc-gui.sh m0+m1-candidate` 会在临时 manifest 中选择它。唯一符号 `mr_build_profile_m0_m1_candidate` 被 M0 gate 调用并在生产 ELF 中核验。安装预检要求两个启用 gate 和此 profile 标记同时存在，仍拒绝关闭 gate 与测试 hook。加了回归测试，模拟“两个 gate 符号存在但没有 profile 标记”的 ELF，确认预检失败。
+- **当前生产候选：**Zamak 0.2.0 构建成功，SHA-256 `0fc54e347ead23cf287fc1f39bae935da12f5931816bf5cd43c9bbafb3c32a74`。正确 profile 的只读预检 PASS；此前通用 M0-only GUI 被拒绝，退出码 1。两者均未安装。
+- **普通模式交互：**正确候选在隔离 Xvfb、未设置 `MEMREDUCT_CI`/`MEMREDUCT_TEST` 下打开并通过 GTK 关闭按钮退出 0；主窗口 Clean 菜单可打开，M1 生产入口可进入进程选择与风险确认页，Cancel 显示请求未启动，随后窗口退出 0。没有启动 `pkexec`/Crossproc helper、没有 Polkit 请求、没有 syscall 或页缓存清理。测试只处理临时 Xvfb 窗口，不连接活动 Hyprland 桌面。
+- **验证：**治理检查 34 项 PASS；Python/C 安全套件 205 项，204 PASS、1 项由文件系统边界导致的 skip；`zam check` PASS、`zam test` 81/81、`zam build` PASS；Shell 语法检查 PASS；正确/错误 profile 的安装预检分别 PASS/REJECT；`git diff --check` 待提交前复核。完整构建日志、二进制、GUI 截图及 M1 picker/risk/cancel 截图哈希在 AI 产出目录 `报告与研究/MemReduct-M1-3-2026-11-05/continuation-2026-11-05-05/m0-m1-candidate-r2/`。
+- **边界：**本机仍未安装新候选；未执行真实 M1 日常应用回收、M0 页缓存操作或任何特权操作；没有推送/合并。当前 UI 测试处于 Xvfb，不代表真实 Hyprland 验收；Windows 3.5.2 整页 1:1 仍 NOT PASS。旧 `installable-package-r1` 的 GUI 未含精确 profile 标记，不可安装或复用；已保留未修改。
+
 ## 2026-11-05 — M1.3 目标绑定修复与 M0+M1 本地候选
 
 - **代码提交：**本地分支 `codex/m13-fault-repair`，提交 `247b51465a9a067b269d595741cfa5cd29ff2ca6`，Tree `54be50458f111cfd5df55355367dab0d33d3def9`，父 `425d87df41364d73627bccd8dac8c1db707da8c4`。本提交加入单次预算选择、Space 键盘处理及 Xvfb 回归；父提交 `425d87d` 实现目标快照绑定。文档与记忆分开提交。

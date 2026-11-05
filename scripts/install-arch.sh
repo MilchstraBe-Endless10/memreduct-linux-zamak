@@ -78,8 +78,9 @@ if ((candidate_mode)); then
     }
     candidate_symbols="$(nm "$candidate_gui")"
     [[ "$(grep -c ' T mr_production_clean_enabled$' <<<"$candidate_symbols")" == 1 &&
-       "$(grep -c ' T mr_xproc_capability_enabled$' <<<"$candidate_symbols")" == 1 ]] || {
-        echo 'Candidate GUI does not contain both enabled M0 and M1 gates.' >&2
+       "$(grep -c ' T mr_xproc_capability_enabled$' <<<"$candidate_symbols")" == 1 &&
+       "$(grep -c ' T mr_build_profile_m0_m1_candidate$' <<<"$candidate_symbols")" == 1 ]] || {
+        echo 'Candidate GUI does not contain the exact M0+M1 candidate profile marker and both enabled gates.' >&2
         exit 1
     }
     if grep -Eq 'production_(clean|crossproc)_gate_default|mr_gui_test_|mr_ci_emit|mr_start_reclaim_mock|mr_(xproc|cand)_test_' <<<"$candidate_symbols" ||

@@ -45,25 +45,30 @@ for old, new in replacements.items():
     assert text.count(old) == 1, f"expected exactly one {old} entry"
     text = text.replace(old, new)
 clean_default = '"native/production_clean_gate_default.c"'
-clean_enabled = '"native/production_clean_gate_enabled.c"'
-assert text.count(clean_default) == 1 and clean_enabled not in text
+clean_m0_m1 = '"native/production_clean_gate_m0_m1_candidate.c"'
+assert text.count(clean_default) == 1
+assert '"native/production_clean_gate_enabled.c"' not in text
+assert clean_m0_m1 not in text
 if profile == "m0+m1-candidate":
-    text = text.replace(clean_default, clean_enabled)
-    assert clean_enabled in text and clean_default not in text
+    text = text.replace(clean_default, clean_m0_m1)
+    assert clean_m0_m1 in text and clean_default not in text
 path.write_text(text)
 PY
 cp "$work/zam.toml" "$artifact_dir/zam.toml"
 grep -q 'production_crossproc_gate_enabled.c' "$artifact_dir/zam.toml"
-grep -q 'production_clean_gate_default.c' "$artifact_dir/zam.toml"
-! grep -q 'production_clean_gate_enabled.c' "$artifact_dir/zam.toml"
 grep -q 'gui_runtime_prod.c' "$artifact_dir/zam.toml"
 grep -q 'async_privileged_production.c' "$artifact_dir/zam.toml"
 ! grep -q 'gui_test.c' "$artifact_dir/zam.toml"
 pagecache_gate=default-disabled
 if [[ "$profile" == "m0+m1-candidate" ]]; then
-  grep -q 'production_clean_gate_enabled.c' "$artifact_dir/zam.toml"
+  grep -q 'production_clean_gate_m0_m1_candidate.c' "$artifact_dir/zam.toml"
   ! grep -q 'production_clean_gate_default.c' "$artifact_dir/zam.toml"
+  ! grep -q 'production_clean_gate_enabled.c' "$artifact_dir/zam.toml"
   pagecache_gate=enabled
+else
+  grep -q 'production_clean_gate_default.c' "$artifact_dir/zam.toml"
+  ! grep -q 'production_clean_gate_m0_m1_candidate.c' "$artifact_dir/zam.toml"
+  ! grep -q 'production_clean_gate_enabled.c' "$artifact_dir/zam.toml"
 fi
 printf 'profile=%s\ncrossproc_gate=enabled\npagecache_gate=%s\nruntime=production-no-test-hooks\n' \
   "$profile" "$pagecache_gate" | tee "$artifact_dir/gate-selection.txt"
@@ -87,6 +92,11 @@ nm "$binary" >"$artifact_dir/symbols.txt"
 grep -q ' T mr_xproc_capability_enabled$' "$artifact_dir/symbols.txt"
 ! grep -q 'production_crossproc_gate_default' "$artifact_dir/symbols.txt"
 grep -q ' T mr_production_clean_enabled$' "$artifact_dir/symbols.txt"
+if [[ "$profile" == "m0+m1-candidate" ]]; then
+  grep -q ' T mr_build_profile_m0_m1_candidate$' "$artifact_dir/symbols.txt"
+else
+  ! grep -q 'mr_build_profile_m0_m1_candidate' "$artifact_dir/symbols.txt"
+fi
 if grep -Eq 'mr_gui_test_|mr_ci_emit|mr_start_reclaim_mock|mr_(xproc|cand)_test_' "$artifact_dir/symbols.txt"; then
   printf 'Test or fake-authorization symbol leaked into production candidate.\n' >&2
   exit 1
