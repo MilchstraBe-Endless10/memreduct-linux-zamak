@@ -172,8 +172,14 @@ xdotool mousemove --window "$window_id" 165 340
 xdotool click 1
 require 'CI_XPROC_CONFIRM open=true'
 require 'explicit_user_choice=true'
-require 'max_bytes=8388608'
+require 'budget_limit_bytes=16777216 max_bytes=16777216'
 capture confirm-cancel
+# Raise this fixture request to 64 MiB with the mouse, then cancel it. No real
+# candidate, helper, Polkit action, or kernel syscall is reachable in this mode.
+xdotool mousemove --window "$window_id" 260 205
+xdotool click 1
+require 'CI_XPROC_BUDGET choice=2 limit_bytes=67108864 effective_bytes=67108864'
+capture confirm-budget-64
 start_count_before_cancel="$(grep -c 'CI_XPROC_START started=true' "$app_log" || true)"
 xdotool key --clearmodifiers Escape
 require 'CI_XPROC_RESULT state=confirmation-cancelled authorization_started=false call_count=0 mock=true'
@@ -192,11 +198,18 @@ require 'process=fixture-renderer app=fixture-renderer-bin process_state=sleepin
 xdotool key --clearmodifiers Tab Tab Return
 require 'CI_XPROC_CONFIRM open=true'
 require 'pid=4243'
+require 'budget_limit_bytes=16777216 max_bytes=16777216'
+# Tab to the first budget, Space confirms 16 MiB, Right selects 32 MiB, then
+# Tab advances to Run. This covers the keyboard budget path before mock start.
+xdotool key --clearmodifiers Tab Tab space Right
+require 'CI_XPROC_BUDGET choice=0 limit_bytes=16777216 effective_bytes=16777216'
+require 'CI_XPROC_BUDGET choice=1 limit_bytes=33554432 effective_bytes=33554432'
 capture confirm-run
+xdotool key --clearmodifiers Tab Tab
 xdotool key --clearmodifiers Return
 require 'CI_XPROC_START started=true backend=mock'
 require 'pid=4243'
-require 'max_bytes=4194304'
+require 'max_bytes=33554432'
 require 'automatic_retry=false'
 
 for _ in {1..80}; do
@@ -210,7 +223,7 @@ for _ in {1..100}; do
   sleep 0.1
 done
 grep 'CI_XPROC_RESULT state=partial ' "$app_log" | tee "$artifact_dir/result.txt"
-require 'advised_bytes=2097152 requested_bytes=4194304 regions=2 error_code=0 call_count=0'
+require 'advised_bytes=16777216 requested_bytes=33554432 regions=2 error_code=0 call_count=0'
 require 'memavailable_before_kib='
 require 'memavailable_after_kib='
 require 'causal_attribution=none no_retry=true mock=true no_system_write=true'

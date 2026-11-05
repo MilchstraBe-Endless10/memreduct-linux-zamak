@@ -158,7 +158,7 @@ long long mr_runtime_xproc_candidate_uid(long long index)
 long long mr_runtime_xproc_candidate_bytes(long long index)
 {
     if (mr_runtime_xproc_candidate_pid(index) < 0) return -1;
-    return index == 0 ? 8ll * 1024ll * 1024ll : 4ll * 1024ll * 1024ll;
+    return index == 0 ? 64ll * 1024ll * 1024ll : 48ll * 1024ll * 1024ll;
 }
 
 long long mr_runtime_xproc_candidate_regions(long long index)
@@ -198,9 +198,9 @@ long long mr_runtime_xproc_start(long long pid, long long start_time, long long 
     if (mr_runtime_xproc_simulation_enabled() == 0 || xproc_mock_in_flight != 0 ||
         (pid != 4242 && pid != 4243) || start_time != 7700 + (pid - 4242) ||
         uid != (long long)geteuid() || identity_token != 424242 + (pid - 4242) * 101 ||
-        reviewed_bytes != (pid == 4242 ? 8ll * 1024ll * 1024ll : 4ll * 1024ll * 1024ll) ||
+        reviewed_bytes != (pid == 4242 ? 64ll * 1024ll * 1024ll : 48ll * 1024ll * 1024ll) ||
         reviewed_regions != (pid == 4242 ? 3 : 2) ||
-        max_bytes <= 0 || max_bytes > 16ll * 1024ll * 1024ll) {
+        max_bytes <= 0 || max_bytes > 64ll * 1024ll * 1024ll) {
         return 2;
     }
     xproc_mock_in_flight = 1;
