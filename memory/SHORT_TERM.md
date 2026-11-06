@@ -1,6 +1,13 @@
 # 短期记忆 / Latest Handoff
 
-## 2026-11-06 — R5 大额度回收候选与生产关闭检查
+## 2026-11-06 — R5 经授权完成两文件安装
+
+- **操作范围：**收到所有者对 R5 新哈希的授权后，通过一次 `pkexec` 只替换 `/usr/bin/memreduct-zamak` 与 `/usr/libexec/memreduct-zamak-crossproc-helper`。更新前的文件已备份；安装脚本固定路径/旧新 SHA，并验证已有 M0 helper 与两份 Polkit policy 不变。没有安装其它服务或修改系统配置。
+- **安装后独立核验：**GUI `a23cbb24ca0037fed4232a2db6eada1ec58844304a7fb5e01027c10abe12dacf`、Crossproc helper `6762ab9c7c5a6d5a648485a60d465caaa93fa0c65363aa30c8d76c78fe94ab83`，均 `root:root 0755`；M0 helper `b0652c8ac3ae70576e39b71fbdcd047a7c57f23873fec2e45b1b691b34c45a5e` 与两份 policy SHA `1f4eced31a2c8da2fb9f67f7af3c5c8e518d95f8138ad7441f43396a5394b029` / `c02d7f49ea9606f522587d0b0796cd3a55ee044aaf399d48d84ae1016b0b5904` 保持不变；专属 Crossproc Polkit action 可见，安装 helper 标记协议 v3。pkexec 安装命令 exit 0，独立读后核验全部匹配。
+- **备份与实施脚本：**旧 GUI/helper 备份与元数据在 AI 输出目录 `报告与研究/MemReduct-R5-2026-11-06/pre-r5-install-backup-r1/`；精确两文件安装/回滚脚本在 `编程脚本/Python/MemReduct-R5-2026-11-06/install-r5-two-files.py`。安装脚本的 `check` 模式在写入前通过。
+- **仍未验收：**本轮没有启动已安装 GUI，也没有发起 Crossproc Polkit 请求、helper、`process_madvise(MADV_PAGEOUT)`、cgroup `memory.reclaim`、M0 页缓存清理或 Swap/ZRAM 操作。R5 已安装，但真实 Hyprland 操作、实际几百 MiB/1 GiB 观察结果及日常应用响应仍 NOT RUN；请求额度不是实际释放量。PR 未推送；Windows 3.5.2 整页 1:1 仍 NOT PASS。
+
+## 2026-11-06 — R5 大额度回收候选与生产关闭检查（安装前快照）
 
 - **本地代码提交：**分支 `codex/r5-large-reclaim`，实现提交 `d6f74897fdd30f2a218512176f8ab81af6460e89`，Tree `ade839414e0f2ffc5f1cea7cbd82981ff7c9223c`，父提交 `8b251faa81efe613f34d91ce433a52e0878a3bff`。改动覆盖 GUI、异步协议、Crossproc helper、候选扫描、回归和产品文档；随后记忆单独提交。仓库内既有未跟踪 `artifacts/` 未暂存或改写。
 - **已实现：**生产 M0+M1 候选提供 256 MiB 默认、512 MiB 和 1 GiB 单次请求上限。PAGEOUT 受 helper 实时 RSS、私有可读映射和 1024 iovec 限制；whole-app 模式针对重新推导的精确 cgroup v2 app scope，按 `anon + file` charge 限幅，拒绝子 cgroup和身份/成员不匹配，只写一次 `memory.reclaim`。GUI 显示操作范围、swap/I/O/延迟风险和前后观测值；观测变化不称为实际释放字节。helper 协议升级到 v3。
@@ -9,7 +16,7 @@
 - **生产启动/关闭复核：**首个 smoke 用 `xdotool windowclose` 直接销毁 X 窗口，造成 `GdkWindow unexpectedly destroyed`；这是错误的测试方式，不是已证实的应用关闭故障。重跑使用 GTK 标题栏 Close，在私有 Xvfb、`MEMREDUCT_CI`/`MEMREDUCT_TEST` unset 下窗口大小 337×415，正常退出 0、GTK/GDK 警告 0。此证据不是 Hyprland 验收。截图与日志分别在 AI 输出目录 `报告与研究/MemReduct-R5-2026-11-06/production-smoke-r2/`。
 - **生产候选校验：**候选 GUI SHA-256 `a23cbb24ca0037fed4232a2db6eada1ec58844304a7fb5e01027c10abe12dacf`；Crossproc helper `6762ab9c7c5a6d5a648485a60d465caaa93fa0c65363aa30c8d76c78fe94ab83`；M0 helper 保持 `b0652c8ac3ae70576e39b71fbdcd047a7c57f23873fec2e45b1b691b34c45a5e`。文件位于 AI 输出目录 `编程脚本/其他脚本/MemReduct-R5-2026-11-06/production-candidate-r2/candidate-bundle/`。
 - **当前系统只读对账：**已安装 GUI SHA 为 r4.1 的 `0e14a022beaaf9facf36918cce81368377320be379e471c437caecd62c53472d`，helper SHA 为协议 v2 的 `cc39ae9a8faaf7ff8b0421a565f6eebc9ac317f88a233716fbeea16ea2f12557`；两者 owner/mode 分别为 root:root 0755。M0 helper 与候选一致；两份 pagecache/Crossproc policy 的 SHA 也都与候选一致，专属 Crossproc action 已被 `pkaction` 识别。因此升级差异只有 GUI 和 Crossproc helper 两个文件，M0 组件未变。
-- **未完成与边界：**r5 未安装；此前系统中的 Crossproc helper 是协议 v2，与本候选协议 v3 不匹配，GUI 会拒绝连接。真实 Hyprland 大额度回收、真实 cgroup `memory.reclaim`、实际回收量和日常应用响应均 NOT RUN；模拟/fixture 通过不代表已回收 256 MiB–1 GiB。无系统写入、Polkit 请求、真实 helper 调用、内核回收、Swap/ZRAM 改动或远端 push；Windows 3.5.2 整页 1:1 仍 NOT PASS。
+- **安装前状态快照：**当时 r5 尚未安装；系统中的 Crossproc helper 是协议 v2。随后安装结果由本文件顶部的更新条目记录。该候选测试没有验证真实 Hyprland 大额度回收、cgroup `memory.reclaim`、实际回收量或日常应用响应；窗口/fixture 通过不代表已回收 256 MiB–1 GiB。该阶段没有系统写入、真实 helper 调用、内核回收或远端 push；Windows 3.5.2 整页 1:1 仍 NOT PASS。
 
 ## 2026-11-05 — r4.1 身份绑定复核与 Crossproc helper 协议门禁
 

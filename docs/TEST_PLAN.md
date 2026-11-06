@@ -66,4 +66,5 @@ Track p95 UI response, cold-cache re-read latency, memory available before/after
 | `EAGAIN` and short-write behavior | PASS in helper fixtures | One attempt only; short write stays outcome-unknown |
 | Xvfb GUI interaction for 256/512 MiB, 1 GiB, app-scope selection, result, and close | PASS | Mock bridge; helper calls 0, syscall count 0, normal exit 0; evidence under AI output `报告与研究/MemReduct-R5-2026-11-06/xvfb-simulation-r4/` |
 | Normal-mode production GUI launch and GTK header-bar close | PASS | `MEMREDUCT_CI` and `MEMREDUCT_TEST` unset in private Xvfb; exit 0, no GTK/GDK warnings; this does not exercise Hyprland or a reclaim action |
-| Real Hyprland large-app reclaim and measured outcome | NOT RUN | Requires matched protocol-v3 install and separately authorized live operation |
+| Authorized protocol-v3 installation and post-install file verification | PASS | Only GUI and Crossproc helper were replaced; M0 helper and both Polkit policies retained their verified SHA-256; no reclaim operation was run |
+| Real Hyprland large-app reclaim and measured outcome | NOT RUN | Requires a separately authorized live operation against a verified target |

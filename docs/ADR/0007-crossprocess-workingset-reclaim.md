@@ -1,6 +1,6 @@
 # ADR-0007: Bounded Cross-Process Workingset Advisory (Prototype)
 
-- **Status:** PROPOSED — local implementation candidate; no r5 install or large real-app reclaim verified. The default build keeps the cross-process gate disabled. This ADR does not authorize new host installation or a real reclaim operation.
+- **Status:** PROPOSED — the R5 protocol-v3 GUI/helper pair is installed on one Arch host; no large real-app reclaim is verified. The default build keeps the cross-process gate disabled. Installation on one host does not accept this ADR or authorize further operations.
 - **Date:** 2026-10-31.
 - **Relates to:** ADR-0005 (page cache, unchanged), ADR-0006 (two clean actions; self-reclaim and the open questions about a privileged mode).
 - **Scope:** Define whether this project can honestly offer anything resembling Windows `MemoryEmptyWorkingSets`, and if so under which boundary. ADR-0006 leaves the privileged mode unimplemented and lists four open questions; this ADR answers them for a prototype and refuses production activation.
@@ -217,13 +217,13 @@ ADR status remains **PROPOSED**; this amendment records a local implementation a
 
 ## Amendment: r5 request budgets and exact app-scope reclaim (2026-11-06)
 
-- **Status:** local implementation candidate; not installed, not pushed, and no large real-app kernel request was run.
+- **Status:** local implementation candidate; installed on one host after explicit approval; not pushed and no large real-app kernel request was run.
 - The GUI now offers per-operation ceilings of 256 MiB by default, 512 MiB, or 1 GiB. The helper has a 1 GiB hard ceiling. PAGEOUT is further capped by the helper's live target RSS and eligible private mapping plan. This does not turn advised bytes into bytes freed.
 - A second fixed mode writes the bounded byte request once to `memory.reclaim` in the selected process's exact cgroup v2 application scope. The path is derived from `/proc/<pid>/cgroup`; each directory component is opened relative to its parent with `O_NOFOLLOW`; the filesystem must be cgroup v2; child cgroups are refused; all current `cgroup.procs` members must be readable, same-UID, non-protected user applications in the identical scope; and target identity/membership are checked again before the write.
 - The app-scope budget is capped to the scope's sampled `memory.stat` `anon + file` charge. This is a bounded estimate, not a reclaimability guarantee. `memory.current`, anon/file, swap, target RSS, target swap, and `MemAvailable` are displayed as before/after observations; none is claimed as a causal byte count.
 - Capability checks are specific to the selected operation: PAGEOUT requires effective `CAP_SYS_NICE` because it calls `process_madvise` on another process. `app_scope` does not require that unrelated capability; the root Polkit action attempts one write-open on the exact re-derived `memory.reclaim` file and fails closed if the filesystem denies it. No DAC override capability is requested or inferred from the caller.
 - Only one request and one write/syscall are issued; there is no split, automatic retry, global session reclaim, or child-cgroup traversal. The UI explicitly states that whole-scope mode affects every process currently in the selected app scope and that the kernel may reclaim less or more than requested.
 - Regression tests cover 1 GiB PAGEOUT planning, RSS/scope-charge clamping, operation-specific capabilities, one cgroup write, no child cgroups, multiple verified same-scope members, rejection of a member moved to another scope, `EAGAIN`, and uncertain short writes. All use fixtures or a stub; no large live kernel operation is verified.
-- Current r5 GUI/helper protocol is v3, while the prior host installation was protocol v2. The installer must reject a mismatched pair. This change has not installed, replaced, or rolled back any system file.
+- Current r5 GUI/helper protocol is v3. On the approved host the exact GUI and Crossproc helper hashes were replaced and verified; the M0 helper and both existing Polkit policies were left unchanged. This single-host installation does not establish real reclaim behavior or change ADR-0007's PROPOSED status.
 
 This amendment records implementation intent and local evidence only. ADR-0007 remains **PROPOSED**; it does not claim Windows API equivalence, zero impact, a 1 GiB RAM reduction, or approval to install or operate this candidate.
