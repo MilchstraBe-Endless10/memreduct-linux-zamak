@@ -177,6 +177,13 @@ long long mr_runtime_xproc_candidate_rss_bytes(long long index)
                       : 2ll * 1024ll * 1024ll * 1024ll;
 }
 
+long long mr_runtime_xproc_candidate_private_resident_bytes(long long index)
+{
+    if (mr_runtime_xproc_candidate_pid(index) < 0) return -1;
+    return index == 0 ? 192ll * 1024ll * 1024ll
+                      : 768ll * 1024ll * 1024ll;
+}
+
 long long mr_runtime_xproc_candidate_regions(long long index)
 {
     if (mr_runtime_xproc_candidate_pid(index) < 0) return -1;
@@ -247,8 +254,10 @@ long long mr_runtime_xproc_start(long long request_id, long long mode, long long
                                       : 2ll * 1024ll * 1024ll * 1024ll;
     long long scope_bytes = pid == 4242 ? 2ll * 1024ll * 1024ll * 1024ll
                                         : 768ll * 1024ll * 1024ll;
+    long long private_resident_bytes = mr_runtime_xproc_candidate_private_resident_bytes(pid - 4242);
     long long capacity = mode == 1 ? scope_bytes
                                    : (candidate_bytes < rss_bytes ? candidate_bytes : rss_bytes);
+    if (mode == 0 && capacity > private_resident_bytes) capacity = private_resident_bytes;
     if (mr_runtime_xproc_simulation_enabled() == 0 || xproc_mock_in_flight != 0 ||
         request_id <= 0 || (mode != 0 && mode != 1) || (pid != 4242 && pid != 4243) ||
         start_time != 7700 + (pid - 4242) || uid != (long long)geteuid() ||

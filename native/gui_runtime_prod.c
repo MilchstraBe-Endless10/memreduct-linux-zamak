@@ -23,6 +23,7 @@ long long mr_runtime_xproc_candidate_uid(long long index) { (void)index; return 
 long long mr_runtime_xproc_candidate_bytes(long long index) { (void)index; return -1; }
 long long mr_runtime_xproc_candidate_scope_bytes(long long index) { (void)index; return -1; }
 long long mr_runtime_xproc_candidate_rss_bytes(long long index) { (void)index; return -1; }
+long long mr_runtime_xproc_candidate_private_resident_bytes(long long index) { (void)index; return -1; }
 long long mr_runtime_xproc_candidate_regions(long long index) { (void)index; return 0; }
 const char *mr_runtime_xproc_candidate_name(long long index) { (void)index; return ""; }
 const char *mr_runtime_xproc_candidate_app_name(long long index) { (void)index; return ""; }

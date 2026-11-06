@@ -90,6 +90,19 @@ fi
 binary="$artifact_dir/$binary_name"
 install -m 0755 "$binary_rel" "$binary"
 
+expected_xproc_protocol="$(sed -nE 's/^#define MR_XPROC_PROTOCOL_VERSION ([0-9]+)$/\1/p' native/crossproc_helper.h)"
+[[ "$expected_xproc_protocol" =~ ^[0-9]+$ ]] || {
+  printf 'Could not read the expected Crossproc protocol version.\n' >&2
+  exit 1
+}
+protocol_marker="MR_XPROC_PROTOCOL_ABI=$expected_xproc_protocol;"
+strings "$binary" | grep -aF -- "$protocol_marker" >/dev/null || {
+  printf 'Production GUI has a stale or missing Crossproc protocol marker (expected %s).\n' \
+    "$protocol_marker" >&2
+  exit 1
+}
+printf 'crossproc_protocol=%s\n' "$expected_xproc_protocol" | tee "$artifact_dir/crossproc-protocol.log"
+
 nm "$binary" >"$artifact_dir/symbols.txt"
 grep -q ' T mr_xproc_capability_enabled$' "$artifact_dir/symbols.txt"
 ! grep -q 'production_crossproc_gate_default' "$artifact_dir/symbols.txt"
@@ -103,7 +116,7 @@ if grep -Eq 'mr_gui_test_|mr_ci_emit|mr_start_reclaim_mock|mr_(xproc|cand)_test_
   printf 'Test or fake-authorization symbol leaked into production candidate.\n' >&2
   exit 1
 fi
-if strings "$binary" | grep -Eq 'MEMREDUCT_CI|MEMREDUCT_TEST|P2C_FONT_CANDIDATE'; then
+if strings "$binary" | grep -E 'MEMREDUCT_CI|MEMREDUCT_TEST|P2C_FONT_CANDIDATE' >/dev/null; then
   printf 'Test-only environment hook leaked into production candidate.\n' >&2
   exit 1
 fi

@@ -28,6 +28,14 @@
 
 #include "async_crossproc.h"
 #include "crossproc_identity.h"
+#include "crossproc_helper.h"
+
+/* The bridge parses the helper's versioned result ABI. Keep this translation
+ * unit tied to the helper header so the build cache cannot reuse a stale
+ * protocol marker after an ABI update without the production build check
+ * catching it. */
+_Static_assert(MR_XPROC_PROTOCOL_VERSION == 4,
+               "update the bridge when the Crossproc helper protocol changes");
 
 /* Fixed absolute paths. The helper installs to the first; the Polkit action
  * pins it. Only a test build may override any of them. */

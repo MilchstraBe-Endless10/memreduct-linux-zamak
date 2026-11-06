@@ -20,7 +20,7 @@
 /* Fixed verb. The GUI cannot ask for another action through this helper, and
  * the helper cannot be asked to do anything the page-cache helper does. */
 #define MR_XPROC_VERB "reclaim"
-#define MR_XPROC_PROTOCOL_VERSION 3
+#define MR_XPROC_PROTOCOL_VERSION 4
 #define MR_XPROC_PROTOCOL_STRINGIFY_INNER(value) #value
 #define MR_XPROC_PROTOCOL_STRINGIFY(value) MR_XPROC_PROTOCOL_STRINGIFY_INNER(value)
 #define MR_XPROC_PROTOCOL_MARKER \
@@ -40,6 +40,7 @@
 #define MR_XPROC_MODE_PAGEOUT_TEXT "pageout"
 #define MR_XPROC_MODE_APP_SCOPE_TEXT "app_scope"
 #define MR_XPROC_MAX_IOVECS 1024u
+#define MR_XPROC_MAX_PAGEMAP_SCAN_BYTES (8ull * 1024ull * 1024ull * 1024ull)
 #define MR_XPROC_MAX_BYTES (1024ull * 1024ull * 1024ull)
 #define MR_XPROC_DEFAULT_BYTES (256ull * 1024ull * 1024ull)
 #define MR_XPROC_BUDGET_512_MIB (512ull * 1024ull * 1024ull)

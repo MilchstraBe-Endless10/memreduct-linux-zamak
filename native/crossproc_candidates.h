@@ -44,8 +44,9 @@ enum mr_cand_skip {
     MR_CAND_SKIP_LIMIT = 10         /* candidate-list ceiling was reached */
 };
 
-/* One offered process. `reclaimable_bytes` is the sum of mapping lengths that
- * pass the same filter the helper applies; it is what a request COULD cover. */
+/* One offered process. `reclaimable_bytes` is eligible virtual mapping length;
+ * `private_resident_bytes` is the matching smaps estimate used to cap PAGEOUT.
+ * Neither value is a promise of kernel-accepted or reclaimed bytes. */
 struct mr_cand_entry {
     int32_t pid;
     uint64_t start_time;
@@ -56,6 +57,7 @@ struct mr_cand_entry {
      * bridge means the dedicated cgroup reclaim file or accounting is absent. */
     int64_t scope_anon_file_bytes;
     int64_t rss_bytes;
+    uint64_t private_resident_bytes;
     uint64_t identity_token;
     uint64_t scope_token;
     uint64_t region_digest;
@@ -116,6 +118,7 @@ int64_t mr_cand_state(int64_t index);
 int64_t mr_cand_reclaimable_bytes(int64_t index);
 int64_t mr_cand_scope_anon_file_bytes(int64_t index);
 int64_t mr_cand_rss_bytes(int64_t index);
+int64_t mr_cand_private_resident_bytes(int64_t index);
 int64_t mr_cand_regions(int64_t index);
 int64_t mr_cand_identity_token(int64_t index);
 int64_t mr_cand_scope_token(int64_t index);

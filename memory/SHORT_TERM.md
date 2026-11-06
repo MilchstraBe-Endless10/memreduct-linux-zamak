@@ -1,5 +1,13 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-07 — R5.1 私有驻留 PAGEOUT 候选已构建；未安装、未执行真实回收
+
+- **根因修复：**R5 的大预算此前可能按 RSS/映射长度显示可请求额度，却没有证明相应数量的私有页实际驻留。候选扫描器与特权 helper 现在共用严格 `smaps` 解析，GUI 限幅到 `Private_Clean + Private_Dirty` 估算；protocol v4 helper 再按目标 `pagemap` 只选择 present、非 swapped、exclusive 页，单次 syscall，不重试，扫描上限 8 GiB、iovec 上限 1024。helper 无合格页时拒绝执行。该估算和内核建议字节都不等于实际释放量。
+- **界面修正：**预算说明标明真正的限幅来源；PAGEOUT 与 cgroup `memory.reclaim` 分别显示对应作用范围，不再把 cgroup 模式描述成只处理独占私有页。新增中英文状态文案断言。
+- **验证：**治理 34 项通过；Python/C 244 项通过、1 项因文件系统不接受超长路径而跳过；Zamak 0.2.0 check 通过、83/83 测试通过、M0+M1 正式 GUI 构建通过；production candidate 无 CI/test hooks。GUI 和 helper 协议标记均为 v4。安装脚本只读 preflight 返回 `profile=m0+m1-candidate ... helper_protocol=4 ... install=not_run`。`SHA256SUMS` 核验通过。
+- **候选包：**AI 输出目录下的 `编程脚本/其他脚本/MemReduct-R5-2026-11-07/private-resident-page-v4-r2/`；GUI SHA-256 `3c54dcb17e55de0628ea0fb83741fcc29039e0cee890cf83b664403e8f7919dc`，Crossproc helper SHA-256 `6d0f6d6c75961d64f9bfdf09c349161294b9ee80833ac632e24a4d961951b9be`。
+- **边界：**本机仍是此前获批的 protocol-v3 安装；本轮没有替换系统文件、启动桌面 GUI、发起 Polkit、调用 helper、执行 `process_madvise`/`memory.reclaim`/`drop_caches`、修改 Swap/ZRAM 或推送。隔离模拟与构建通过不代表真实 Hyprland 大额度回收通过。工作树原有未跟踪 `artifacts/` 保持未暂存、未改写。
+
 ## 2026-11-06 — R5 RSS 修复 GUI 单文件安装完成
 
 - **授权与安装：**Issue #12 comment `6682403490` 明确批准仅替换 `/usr/bin/memreduct-zamak`。安装前旧 GUI SHA `a23cbb24ca0037fed4232a2db6eada1ec58844304a7fb5e01027c10abe12dacf`、修复版候选 SHA `efc1d69942349fc37af72658c6d82e41856dd937e85c2f86e13b5459e6fcbbee`、以及私有回退副本 SHA 均精确匹配；回退目录权限 0700、文件 0600。单条 `pkexec install` 返回 0。

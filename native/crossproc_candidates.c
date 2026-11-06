@@ -26,6 +26,7 @@
 #include "crossproc_candidates.h"
 #include "crossproc_identity.h"
 #include "crossproc_protection.h"
+#include "crossproc_smaps.h"
 
 #ifndef MR_CAND_PROC_ROOT
 #  define MR_CAND_PROC_ROOT "/proc"
@@ -673,72 +674,60 @@ static int pid_safety(int32_t pid, const char *comm, uint64_t uid,
 /* Sum the mapping lengths the helper would also consider. Same filter, so the
  * number shown before the click is the number the helper will actually work
  * with — not a larger, more flattering one. */
+struct cand_mapping_summary {
+    uint64_t bytes;
+    uint64_t private_resident_bytes;
+    uint64_t digest;
+    uint32_t regions;
+    uint64_t page_size;
+};
+
+static int sum_reclaimable_mapping(const struct mr_xproc_smaps_region *region,
+                                   void *context)
+{
+    struct cand_mapping_summary *summary = context;
+    if (mr_xproc_smaps_eligibility(region) != MR_XPROC_SMAPS_ELIGIBLE) return 0;
+    uint64_t alignment = summary->page_size;
+    uint64_t aligned_start = (region->start + alignment - 1u) & ~(alignment - 1u);
+    uint64_t aligned_end = region->end & ~(alignment - 1u);
+    if (aligned_end <= aligned_start) return 0;
+    uint64_t length = aligned_end - aligned_start;
+    if (region->private_resident_bytes > length ||
+        region->private_resident_bytes % alignment != 0u ||
+        UINT64_MAX - summary->bytes < length ||
+        UINT64_MAX - summary->private_resident_bytes < region->private_resident_bytes ||
+        summary->regions == UINT32_MAX) return -1;
+    summary->bytes += length;
+    summary->private_resident_bytes += region->private_resident_bytes;
+    summary->regions++;
+    summary->digest = mr_xproc_region_digest_add(
+        summary->digest, aligned_start, aligned_end, region->permissions,
+        region->offset, region->device, region->inode, region->name);
+    return 0;
+}
+
 static int sum_reclaimable(int32_t pid, uint64_t *bytes_out,
+                           uint64_t *private_resident_out,
                            uint32_t *regions_out, uint64_t *digest_out)
 {
     char path[MR_CAND_PROC_PATH_BYTES];
-    char line[4096];
-    uint64_t total = 0;
-    uint32_t count = 0;
-    uint64_t digest = mr_xproc_region_digest_init();
-
-    if (snprintf(path, sizeof(path), "%s/%d/maps", cand_proc_root, (int)pid) >= (int)sizeof(path)) {
+    if (snprintf(path, sizeof(path), "%s/%d/smaps", cand_proc_root, (int)pid) >= (int)sizeof(path)) {
         return -1;
     }
-    FILE *maps = fopen(path, "re");
-    if (maps == NULL) {
-        return -1;
-    }
+    FILE *smaps = fopen(path, "re");
+    if (smaps == NULL) return -1;
     long page = sysconf(_SC_PAGESIZE);
-    uint64_t alignment = page > 0 ? (uint64_t)page : 4096ull;
-
-    while (fgets(line, sizeof(line), maps) != NULL) {
-        unsigned long long begin = 0;
-        unsigned long long end = 0;
-        char perms[8] = {0};
-        char device[32] = {0};
-        char name[512] = {0};
-        unsigned long long offset = 0;
-        unsigned long long inode = 0;
-
-        int fields = sscanf(line, "%llx-%llx %7s %llx %31s %llu %511s",
-                            &begin, &end, perms, &offset, device, &inode, name);
-        if (fields < 5 || end <= begin) {
-            continue;
-        }
-        if (perms[3] != 'p' || perms[0] != 'r') {
-            continue;
-        }
-        if (fields >= 6 && inode != 0 && perms[1] == 'w') {
-            continue;
-        }
-        if (name[0] == '[') {
-            continue;
-        }
-        uint64_t aligned_start = ((uint64_t)begin + alignment - 1u) & ~(alignment - 1u);
-        uint64_t aligned_end = (uint64_t)end & ~(alignment - 1u);
-        if (aligned_end <= aligned_start) {
-            continue;
-        }
-        uint64_t aligned_length = aligned_end - aligned_start;
-        if (UINT64_MAX - total < aligned_length || count == UINT32_MAX) {
-            (void)fclose(maps);
-            return -1;
-        }
-        total += aligned_length;
-        count++;
-        digest = mr_xproc_region_digest_add(digest, aligned_start, aligned_end,
-                                             perms, (uint64_t)offset, device,
-                                             (uint64_t)inode, name);
-    }
-    int read_error = ferror(maps);
-    (void)fclose(maps);
-    if (read_error) {
-        return -1;
-    }
-    *bytes_out = total;
-    *regions_out = count;
-    *digest_out = mr_xproc_region_digest_finish(digest, count);
+    struct cand_mapping_summary summary = {
+        .digest = mr_xproc_region_digest_init(),
+        .page_size = page > 0 ? (uint64_t)page : 4096ull
+    };
+    int result = mr_xproc_smaps_scan(smaps, sum_reclaimable_mapping, &summary);
+    (void)fclose(smaps);
+    if (result != 0) return -1;
+    *bytes_out = summary.bytes;
+    *private_resident_out = summary.private_resident_bytes;
+    *regions_out = summary.regions;
+    *digest_out = mr_xproc_region_digest_finish(summary.digest, summary.regions);
     return 0;
 }
 
@@ -870,10 +859,12 @@ int mr_cand_scan(struct mr_cand_list *out)
         }
 
         uint64_t reclaimable = 0;
+        uint64_t private_resident = 0;
         uint32_t regions = 0;
         uint64_t region_digest = 0;
-        if (sum_reclaimable(pid, &reclaimable, &regions, &region_digest) != 0) {
-            out->skipped_kernel_thread++;
+        if (sum_reclaimable(pid, &reclaimable, &private_resident,
+                            &regions, &region_digest) != 0) {
+            out->skipped_unreadable++;
             continue;
         }
         if (regions == 0 || reclaimable == 0) {
@@ -901,6 +892,7 @@ int mr_cand_scan(struct mr_cand_list *out)
         slot->state = status.state;
         slot->reclaimable_bytes = reclaimable;
         slot->rss_bytes = status.have_rss ? status.rss_bytes : -1;
+        slot->private_resident_bytes = private_resident;
         slot->scope_anon_file_bytes = -1;
         (void)app_scope_anon_file_bytes(cgroup, (uint32_t)status.uid,
                                         &slot->scope_anon_file_bytes);
@@ -1026,6 +1018,13 @@ int64_t mr_cand_rss_bytes(int64_t index)
     return scan_slot.entries[index].rss_bytes;
 }
 
+int64_t mr_cand_private_resident_bytes(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count ||
+        scan_slot.entries[index].private_resident_bytes > (uint64_t)INT64_MAX) return -1;
+    return (int64_t)scan_slot.entries[index].private_resident_bytes;
+}
+
 int64_t mr_cand_regions(int64_t index)
 {
     if (index < 0 || index >= (int64_t)scan_slot.count) {
@@ -1067,6 +1066,7 @@ static int live_snapshot_matches(const struct mr_cand_entry *expected)
     size_t cmdline_length = 0;
     uint64_t start_time = 0;
     uint64_t bytes = 0;
+    uint64_t private_resident = 0;
     uint64_t region_digest = 0;
     uint32_t regions = 0;
 
@@ -1077,10 +1077,13 @@ static int live_snapshot_matches(const struct mr_cand_entry *expected)
         pid_safety(expected->pid, status.name, status.uid, exe, sizeof(exe),
                    cgroup, sizeof(cgroup)) != 0 ||
         read_cmdline(expected->pid, cmdline, sizeof(cmdline), &cmdline_length) != 0 ||
-        sum_reclaimable(expected->pid, &bytes, &regions, &region_digest) != 0) {
+        sum_reclaimable(expected->pid, &bytes, &private_resident,
+                        &regions, &region_digest) != 0) {
         return -1;
     }
-    if (bytes != expected->reclaimable_bytes || regions != expected->regions ||
+    if (bytes != expected->reclaimable_bytes ||
+        private_resident != expected->private_resident_bytes ||
+        regions != expected->regions ||
         region_digest != expected->region_digest ||
         mr_xproc_scope_token(cgroup) != expected->scope_token) {
         return -1;

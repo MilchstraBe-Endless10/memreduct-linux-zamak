@@ -30,6 +30,14 @@
 - Capability checks are operation-specific: PAGEOUT requires effective `CAP_SYS_NICE` for `process_madvise`; app-scope reclaim does not require that unrelated capability and instead relies on the fixed Polkit action plus an actual write-open of the re-derived `memory.reclaim` control. A denied or unavailable control fails before any write.
 - Fixture tests use a stub for PAGEOUT and a temporary regular file for `memory.reclaim`; they do not call the live kernel reclaim interfaces. Real Hyprland operation and large daily-app reclaim remain NOT RUN for this checkpoint.
 
+## R5 PAGEOUT private-resident guard (2026-11-07)
+
+- Candidate discovery and the helper share one strict `smaps` parser. For eligible VMAs, `Private_Clean + Private_Dirty` is shown as a resident estimate and included in the selection snapshot. It is not a guarantee that those bytes will be advised or reclaimed.
+- The protocol-v4 helper clamps PAGEOUT to the selected budget, live RSS, eligible VMA lengths, and the helper's fresh private-resident estimate. It reads the target's fixed `/proc/<pid>/pagemap` and only forms vectors from pages marked present (bit 63), not swapped (bit 62), and exclusively mapped (bit 56). Shared, absent, swapped, and inaccessible pages are skipped or cause a fail-closed refusal. The scan is capped at 8 GiB of virtual address space and 1024 iovecs.
+- The GUI shows the private-resident estimate and limiting measure before authorization. PAGEOUT confirmation says it selects only present, exclusive private pages; app-scope mode instead says `memory.reclaim` is bounded to that exact scope. The helper's requested/advised bytes and before/after observations remain separate and are not labelled as RAM freed.
+- Regression fixtures cover present/exclusive, present/nonexclusive, swapped, absent, missing pagemap, and private-resident changes. They use a stubbed syscall and do not invoke Polkit or a live kernel reclaim interface.
+- Protocol v4 is a local build only; the installed system still has the previously authorized protocol-v3 GUI/helper pair. No installation, desktop session, Polkit request, `process_madvise`, `memory.reclaim`, or page-cache operation occurred in this checkpoint. Real Hyprland and large-request effects remain NOT RUN.
+
 ## Helper write result contract
 
 ### Page-cache helper

@@ -27,6 +27,7 @@ extern fn mr_runtime_xproc_candidate_uid(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_bytes(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_scope_bytes(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_rss_bytes(index: i64) -> i64
+extern fn mr_runtime_xproc_candidate_private_resident_bytes(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_regions(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_name(index: i64) -> string
 extern fn mr_runtime_xproc_candidate_app_name(index: i64) -> string
@@ -73,6 +74,7 @@ extern fn mr_cand_uid(index: i64) -> i64
 extern fn mr_cand_reclaimable_bytes(index: i64) -> i64
 extern fn mr_cand_scope_anon_file_bytes(index: i64) -> i64
 extern fn mr_cand_rss_bytes(index: i64) -> i64
+extern fn mr_cand_private_resident_bytes(index: i64) -> i64
 extern fn mr_cand_regions(index: i64) -> i64
 extern fn mr_cand_identity_token(index: i64) -> i64
 extern fn mr_cand_scope_token(index: i64) -> i64
@@ -184,6 +186,7 @@ struct MainWindow:
     xproc_mode_choice: i64
     xproc_target_scope_bytes: i64
     xproc_target_rss_bytes: i64
+    xproc_target_private_resident_bytes: i64
     xproc_preflight: i64
     xproc_scan_status: i64
     xproc_target_pid: i64
@@ -370,10 +373,36 @@ fn xproc_budget_limit(choice: i64) -> i64:
     if choice == 2: return 1073741824
     268435456
 
-fn xproc_budget(candidate_bytes: i64, rss_bytes: i64, scope_bytes: i64, choice: i64, mode: i64) -> i64:
-    let capacity = if mode == 1: scope_bytes else: min(candidate_bytes, rss_bytes)
+fn xproc_pageout_capacity(candidate_bytes: i64, rss_bytes: i64, private_resident_bytes: i64) -> i64:
+    if candidate_bytes <= 0 or rss_bytes <= 0 or private_resident_bytes <= 0: return 0
+    min(min(candidate_bytes, rss_bytes), private_resident_bytes)
+
+fn xproc_budget(candidate_bytes: i64, rss_bytes: i64, private_resident_bytes: i64, scope_bytes: i64, choice: i64, mode: i64) -> i64:
+    let capacity = if mode == 1: scope_bytes else: xproc_pageout_capacity(candidate_bytes, rss_bytes, private_resident_bytes)
     if capacity <= 0: return 0
     min(capacity, xproc_budget_limit(choice))
+
+fn xproc_budget_limit_text(zh: bool, candidate_bytes: i64, rss_bytes: i64, private_resident_bytes: i64, scope_bytes: i64, choice: i64, mode: i64) -> string:
+    let requested = xproc_budget_limit(choice)
+    if mode == 1:
+        if scope_bytes < requested: return label(zh, "cap: app-scope charge", "限幅：应用作用域计费")
+        return label(zh, "cap: selected budget", "限幅：所选预算")
+    if private_resident_bytes < requested and private_resident_bytes <= candidate_bytes and private_resident_bytes <= rss_bytes:
+        return label(zh, "cap: private resident", "限幅：私有驻留估算")
+    if rss_bytes < requested and rss_bytes <= candidate_bytes:
+        return label(zh, "cap: RSS", "限幅：RSS")
+    if candidate_bytes < requested:
+        return label(zh, "cap: mapping length", "限幅：符合条件的映射长度")
+    if private_resident_bytes < requested:
+        return label(zh, "cap: private resident", "限幅：私有驻留估算")
+    if rss_bytes < requested:
+        return label(zh, "cap: RSS", "限幅：RSS")
+    label(zh, "cap: selected budget", "限幅：所选预算")
+
+fn xproc_selection_scope_text(zh: bool, mode: i64) -> string:
+    if mode == 0:
+        return label(zh, "PAGEOUT selects present, exclusive private pages only.", "PAGEOUT 只选择已驻留且独占映射的私有页。")
+    label(zh, "memory.reclaim is bounded to this exact app scope.", "memory.reclaim 限定在此应用作用域内。")
 
 fn xproc_budget_label(bytes: i64) -> string:
     if bytes >= 1073741824: return "1 GiB"
@@ -474,6 +503,12 @@ fn xproc_mib_bytes(value: i64) -> string:
     let tenths = value * 10 // 1048576
     f"{tenths // 10}.{tenths % 10} MiB"
 
+fn xproc_mib_compact(value: i64) -> string:
+    if value < 0: return "—"
+    let whole = value // 1048576
+    let tenths = (value % 1048576) * 10 // 1048576
+    f"{whole}.{tenths}"
+
 fn xproc_helper_calls_label(zh: bool, simulated: bool) -> string:
     if simulated: return label(zh, "Mock helper calls:", "模拟 helper 调用：")
     label(zh, "Helper calls:", "helper 调用：")
@@ -514,10 +549,10 @@ fn xproc_confirm_accept_rect(panel: &ui.Rect) -> ui.Rect:
     ui.rect(panel.x + 82.0, panel.bottom() - 30.0, 126.0, 22.0)
 
 fn xproc_budget_rect(choice: i64, panel: &ui.Rect) -> ui.Rect:
-    ui.rect(panel.x + 10.0 + f64(choice) * 97.0, panel.y + 98.0, 90.0, 20.0)
+    ui.rect(panel.x + 10.0 + f64(choice) * 97.0, panel.y + 114.0, 90.0, 20.0)
 
 fn xproc_mode_rect(choice: i64, panel: &ui.Rect) -> ui.Rect:
-    ui.rect(panel.x + 10.0 + f64(choice) * 142.0, panel.y + 124.0, 132.0, 20.0)
+    ui.rect(panel.x + 10.0 + f64(choice) * 142.0, panel.y + 140.0, 132.0, 20.0)
 
 fn xproc_confirm_cancel_rect(panel: &ui.Rect) -> ui.Rect:
     ui.rect(panel.x + 216.0, panel.bottom() - 30.0, 78.0, 22.0)
@@ -552,6 +587,10 @@ fn xproc_candidate_scope_bytes(s: &MainWindow, index: i64) -> i64:
 fn xproc_candidate_rss_bytes(s: &MainWindow, index: i64) -> i64:
     if s.xproc_simulation: return mr_runtime_xproc_candidate_rss_bytes(index)
     mr_cand_rss_bytes(index)
+
+fn xproc_candidate_private_resident_bytes(s: &MainWindow, index: i64) -> i64:
+    if s.xproc_simulation: return mr_runtime_xproc_candidate_private_resident_bytes(index)
+    mr_cand_private_resident_bytes(index)
 
 fn xproc_candidate_regions(s: &MainWindow, index: i64) -> i64:
     if s.xproc_simulation: return mr_runtime_xproc_candidate_regions(index)
@@ -626,6 +665,7 @@ fn xproc_scan(s: &mut MainWindow):
     s.xproc_target_bytes = -1
     s.xproc_target_scope_bytes = -1
     s.xproc_target_rss_bytes = -1
+    s.xproc_target_private_resident_bytes = -1
     s.xproc_target_regions = -1
     s.xproc_target_name = ""
     s.xproc_target_app_name = ""
@@ -661,10 +701,11 @@ fn xproc_set_selected(s: &mut MainWindow, index: i64):
     let candidate_bytes = xproc_candidate_bytes(s, index)
     let candidate_scope_bytes = xproc_candidate_scope_bytes(s, index)
     let candidate_rss_bytes = xproc_candidate_rss_bytes(s, index)
+    let private_resident_bytes = xproc_candidate_private_resident_bytes(s, index)
     let regions = xproc_candidate_regions(s, index)
     let name = xproc_candidate_name(s, index)
     let app_name = xproc_candidate_app_name(s, index)
-    if pid < 2 or start_time <= 0 or uid <= 0 or identity_token <= 0 or scope_hash <= 0 or region_digest <= 0 or candidate_bytes <= 0 or regions <= 0:
+    if pid < 2 or start_time <= 0 or uid <= 0 or identity_token <= 0 or scope_hash <= 0 or region_digest <= 0 or candidate_bytes <= 0 or private_resident_bytes < 0 or regions <= 0:
         s.xproc_selected = -1
         s.status = label(s.zh, "This process snapshot is incomplete; refresh the list.", "进程快照不完整；请刷新列表。")
         if s.test_mode: mr_runtime_emit(f"CI_XPROC_SELECT rejected=true index={index} reason=incomplete-snapshot helper_calls=0")
@@ -682,6 +723,7 @@ fn xproc_set_selected(s: &mut MainWindow, index: i64):
         s.xproc_target_bytes = -1
         s.xproc_target_scope_bytes = -1
         s.xproc_target_rss_bytes = -1
+        s.xproc_target_private_resident_bytes = -1
         s.xproc_target_regions = -1
         s.xproc_target_name = ""
         s.xproc_target_app_name = ""
@@ -711,13 +753,14 @@ fn xproc_set_selected(s: &mut MainWindow, index: i64):
     s.xproc_target_bytes = candidate_bytes
     s.xproc_target_scope_bytes = candidate_scope_bytes
     s.xproc_target_rss_bytes = candidate_rss_bytes
+    s.xproc_target_private_resident_bytes = private_resident_bytes
     s.xproc_target_regions = regions
     s.xproc_target_name = name
     s.xproc_target_app_name = app_name
     if index < s.xproc_scroll: s.xproc_scroll = index
     if index >= s.xproc_scroll + 4: s.xproc_scroll = index - 3
     if s.test_mode: mr_runtime_emit(f"CI_XPROC_AUDIT phase=selection request_id={request_id} pid={pid} uid={uid} start_time={start_time} scope_hash={scope_hash} identity_hash={identity_token} region_digest={region_digest}")
-    if s.test_mode: mr_runtime_emit(f"CI_XPROC_SELECT index={index} pid={pid} uid={uid} start_time={start_time} request_id={request_id} scope_hash={scope_hash} identity_hash={identity_token} region_digest={region_digest} process={s.xproc_target_name} app={s.xproc_target_app_name} process_state={xproc_candidate_state_text(false, xproc_candidate_state(s, index))} regions={regions} candidate_bytes={candidate_bytes} rss_bytes={candidate_rss_bytes} scope_anon_file_bytes={candidate_scope_bytes} selected=true snapshot=pinned")
+    if s.test_mode: mr_runtime_emit(f"CI_XPROC_SELECT index={index} pid={pid} uid={uid} start_time={start_time} request_id={request_id} scope_hash={scope_hash} identity_hash={identity_token} region_digest={region_digest} process={s.xproc_target_name} app={s.xproc_target_app_name} process_state={xproc_candidate_state_text(false, xproc_candidate_state(s, index))} regions={regions} candidate_bytes={candidate_bytes} private_resident_bytes={private_resident_bytes} rss_bytes={candidate_rss_bytes} scope_anon_file_bytes={candidate_scope_bytes} selected=true snapshot=pinned")
 
 fn xproc_local_failure(s: &mut MainWindow, state: i64):
     s.xproc_state = state
@@ -781,7 +824,7 @@ fn xproc_start_selected(s: &mut MainWindow):
     if s.xproc_selected < 0 or s.xproc_request_id <= 0 or s.xproc_target_pid <= 0 or s.xproc_target_start_time <= 0 or s.xproc_target_uid <= 0 or s.xproc_target_identity_token <= 0 or s.xproc_target_scope_hash <= 0 or s.xproc_target_region_digest <= 0 or s.xproc_target_bytes <= 0 or s.xproc_target_regions <= 0:
         xproc_local_failure(s, 20)
         return
-    let budget = xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)
+    let budget = xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)
     if budget <= 0:
         xproc_local_failure(s, 20)
         return
@@ -823,7 +866,7 @@ fn xproc_start_selected(s: &mut MainWindow):
 fn choose_xproc_budget(s: &mut MainWindow, choice: i64):
     if choice < 0 or choice > 2: return
     s.xproc_budget_choice = choice
-    if s.test_mode: mr_runtime_emit(f"CI_XPROC_BUDGET choice={choice} limit_bytes={xproc_budget_limit(choice)} effective_bytes={xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_scope_bytes, choice, s.xproc_mode_choice)}")
+    if s.test_mode: mr_runtime_emit(f"CI_XPROC_BUDGET choice={choice} limit_bytes={xproc_budget_limit(choice)} effective_bytes={xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, choice, s.xproc_mode_choice)}")
 
 fn choose_xproc_mode(s: &mut MainWindow, mode: i64):
     if mode < 0 or mode > 1: return
@@ -1278,10 +1321,10 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
                     let pid = xproc_pid(s, index)
                     let uid = xproc_uid(s, index)
                     let regions = xproc_candidate_regions(s, index)
-                    let bytes = xproc_candidate_bytes(s, index)
+                    let private_resident = xproc_candidate_private_resident_bytes(s, index)
                     p.text(rect.x + 4.0, rect.y + 1.0, f"{name}  PID {pid}", fg, size=8.0)
                     p.text(rect.x + 4.0, rect.y + 12.0, f"UID {uid} · app {app_name}", secondary, size=8.0)
-                    p.text(rect.x + 4.0, rect.y + 23.0, f"{process_state} · {regions} private regions · {xproc_bytes(bytes)} candidate", secondary, size=7.0)
+                    p.text(rect.x + 4.0, rect.y + 23.0, f"{process_state} · {regions} private regions · {xproc_bytes(private_resident)} resident estimate", secondary, size=7.0)
                     visible += 1
             if count == 0:
                 p.text(panel.x + 9.0, panel.y + 82.0, label(s.zh, "No eligible user application found.", "未找到符合条件的用户应用。"), secondary, size=8.0)
@@ -1293,15 +1336,17 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
         xproc_button(p, xproc_picker_cancel_rect(&panel), label(s.zh, "Close", "关闭"), s.xproc_focus == 3, true, fg, disabled, border, surface, hot)
     elif s.xproc_view == 2:
         let name = s.xproc_target_name
-        let budget = xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)
+        let budget = xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)
         p.text(panel.x + 9.0, panel.y + 27.0, label(s.zh, "Confirm one process and one bounded request.", "请确认单个进程和有限范围请求。"), fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 45.0, f"{name}  PID {s.xproc_target_pid}  UID {s.xproc_target_uid}", fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 60.0, xproc_confirmation_start_time(s.zh, s.xproc_target_start_time), secondary, size=8.0)
         p.text(panel.x + 9.0, panel.y + 73.0, f"Application: {s.xproc_target_app_name}", secondary, size=8.0)
         if s.xproc_mode_choice == 0:
-            p.text(panel.x + 9.0, panel.y + 86.0, f"Up to {xproc_budget_label(budget)} · RSS {xproc_bytes(s.xproc_target_rss_bytes)}", secondary, size=8.0)
+            p.text(panel.x + 9.0, panel.y + 86.0, f"Request {xproc_budget_label(budget)} · RSS {xproc_bytes(s.xproc_target_rss_bytes)}", secondary, size=8.0)
+            p.text(panel.x + 9.0, panel.y + 99.0, f"Private resident: {xproc_bytes(s.xproc_target_private_resident_bytes)} · {xproc_budget_limit_text(s.zh, s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)}", secondary, size=7.0)
         else:
-            p.text(panel.x + 9.0, panel.y + 86.0, f"Up to {xproc_budget_label(budget)} · scope anon+file {xproc_bytes(s.xproc_target_scope_bytes)}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 86.0, f"Request {xproc_budget_label(budget)} · scope anon+file {xproc_bytes(s.xproc_target_scope_bytes)}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 99.0, xproc_budget_limit_text(s.zh, s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice), secondary, size=7.0)
         for choice in 0..3:
             let rect = xproc_budget_rect(choice, &panel)
             let base_amount = if choice == 0: "256 MiB" elif choice == 1: "512 MiB" else: "1 GiB"
@@ -1313,14 +1358,15 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
             let mode_label = if s.xproc_mode_choice == mode: f"✓ {base_mode}" else: base_mode
             let mode_available = mode == 0 or s.xproc_target_scope_bytes > 0
             xproc_button(p, &rect, mode_label, s.xproc_focus == 3 + mode, mode_available, fg, disabled, border, surface, hot)
-        p.text(panel.x + 9.0, panel.y + 151.0, label(s.zh, "Helper rechecks identity, scope and the request limit.", "helper 会重核身份、作用域及请求额度。"), secondary, size=8.0)
+        let selection_scope = xproc_selection_scope_text(s.zh, s.xproc_mode_choice)
+        p.text(panel.x + 9.0, panel.y + 163.0, selection_scope, secondary, size=7.0)
         let effect = if s.xproc_mode_choice == 0:
             label(s.zh, "PAGEOUT may use swap/I/O and slow this process.", "PAGEOUT 可能使用 swap/I/O 并使该进程变慢。")
         else:
             label(s.zh, "memory.reclaim affects every process in this app scope.", "memory.reclaim 会影响此应用作用域内的全部进程。")
-        p.text(panel.x + 9.0, panel.y + 165.0, effect, secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 179.0, label(s.zh, "Kernel reclaim can be less or more than requested.", "内核实际回收可能少于或多于请求量。"), secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 193.0, label(s.zh, "Observed changes are not causal attribution.", "观测变化不能直接归因于本次操作。"), secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 177.0, effect, secondary, size=7.0)
+        p.text(panel.x + 9.0, panel.y + 191.0, label(s.zh, "Advised/requested bytes are not bytes freed.", "内核建议量不等于实际释放量。"), secondary, size=7.0)
+        p.text(panel.x + 9.0, panel.y + 205.0, label(s.zh, "Observed changes may have other causes.", "观测变化也可能来自其他原因。"), secondary, size=7.0)
         let can_run = budget >= 4096
         xproc_button(p, xproc_confirm_accept_rect(&panel), label(s.zh, "Authorize and run", "授权并执行"), s.xproc_focus == 5, can_run, fg, disabled, border, surface, hot)
         xproc_button(p, xproc_confirm_cancel_rect(&panel), label(s.zh, "Cancel", "取消"), s.xproc_focus == 6, true, fg, disabled, border, surface, hot)
@@ -1333,24 +1379,35 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
         p.text(panel.x + 9.0, panel.y + 27.0, xproc_result_text(s.zh, s.xproc_state, s.xproc_simulation, s.xproc_mode_choice), fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 49.0, f"Target PID {s.xproc_target_pid} · UID {s.xproc_target_uid}", secondary, size=8.0)
         if s.xproc_mode_choice == 0:
-            p.text(panel.x + 9.0, panel.y + 68.0, f"{xproc_advised_bytes_label(s.zh, s.xproc_simulation)} {xproc_bytes(s.xproc_advised_bytes)}", fg, size=8.0)
+            p.text(panel.x + 9.0, panel.y + 68.0, f"Helper selected: {xproc_bytes(s.xproc_requested_bytes)} of {xproc_budget_label(xproc_budget_limit(s.xproc_budget_choice))}", fg, size=8.0)
+            p.text(panel.x + 9.0, panel.y + 84.0, f"{xproc_advised_bytes_label(s.zh, s.xproc_simulation)} {xproc_bytes(s.xproc_advised_bytes)}", fg, size=8.0)
+            p.text(panel.x + 9.0, panel.y + 100.0, f"Regions: {s.xproc_regions} · helper calls: {s.xproc_call_count}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 116.0, f"Target RSS: {xproc_kib(s.xproc_target_rss_before_kib)} → {xproc_kib(s.xproc_target_rss_after_kib)}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 132.0, f"Target swap: {xproc_kib(s.xproc_target_swap_before_kib)} → {xproc_kib(s.xproc_target_swap_after_kib)}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 148.0, f"Reason: {reason} · errno {s.xproc_error_code}", secondary, size=7.0)
+            if (s.xproc_state == 10 or s.xproc_state == 11) and s.xproc_requested_bytes < xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice):
+                p.text(panel.x + 9.0, panel.y + 163.0, label(s.zh, "Helper capped the request to current eligible resident pages.", "helper 已按复核后的合格驻留页缩小请求。"), secondary, size=7.0)
+            let child_exit = if s.xproc_simulation: -1 else: mr_xproc_result_exit_code()
+            let child_signal = if s.xproc_simulation: 0 else: mr_xproc_result_signal()
+            let exit_detail = xproc_exit_detail(s.zh, child_exit, child_signal)
+            if exit_detail != "" and (s.xproc_state == 19 or s.xproc_state == 24 or s.xproc_state == 25):
+                p.text(panel.x + 9.0, panel.y + 177.0, exit_detail, secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 191.0, f"MemAvailable KiB: {s.xproc_before_available} → {s.xproc_after_available}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 205.0, label(s.zh, "Advised bytes and observed deltas are not bytes freed.", "内核建议量和观测变化都不等于实际释放量。"), secondary, size=7.0)
         else:
             p.text(panel.x + 9.0, panel.y + 68.0, f"memory.reclaim request: {xproc_bytes(s.xproc_requested_bytes)}", fg, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 86.0, f"Regions: {s.xproc_regions} · helper calls: {s.xproc_call_count}", secondary, size=8.0)
-        if s.xproc_mode_choice == 0:
-            p.text(panel.x + 9.0, panel.y + 104.0, f"Target RSS: {xproc_kib(s.xproc_target_rss_before_kib)} → {xproc_kib(s.xproc_target_rss_after_kib)}", secondary, size=8.0)
-            p.text(panel.x + 9.0, panel.y + 122.0, f"Target swap: {xproc_kib(s.xproc_target_swap_before_kib)} → {xproc_kib(s.xproc_target_swap_after_kib)}", secondary, size=8.0)
-        else:
-            p.text(panel.x + 9.0, panel.y + 104.0, f"Scope current: {xproc_mib_bytes(s.xproc_scope_current_before_bytes)} → {xproc_mib_bytes(s.xproc_scope_current_after_bytes)}", secondary, size=8.0)
-            p.text(panel.x + 9.0, panel.y + 122.0, f"Scope anon/file: {xproc_mib_bytes(s.xproc_scope_anon_before_bytes)}/{xproc_mib_bytes(s.xproc_scope_file_before_bytes)} → {xproc_mib_bytes(s.xproc_scope_anon_after_bytes)}/{xproc_mib_bytes(s.xproc_scope_file_after_bytes)}", secondary, size=7.0)
-        p.text(panel.x + 9.0, panel.y + 140.0, f"Reason: {reason} · errno {s.xproc_error_code}", secondary, size=7.0)
-        let child_exit = if s.xproc_simulation: -1 else: mr_xproc_result_exit_code()
-        let child_signal = if s.xproc_simulation: 0 else: mr_xproc_result_signal()
-        let exit_detail = xproc_exit_detail(s.zh, child_exit, child_signal)
-        if exit_detail != "" and (s.xproc_state == 19 or s.xproc_state == 24 or s.xproc_state == 25):
-            p.text(panel.x + 9.0, panel.y + 153.0, exit_detail, secondary, size=7.0)
-        p.text(panel.x + 9.0, panel.y + 170.0, f"MemAvailable KiB: {s.xproc_before_available} → {s.xproc_after_available}", secondary, size=7.0)
-        p.text(panel.x + 9.0, panel.y + 189.0, label(s.zh, "Changes are observations, not bytes freed.", "观测变化不等于实际释放字节。"), secondary, size=8.0)
+            p.text(panel.x + 9.0, panel.y + 86.0, f"Scope current: {xproc_mib_bytes(s.xproc_scope_current_before_bytes)} → {xproc_mib_bytes(s.xproc_scope_current_after_bytes)}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 104.0, f"Anon {xproc_mib_compact(s.xproc_scope_anon_before_bytes)}→{xproc_mib_compact(s.xproc_scope_anon_after_bytes)} · file {xproc_mib_compact(s.xproc_scope_file_before_bytes)}→{xproc_mib_compact(s.xproc_scope_file_after_bytes)} MiB", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 122.0, f"Scope swap: {xproc_mib_bytes(s.xproc_scope_swap_before_bytes)} → {xproc_mib_bytes(s.xproc_scope_swap_after_bytes)}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 140.0, f"Regions: {s.xproc_regions} · calls: {s.xproc_call_count}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 158.0, f"Reason: {reason} · errno {s.xproc_error_code}", secondary, size=7.0)
+            let child_exit = if s.xproc_simulation: -1 else: mr_xproc_result_exit_code()
+            let child_signal = if s.xproc_simulation: 0 else: mr_xproc_result_signal()
+            let exit_detail = xproc_exit_detail(s.zh, child_exit, child_signal)
+            if exit_detail != "" and (s.xproc_state == 19 or s.xproc_state == 24 or s.xproc_state == 25):
+                p.text(panel.x + 9.0, panel.y + 174.0, exit_detail, secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 190.0, f"MemAvailable KiB: {s.xproc_before_available} → {s.xproc_after_available}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 205.0, label(s.zh, "Scope and MemAvailable deltas are observations.", "作用域和 MemAvailable 变化仅是观测值。"), secondary, size=7.0)
         xproc_button(p, xproc_result_close_rect(&panel), label(s.zh, "Close", "关闭"), true, true, fg, disabled, border, surface, hot)
 
 fn draw(s: &mut MainWindow, p: &ui.Painter):
@@ -1491,15 +1548,16 @@ fn test_ci_sample_failure_latch_is_test_only():
     assert(not suppress_ci_resample(false, true))
 
 fn test_xproc_budget_and_result_mapping_are_fail_closed():
-    assert(xproc_budget(-1, 0, 0, 0, 0) == 0)
-    assert(xproc_budget(0, 0, 0, 0, 0) == 0)
-    assert(xproc_budget(2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 0, 0, 0) == 256 * 1024 * 1024)
-    assert(xproc_budget(2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 0, 1, 0) == 512 * 1024 * 1024)
-    assert(xproc_budget(2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 0, 2, 0) == 1024 * 1024 * 1024)
-    assert(xproc_budget(2 * 1024 * 1024 * 1024, 128 * 1024 * 1024, 0, 2, 0) == 128 * 1024 * 1024)
-    assert(xproc_budget(2 * 1024 * 1024 * 1024, 0, 768 * 1024 * 1024, 2, 1) == 768 * 1024 * 1024)
-    assert(xproc_budget(2 * 1024 * 1024 * 1024, 0, 2 * 1024 * 1024 * 1024, 2, 1) == 1024 * 1024 * 1024)
-    assert(xproc_budget(2 * 1024 * 1024 * 1024, 0, -1, 2, 1) == 0)
+    assert(xproc_budget(-1, 0, 0, 0, 0, 0) == 0)
+    assert(xproc_budget(0, 0, 0, 0, 0, 0) == 0)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 2 * 1024 * 1024 * 1024, 0, 0, 0) == 256 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 2 * 1024 * 1024 * 1024, 0, 1, 0) == 512 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 2 * 1024 * 1024 * 1024, 0, 2, 0) == 1024 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 128 * 1024 * 1024, 2 * 1024 * 1024 * 1024, 0, 2, 0) == 128 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 192 * 1024 * 1024, 0, 2, 0) == 192 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 0, 0, 768 * 1024 * 1024, 2, 1) == 768 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 0, 0, 2 * 1024 * 1024 * 1024, 2, 1) == 1024 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 0, 0, -1, 2, 1) == 0)
     assert(xproc_budget_limit(-1) == 256 * 1024 * 1024)
     assert(xproc_budget_limit(9) == 256 * 1024 * 1024)
     assert(xproc_budget_label(32 * 1024 * 1024) == "32 MiB")
@@ -1522,6 +1580,18 @@ fn test_xproc_budget_and_result_mapping_are_fail_closed():
     assert(xproc_result_name(23) == "busy")
     assert(xproc_result_name(24) == "authorization-cancelled")
     assert(xproc_result_name(25) == "authorization-failed")
+
+fn test_xproc_budget_limit_text_names_the_limiting_measure():
+    assert(xproc_budget_limit_text(false, 2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 192 * 1024 * 1024, 0, 2, 0) == "cap: private resident")
+    assert(xproc_budget_limit_text(true, 2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 192 * 1024 * 1024, 0, 2, 0) == "限幅：私有驻留估算")
+    assert(xproc_budget_limit_text(false, 2 * 1024 * 1024 * 1024, 128 * 1024 * 1024, 2 * 1024 * 1024 * 1024, 0, 2, 0) == "cap: RSS")
+    assert(xproc_budget_limit_text(false, 2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 2 * 1024 * 1024 * 1024, 768 * 1024 * 1024, 2, 1) == "cap: app-scope charge")
+    assert(xproc_selection_scope_text(false, 0) == "PAGEOUT selects present, exclusive private pages only.")
+    assert(xproc_selection_scope_text(true, 0) == "PAGEOUT 只选择已驻留且独占映射的私有页。")
+    assert(xproc_selection_scope_text(false, 1) == "memory.reclaim is bounded to this exact app scope.")
+    assert(xproc_selection_scope_text(true, 1) == "memory.reclaim 限定在此应用作用域内。")
+    assert(xproc_mib_compact(-1) == "—")
+    assert(xproc_mib_compact(1572864) == "1.5")
 
 fn test_xproc_confirmation_displays_the_selected_start_time():
     assert(xproc_confirmation_start_time(false, 44158696) == "Start time: 44158696")
@@ -1769,7 +1839,8 @@ fn activate(s: &mut MainWindow, target: f64):
                 s.xproc_view = 2
                 s.xproc_focus = 5
                 if s.test_mode: mr_runtime_emit(f"CI_XPROC_AUDIT phase=confirmation request_id={s.xproc_request_id} pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} scope_hash={s.xproc_target_scope_hash} identity_hash={s.xproc_target_identity_token} region_digest={s.xproc_target_region_digest}")
-                if s.test_mode: mr_runtime_emit(f"CI_XPROC_CONFIRM open=true request_id={s.xproc_request_id} pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} identity_hash={s.xproc_target_identity_token} scope_hash={s.xproc_target_scope_hash} region_digest={s.xproc_target_region_digest} application={s.xproc_target_app_name} mode={s.xproc_mode_choice} budget_limit_bytes={xproc_budget_limit(s.xproc_budget_choice)} max_bytes={xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)} process_rss_bytes={s.xproc_target_rss_bytes} scope_anon_file_bytes={s.xproc_target_scope_bytes} regions={s.xproc_target_regions} explicit_user_choice=true immutable_snapshot=true")
+                if s.test_mode: mr_runtime_emit(f"CI_XPROC_CONFIRM open=true request_id={s.xproc_request_id} pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} identity_hash={s.xproc_target_identity_token} scope_hash={s.xproc_target_scope_hash} region_digest={s.xproc_target_region_digest} application={s.xproc_target_app_name} mode={s.xproc_mode_choice} budget_limit_bytes={xproc_budget_limit(s.xproc_budget_choice)} max_bytes={xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)} process_rss_bytes={s.xproc_target_rss_bytes} private_resident_bytes={s.xproc_target_private_resident_bytes} scope_anon_file_bytes={s.xproc_target_scope_bytes} regions={s.xproc_target_regions} explicit_user_choice=true immutable_snapshot=true")
+                if s.test_mode and s.xproc_mode_choice == 0: mr_runtime_emit(f"CI_XPROC_CONFIRM_LIMIT cap_reason={xproc_budget_limit_text(s.zh, s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)} private_resident_bytes={s.xproc_target_private_resident_bytes}")
         elif target == 812.0:
             s.xproc_view = 0
             s.status = label(s.zh, "Target selection cancelled", "已取消目标选择")
@@ -2286,7 +2357,7 @@ fn main():
         xproc_target_pid: -1, xproc_target_start_time: -1, xproc_target_uid: -1,
         xproc_target_identity_token: -1, xproc_request_id: -1,
         xproc_target_scope_hash: -1, xproc_target_region_digest: -1,
-        xproc_target_bytes: -1, xproc_target_regions: -1,
+        xproc_target_bytes: -1, xproc_target_private_resident_bytes: -1, xproc_target_regions: -1,
         xproc_target_name: "", xproc_target_app_name: "",
         xproc_before_available: -1, xproc_after_available: -1,
         xproc_advised_bytes: 0, xproc_requested_bytes: 0, xproc_regions: 0,

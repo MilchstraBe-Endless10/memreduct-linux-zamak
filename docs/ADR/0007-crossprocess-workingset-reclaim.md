@@ -227,3 +227,14 @@ ADR status remains **PROPOSED**; this amendment records a local implementation a
 - Current r5 GUI/helper protocol is v3. On the approved host the exact GUI and Crossproc helper hashes were replaced and verified; the M0 helper and both existing Polkit policies were left unchanged. This single-host installation does not establish real reclaim behavior or change ADR-0007's PROPOSED status.
 
 This amendment records implementation intent and local evidence only. ADR-0007 remains **PROPOSED**; it does not claim Windows API equivalence, zero impact, a 1 GiB RAM reduction, or approval to install or operate this candidate.
+
+### Amendment: private-resident PAGEOUT selection (2026-11-07)
+
+- The picker and privileged helper now consume the same strict parser for each eligible mapping's `Private_Clean + Private_Dirty` estimate. The GUI uses this only as an estimate and a pre-authorization ceiling.
+- Protocol v4 clamps PAGEOUT again inside the helper. In addition to the fixed per-request ceiling, live RSS and eligible mapping lengths, it selects only target pages for which `/proc/<pid>/pagemap` reports present (bit 63), not swapped (bit 62), and exclusively mapped (bit 56). Shared and nonresident pages do not consume the helper's request budget. Inaccessible or malformed `smaps`/`pagemap` data fails closed.
+- The private resident estimate is not physical memory guaranteed to be reclaimed. Pagemap scanning has an 8 GiB address-space ceiling and the syscall remains one `process_madvise` call over at most 1024 vectors. Partial/zero results are not retried.
+- The confirmation UI names the source of a lower budget. PAGEOUT mode states that only present, exclusive private pages qualify; app-scope mode states that `memory.reclaim` is bounded to the exact selected app scope. The result continues to separate helper requested bytes, kernel-advised bytes, and observed RSS/Swap/`MemAvailable`; none is called bytes freed.
+- Regression coverage uses fixture procfs and a stub backend to verify present/exclusive, present/shared, swapped, absent, and inaccessible cases, plus the GUI's 192 MiB private-resident clamp under a 1 GiB selection. It does not invoke Polkit, a live helper, or a live reclaim syscall.
+- Protocol v4 is a local candidate only. The host's approved protocol-v3 GUI/helper installation is not changed; real Hyprland behavior and large live reclamation remain unverified. ADR status remains **PROPOSED**.
+
+Reference: [Linux pagemap documentation](https://docs.kernel.org/admin-guide/mm/pagemap.html) defines bits 56, 62, and 63 used by the helper.

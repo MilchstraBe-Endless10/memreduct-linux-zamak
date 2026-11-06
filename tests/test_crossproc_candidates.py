@@ -53,6 +53,8 @@ class CandidateScannerTest(unittest.TestCase):
         for name in ("mr_cand_scope_anon_file_bytes", "mr_cand_rss_bytes"):
             getattr(cls.library, name).argtypes = [ctypes.c_int64]
             getattr(cls.library, name).restype = ctypes.c_int64
+        cls.library.mr_cand_private_resident_bytes.argtypes = [ctypes.c_int64]
+        cls.library.mr_cand_private_resident_bytes.restype = ctypes.c_int64
 
     @classmethod
     def tearDownClass(cls):
@@ -100,8 +102,7 @@ class CandidateScannerTest(unittest.TestCase):
         uid_text = "\t".join(map(str, uids))
         with open(os.path.join(directory, "status"), "w", encoding="utf-8") as handle:
             handle.write(f"Name:\t{name}\nState:\t{state}\nUid:\t{uid_text}\nVmRSS:\t4096 kB\nVmSwap:\t1024 kB\n")
-        with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
-            handle.write("00400000-00401000 r--p 00000000 00:00 0\n")
+        self.write_mapping_files(directory, "00400000-00401000 r--p 00000000 00:00 0\n", 4)
         exe_path = os.path.join(directory, "exe")
         if os.path.lexists(exe_path):
             os.unlink(exe_path)
@@ -118,6 +119,26 @@ class CandidateScannerTest(unittest.TestCase):
         with open(os.path.join(directory, "cmdline"), "wb") as handle:
             handle.write(argv0 + b"\0--fixture\0")
         return directory
+
+    @staticmethod
+    def write_mapping_files(directory, maps, private_dirty_kib=4):
+        with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
+            handle.write(maps)
+        headers = []
+        for line in maps.splitlines():
+            fields = line.split(maxsplit=5)
+            if len(fields) < 5:
+                continue
+            start, end = (int(value, 16) for value in fields[0].split("-", 1))
+            name = f" {fields[5]}" if len(fields) == 6 else ""
+            private = private_dirty_kib if fields[1][3] == "p" and not fields[1].startswith("---") and not (len(fields) >= 6 and fields[5].startswith("[")) else 0
+            headers.append(
+                f"{start:08x}-{end:08x} {fields[1]} {fields[2]} {fields[3]} {fields[4]}{name}\n"
+                f"Size: {(end - start) // 1024} kB\n"
+                f"Private_Clean: 0 kB\nPrivate_Dirty: {private} kB\n"
+            )
+        with open(os.path.join(directory, "smaps"), "w", encoding="utf-8") as handle:
+            handle.write("".join(headers))
 
     def add_scope_stats(self, process_name="demo", anon_bytes=128 * 1024 * 1024,
                         file_bytes=64 * 1024 * 1024, include_reclaim=True):
@@ -164,6 +185,7 @@ class CandidateScannerTest(unittest.TestCase):
         self.assertEqual(self.library.mr_cand_rss_bytes(0), 4 * 1024 * 1024)
         self.assertEqual(self.library.mr_cand_scope_anon_file_bytes(0),
                          1280 * 1024 * 1024)
+        self.assertEqual(self.library.mr_cand_private_resident_bytes(0), 4096)
 
     def test_app_scope_mode_is_unavailable_without_its_kernel_control(self):
         self.add_process()
@@ -281,8 +303,7 @@ class CandidateScannerTest(unittest.TestCase):
         directory = self.add_process()
         self.assertEqual(self.scan(), 1)
         values = self.select_snapshot(0, request_id=900005)
-        with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
-            handle.write("00400000-00402000 r--p 00000000 00:00 0\n")
+        self.write_mapping_files(directory, "00400000-00402000 r--p 00000000 00:00 0\n", 8)
         self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
 
     def test_region_digest_detects_same_sized_mapping_replacement(self):
@@ -291,13 +312,28 @@ class CandidateScannerTest(unittest.TestCase):
         values = self.select_snapshot(0, request_id=900006)
         before_bytes = values[7]
         before_regions = values[8]
-        with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
-            handle.write("00500000-00501000 r--p 00000000 00:00 0\n")
+        self.write_mapping_files(directory, "00500000-00501000 r--p 00000000 00:00 0\n", 4)
         # Total bytes and region count are unchanged; only an exact map digest
         # detects that the user confirmed a different virtual range.
         self.assertEqual(before_bytes, 4096)
         self.assertEqual(before_regions, 1)
         self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
+
+    def test_private_resident_change_invalidates_selected_snapshot(self):
+        directory = self.add_process()
+        self.assertEqual(self.scan(), 1)
+        values = self.select_snapshot(0, request_id=900009)
+        self.assertEqual(self.library.mr_cand_private_resident_bytes(0), 4096)
+        self.write_mapping_files(directory, "00400000-00401000 r--p 00000000 00:00 0\n", 0)
+        self.assertNotEqual(self.library.mr_cand_snapshot_verify(*values), 0)
+
+    def test_malformed_smaps_is_reported_as_unreadable_not_kernel_thread(self):
+        directory = self.add_process()
+        with open(os.path.join(directory, "smaps"), "w", encoding="utf-8") as handle:
+            handle.write("00400000-00401000 r--p 00000000 00:00 0\nPrivate_Clean: 0 kB\n")
+        self.assertEqual(self.scan(), 0)
+        self.assertEqual(self.skipped(5), 1)
+        self.assertEqual(self.skipped(3), 0)
 
     def test_request_id_is_bound_to_snapshot_and_cleared_on_refresh(self):
         self.add_process()

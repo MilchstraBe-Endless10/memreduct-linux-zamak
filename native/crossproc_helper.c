@@ -48,6 +48,7 @@
 #include "crossproc_helper.h"
 #include "crossproc_identity.h"
 #include "crossproc_protection.h"
+#include "crossproc_smaps.h"
 
 /* Install path. Fixed; never derived from input. The Polkit action pins this
  * exact path with org.freedesktop.policykit.exec.path. */
@@ -1012,14 +1013,6 @@ enum mr_region_skip {
     MR_REGION_MALFORMED
 };
 
-static int is_special_mapping(const char *path)
-{
-    /* The UI scanner excludes every kernel-labelled mapping, including newer
-     * labels this helper may not know yet. Keep the privileged filter equally
-     * narrow so its reviewed map summary is comparable. */
-    return path != NULL && path[0] == '[';
-}
-
 static int target_is_self(int32_t target_pid, int32_t helper_pid)
 {
     return target_pid == helper_pid;
@@ -1043,6 +1036,7 @@ struct mr_region_plan {
     size_t count;
     uint64_t bytes;
     uint64_t candidate_bytes;
+    uint64_t private_resident_bytes;
     uint64_t candidate_digest;
     uint32_t candidate_regions;
     uint32_t skipped_shared;
@@ -1052,122 +1046,235 @@ struct mr_region_plan {
     uint32_t skipped_too_large;
     uint32_t skipped_budget;
     uint32_t skipped_malformed;
+    uint32_t skipped_no_resident;
+    uint32_t skipped_nonexclusive;
+    uint32_t scan_limited;
+    uint32_t iovec_limited;
+    int failure;
+    int failure_errno;
 };
 
-/* Read the target's maps and choose at most `max_iovecs` ranges totalling no
- * more than `max_bytes`. Never returns more than the ceilings allow. */
-static int plan_regions(int32_t pid, uint64_t max_bytes, struct mr_region_plan *plan)
+enum mr_plan_failure {
+    MR_PLAN_FAILURE_NONE = 0,
+    MR_PLAN_FAILURE_SMAPS_OPEN = 1,
+    MR_PLAN_FAILURE_PAGEMAP_OPEN = 2,
+    MR_PLAN_FAILURE_PAGEMAP_READ = 3,
+    MR_PLAN_FAILURE_SMAPS_PARSE = 4
+};
+
+struct region_plan_context {
+    struct mr_region_plan *plan;
+    uint64_t max_bytes;
+    uint64_t alignment;
+    uint64_t scan_remaining;
+    int pagemap_fd;
+    int select_present_pages;
+    int selection_stopped;
+    int scan_limited;
+};
+
+static int read_pagemap_entries(int fd, uint64_t first_page, uint64_t *entries,
+                                size_t count)
 {
-    memset(plan, 0, sizeof(*plan));
-    uint64_t candidate_digest = mr_xproc_region_digest_init();
-
-    char path[MR_XPROC_PATH_BYTES];
-    if (proc_path(path, sizeof(path), pid, "maps") != 0) {
-        return -1;
-    }
-    FILE *maps = fopen(path, "re");
-    if (maps == NULL) {
-        return -1;
-    }
-
-    const uint64_t alignment = page_size();
-    char line[MR_XPROC_LINE_BYTES];
-
-    while (fgets(line, sizeof(line), maps) != NULL) {
-        unsigned long long begin = 0;
-        unsigned long long end = 0;
-        char perms[8] = {0};
-        char device[32] = {0};
-        char name[512] = {0};
-        unsigned long long offset = 0;
-        unsigned long long inode = 0;
-
-        int fields = sscanf(line, "%llx-%llx %7s %llx %31s %llu %511s",
-                            &begin, &end, perms, &offset, device, &inode, name);
-        if (fields < 5) {
-            plan->skipped_malformed++;
-            continue;
-        }
-        if (end <= begin) {
-            plan->skipped_malformed++;
-            continue;
-        }
-
-        /* Private only. */
-        if (perms[3] != 'p') {
-            plan->skipped_shared++;
-            continue;
-        }
-        /* Readable: an unreadable range has no reclaimable user pages. */
-        if (perms[0] != 'r') {
-            plan->skipped_unreadable++;
-            continue;
-        }
-        /* Writable file-backed: possibly dirty, reclaim forces writeback. */
-        if (fields >= 6 && inode != 0 && perms[1] == 'w') {
-            plan->skipped_writable_file++;
-            continue;
-        }
-        if (is_special_mapping(name)) {
-            plan->skipped_special++;
-            continue;
-        }
-        /* Kernel advice takes page-aligned ranges; round inward so the range is
-         * entirely inside the mapping. */
-        uint64_t aligned_start = ((uint64_t)begin + alignment - 1u) & ~(alignment - 1u);
-        uint64_t aligned_end = (uint64_t)end & ~(alignment - 1u);
-        if (aligned_end <= aligned_start) {
-            plan->skipped_malformed++;
-            continue;
-        }
-
-        uint64_t aligned_length = aligned_end - aligned_start;
-        if (UINT64_MAX - plan->candidate_bytes < aligned_length ||
-            plan->candidate_regions == UINT32_MAX) {
-            (void)fclose(maps);
-            errno = EOVERFLOW;
+    if (first_page > (uint64_t)INT64_MAX / sizeof(uint64_t) ||
+        count > (size_t)INT64_MAX / sizeof(uint64_t)) return -1;
+    size_t bytes = count * sizeof(uint64_t);
+    off_t offset = (off_t)(first_page * sizeof(uint64_t));
+    size_t done = 0;
+    while (done < bytes) {
+        ssize_t got = pread(fd, (unsigned char *)entries + done, bytes - done,
+                            offset + (off_t)done);
+        if (got < 0) {
+            if (errno == EINTR) continue;
             return -1;
         }
-        plan->candidate_bytes += aligned_length;
-        plan->candidate_regions++;
-        candidate_digest = mr_xproc_region_digest_add(
-            candidate_digest, aligned_start, aligned_end, perms,
-            (uint64_t)offset, device, (uint64_t)inode, name);
-
-        if (plan->bytes >= max_bytes) {
-            plan->skipped_budget++;
-            continue;
-        }
-        if (plan->count >= MR_XPROC_MAX_IOVECS) {
-            plan->skipped_budget++;
-            continue;
-        }
-
-        uint64_t remaining = max_bytes - plan->bytes;
-        uint64_t request_length = aligned_length < remaining ? aligned_length : remaining;
-        request_length &= ~(alignment - 1u);
-        if (request_length == 0u) {
-            plan->skipped_budget++;
-            continue;
-        }
-        if (request_length < aligned_length) plan->skipped_too_large++;
-
-        plan->vectors[plan->count].iov_base = (void *)(uintptr_t)aligned_start;
-        plan->vectors[plan->count].iov_len = (size_t)request_length;
-        plan->count++;
-        plan->bytes += request_length;
+        if (got == 0) { errno = EIO; return -1; }
+        done += (size_t)got;
     }
-    int read_error = ferror(maps);
-    (void)fclose(maps);
-    if (read_error) {
+    return 0;
+}
+
+static int plan_smaps_region(const struct mr_xproc_smaps_region *region, void *context)
+{
+    struct region_plan_context *builder = context;
+    struct mr_region_plan *plan = builder->plan;
+    int eligibility = mr_xproc_smaps_eligibility(region);
+    if (eligibility == MR_XPROC_SMAPS_SHARED) { plan->skipped_shared++; return 0; }
+    if (eligibility == MR_XPROC_SMAPS_UNREADABLE) { plan->skipped_unreadable++; return 0; }
+    if (eligibility == MR_XPROC_SMAPS_WRITABLE_FILE) { plan->skipped_writable_file++; return 0; }
+    if (eligibility == MR_XPROC_SMAPS_SPECIAL) { plan->skipped_special++; return 0; }
+
+    uint64_t aligned_start = (region->start + builder->alignment - 1u) & ~(builder->alignment - 1u);
+    uint64_t aligned_end = region->end & ~(builder->alignment - 1u);
+    if (aligned_end <= aligned_start) { plan->skipped_malformed++; return 0; }
+    uint64_t aligned_length = aligned_end - aligned_start;
+    if (region->private_resident_bytes > aligned_length ||
+        region->private_resident_bytes % builder->alignment != 0u ||
+        UINT64_MAX - plan->candidate_bytes < aligned_length ||
+        UINT64_MAX - plan->private_resident_bytes < region->private_resident_bytes ||
+        plan->candidate_regions == UINT32_MAX) {
+        errno = EOVERFLOW;
         return -1;
     }
-    plan->candidate_digest = mr_xproc_region_digest_finish(
-        candidate_digest, plan->candidate_regions);
-    if (plan->count == 0) {
+    plan->candidate_bytes += aligned_length;
+    plan->private_resident_bytes += region->private_resident_bytes;
+    plan->candidate_regions++;
+    plan->candidate_digest = mr_xproc_region_digest_add(
+        plan->candidate_digest, aligned_start, aligned_end, region->permissions,
+        region->offset, region->device, region->inode, region->name);
+
+    /* Whole-app memory.reclaim is bounded by the cgroup charge. It still
+     * verifies the reviewed mapping digest, but does not need per-page
+     * process_madvise vectors or pagemap access. */
+    if (!builder->select_present_pages) return 0;
+
+    if (region->private_resident_bytes == 0u) {
+        plan->skipped_no_resident++;
         return 0;
     }
-    return 1;
+    if (builder->selection_stopped || plan->bytes >= builder->max_bytes) {
+        plan->skipped_budget++;
+        return 0;
+    }
+    uint64_t map_limit = region->private_resident_bytes;
+    uint64_t remaining = builder->max_bytes - plan->bytes;
+    if (map_limit > remaining) map_limit = remaining;
+    uint64_t cursor = aligned_start;
+    uint64_t map_selected = 0;
+    uint64_t last_run_end = 0;
+    size_t last_run_index = 0;
+    int have_last_run = 0;
+    uint64_t max_chunk_pages = 8192u;
+    uint64_t map_pages = (aligned_end - aligned_start) / builder->alignment;
+    uint64_t pages_done = 0;
+
+    while (pages_done < map_pages && map_selected < map_limit) {
+        uint64_t scan_pages = builder->scan_remaining / builder->alignment;
+        if (scan_pages == 0u) {
+            builder->selection_stopped = 1;
+            builder->scan_limited = 1;
+            break;
+        }
+        uint64_t count = map_pages - pages_done;
+        if (count > max_chunk_pages) count = max_chunk_pages;
+        if (count > scan_pages) count = scan_pages;
+        uint64_t entries[8192];
+        if (read_pagemap_entries(builder->pagemap_fd,
+                                 cursor / builder->alignment, entries,
+                                 (size_t)count) != 0) {
+            plan->failure = MR_PLAN_FAILURE_PAGEMAP_READ;
+            plan->failure_errno = errno;
+            return -1;
+        }
+        uint64_t chunk_bytes = count * builder->alignment;
+        builder->scan_remaining -= chunk_bytes;
+        for (uint64_t index = 0; index < count; index++) {
+            uint64_t address = cursor + index * builder->alignment;
+            int present = (entries[index] & (1ull << 63)) != 0u;
+            int swapped = (entries[index] & (1ull << 62)) != 0u;
+            if (!present || swapped) {
+                have_last_run = 0;
+                continue;
+            }
+            /* Private_Clean/Private_Dirty provides a byte ceiling, but only
+             * pagemap bit 56 identifies a page as exclusively mapped. Do not
+             * spend that estimate on a present page that is still shared. */
+            if ((entries[index] & (1ull << 56)) == 0u) {
+                plan->skipped_nonexclusive++;
+                have_last_run = 0;
+                continue;
+            }
+            if (map_selected + builder->alignment > map_limit) break;
+            if (have_last_run && last_run_end == address) {
+                plan->vectors[last_run_index].iov_len += (size_t)builder->alignment;
+                last_run_end += builder->alignment;
+            } else {
+                if (plan->count >= MR_XPROC_MAX_IOVECS) {
+                    builder->selection_stopped = 1;
+                    plan->iovec_limited = 1;
+                    plan->skipped_budget++;
+                    break;
+                }
+                last_run_index = plan->count++;
+                plan->vectors[last_run_index].iov_base = (void *)(uintptr_t)address;
+                plan->vectors[last_run_index].iov_len = (size_t)builder->alignment;
+                last_run_end = address + builder->alignment;
+                have_last_run = 1;
+            }
+            map_selected += builder->alignment;
+            plan->bytes += builder->alignment;
+        }
+        cursor += chunk_bytes;
+        pages_done += count;
+        if (builder->selection_stopped) break;
+        if (pages_done < map_pages && builder->scan_remaining == 0u) {
+            builder->selection_stopped = 1;
+            builder->scan_limited = 1;
+        }
+    }
+    if (map_selected < region->private_resident_bytes &&
+        (plan->bytes >= builder->max_bytes || builder->selection_stopped)) {
+        plan->skipped_too_large++;
+    }
+    return 0;
+}
+
+/* Use per-VMA Private_Clean + Private_Dirty as the hard resident ceiling. */
+static int plan_regions(int32_t pid, uint64_t max_bytes, int select_present_pages,
+                        struct mr_region_plan *plan)
+{
+    memset(plan, 0, sizeof(*plan));
+    plan->candidate_digest = mr_xproc_region_digest_init();
+    char path[MR_XPROC_PATH_BYTES];
+    if (proc_path(path, sizeof(path), pid, "smaps") != 0) {
+        plan->failure = MR_PLAN_FAILURE_SMAPS_OPEN;
+        plan->failure_errno = errno;
+        return -1;
+    }
+    FILE *smaps = fopen(path, "re");
+    if (smaps == NULL) {
+        plan->failure = MR_PLAN_FAILURE_SMAPS_OPEN;
+        plan->failure_errno = errno;
+        return -1;
+    }
+    char pagemap_path[MR_XPROC_PATH_BYTES];
+    int pagemap_fd = -1;
+    if (select_present_pages) {
+        if (proc_path(pagemap_path, sizeof(pagemap_path), pid, "pagemap") != 0) {
+            plan->failure = MR_PLAN_FAILURE_PAGEMAP_OPEN;
+            plan->failure_errno = errno;
+            (void)fclose(smaps);
+            return -1;
+        }
+        pagemap_fd = open(pagemap_path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+        if (pagemap_fd < 0) {
+            plan->failure = MR_PLAN_FAILURE_PAGEMAP_OPEN;
+            plan->failure_errno = errno;
+            (void)fclose(smaps);
+            return -1;
+        }
+    }
+    struct region_plan_context builder = {
+        .plan = plan,
+        .max_bytes = max_bytes,
+        .alignment = page_size(),
+        .scan_remaining = MR_XPROC_MAX_PAGEMAP_SCAN_BYTES,
+        .pagemap_fd = pagemap_fd,
+        .select_present_pages = select_present_pages
+    };
+    int scan_result = mr_xproc_smaps_scan(smaps, plan_smaps_region, &builder);
+    plan->scan_limited = builder.scan_limited != 0;
+    if (scan_result != 0 && plan->failure == MR_PLAN_FAILURE_NONE) {
+        plan->failure = MR_PLAN_FAILURE_SMAPS_PARSE;
+        plan->failure_errno = errno == 0 ? EINVAL : errno;
+    }
+    (void)fclose(smaps);
+    if (pagemap_fd >= 0) (void)close(pagemap_fd);
+    if (scan_result != 0) return -1;
+    plan->candidate_digest = mr_xproc_region_digest_finish(
+        plan->candidate_digest, plan->candidate_regions);
+    if (!select_present_pages) return 1;
+    return plan->count == 0 ? 0 : 1;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1695,7 +1802,8 @@ int main(int argc, char **argv)
 
     /* ---- 4. Choose ranges here, from the kernel's own maps. ---- */
     struct mr_region_plan plan;
-    int planned = plan_regions(outcome.pid, effective_budget, &plan);
+    int pageout_mode = strcmp(outcome.mode, MR_XPROC_MODE_PAGEOUT_TEXT) == 0;
+    int planned = plan_regions(outcome.pid, effective_budget, pageout_mode, &plan);
     outcome.skipped_shared = plan.skipped_shared;
     outcome.skipped_unreadable = plan.skipped_unreadable;
     outcome.skipped_writable_file = plan.skipped_writable_file;
@@ -1707,7 +1815,14 @@ int main(int argc, char **argv)
     if (planned < 0) {
         if (scope_fd >= 0) (void)close(scope_fd);
         (void)close(pidfd);
-        refuse(&outcome, "target_maps_unreadable");
+        outcome.status = MR_XPROC_STATUS_REFUSED;
+        outcome.error_code = plan.failure_errno;
+        outcome.reason = plan.failure == MR_PLAN_FAILURE_PAGEMAP_OPEN ||
+                         plan.failure == MR_PLAN_FAILURE_PAGEMAP_READ
+                             ? "target_pagemap_unreadable"
+                             : plan.failure == MR_PLAN_FAILURE_SMAPS_OPEN
+                                   ? "target_smaps_unreadable"
+                                   : "target_smaps_malformed";
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
@@ -1726,7 +1841,17 @@ int main(int argc, char **argv)
         if (scope_fd >= 0) (void)close(scope_fd);
         (void)close(pidfd);
         outcome.status = MR_XPROC_STATUS_NO_REGIONS;
-        outcome.reason = "no_reclaimable_private_region";
+        if (plan.private_resident_bytes == 0u) {
+            outcome.reason = "no_private_resident_pages";
+        } else if (plan.scan_limited) {
+            outcome.reason = "pagemap_scan_limit_no_present_pages";
+        } else if (plan.iovec_limited) {
+            outcome.reason = "iovec_limit_no_present_pages";
+        } else if (plan.skipped_nonexclusive > 0u) {
+            outcome.reason = "no_exclusively_mapped_private_pages";
+        } else {
+            outcome.reason = "no_present_private_pages";
+        }
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
@@ -1738,7 +1863,7 @@ int main(int argc, char **argv)
 
     long advised = 0;
     int call_errno = 0;
-    if (strcmp(outcome.mode, MR_XPROC_MODE_PAGEOUT_TEXT) == 0) {
+    if (pageout_mode) {
         /* One bounded process_madvise call, at most 1 GiB and 1024 vectors.
          * A partial return is reported and is never retried. */
         mr_xproc_audit_emit("helper_pre_syscall", raw_request_id, outcome.pid,
@@ -1868,7 +1993,20 @@ int main(int argc, char **argv)
         outcome.reason = "kernel_covered_part_of_the_request";
     } else {
         outcome.status = MR_XPROC_STATUS_ACCEPTED;
-        outcome.reason = "kernel_accepted_the_request";
+        if (plan.scan_limited) {
+            outcome.reason = "pagemap_scan_limit_request_capped";
+        } else if (plan.iovec_limited) {
+            outcome.reason = "iovec_limit_request_capped";
+        } else if (plan.bytes < effective_budget &&
+                   plan.private_resident_bytes < effective_budget) {
+            outcome.reason = "private_resident_limit_request_capped";
+        } else if (plan.bytes < effective_budget && plan.skipped_nonexclusive > 0u) {
+            outcome.reason = "exclusive_private_page_limit_request_capped";
+        } else if (plan.bytes < effective_budget) {
+            outcome.reason = "present_page_limit_request_capped";
+        } else {
+            outcome.reason = "kernel_accepted_the_request";
+        }
     }
 
     if (!identity_stable) {

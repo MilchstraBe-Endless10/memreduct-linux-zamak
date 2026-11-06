@@ -171,14 +171,15 @@ select_candidate 0 173
 xdotool mousemove --window "$window_id" 165 340
 xdotool click 1
 require 'CI_XPROC_CONFIRM open=true'
+require 'CI_XPROC_CONFIRM_LIMIT cap_reason=cap: private resident private_resident_bytes=201326592'
 require 'explicit_user_choice=true'
-require 'budget_limit_bytes=268435456 max_bytes=268435456'
+require 'budget_limit_bytes=268435456 max_bytes=201326592'
 capture confirm-cancel
 # Raise this fixture request to 1 GiB with the mouse, then cancel it. No real
 # candidate, helper, Polkit action, or kernel syscall is reachable in this mode.
-xdotool mousemove --window "$window_id" 260 205
+xdotool mousemove --window "$window_id" 260 220
 xdotool click 1
-require 'CI_XPROC_BUDGET choice=2 limit_bytes=1073741824 effective_bytes=1073741824'
+require 'CI_XPROC_BUDGET choice=2 limit_bytes=1073741824 effective_bytes=201326592'
 capture confirm-budget-1g
 start_count_before_cancel="$(grep -c 'CI_XPROC_START started=true' "$app_log" || true)"
 xdotool key --clearmodifiers Escape
@@ -205,7 +206,7 @@ require 'budget_limit_bytes=268435456 max_bytes=268435456'
 xdotool key --clearmodifiers Tab Tab space Right Right
 require 'CI_XPROC_BUDGET choice=0 limit_bytes=268435456 effective_bytes=268435456'
 require 'CI_XPROC_BUDGET choice=1 limit_bytes=536870912 effective_bytes=536870912'
-require 'CI_XPROC_BUDGET choice=2 limit_bytes=1073741824 effective_bytes=1073741824'
+require 'CI_XPROC_BUDGET choice=2 limit_bytes=1073741824 effective_bytes=805306368'
 xdotool key --clearmodifiers Tab Right
 require 'CI_XPROC_MODE choice=1 action=app-scope-memory-reclaim target_pid=4243'
 capture confirm-run

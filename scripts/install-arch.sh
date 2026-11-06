@@ -84,7 +84,7 @@ if ((candidate_mode)); then
         exit 1
     }
     if grep -Eq 'production_(clean|crossproc)_gate_default|mr_gui_test_|mr_ci_emit|mr_start_reclaim_mock|mr_(xproc|cand)_test_' <<<"$candidate_symbols" ||
-       strings "$candidate_gui" | grep -Eq 'MEMREDUCT_CI|MEMREDUCT_TEST|P2C_FONT_CANDIDATE'; then
+       strings "$candidate_gui" | grep -E 'MEMREDUCT_CI|MEMREDUCT_TEST|P2C_FONT_CANDIDATE' >/dev/null; then
         echo 'Candidate GUI contains a disabled gate or test hook.' >&2
         exit 1
     fi
@@ -109,6 +109,12 @@ if ((have_xproc)); then
         exit 1
     }
     helper_protocol_marker="MR_XPROC_PROTOCOL_ABI=$expected_xproc_protocol;"
+    if ((candidate_mode)); then
+        strings "$candidate_gui" | grep -aF -- "$helper_protocol_marker" >/dev/null || {
+            echo "Candidate GUI protocol mismatch: expected $expected_xproc_protocol." >&2
+            exit 1
+        }
+    fi
     grep -aFq -- "$helper_protocol_marker" "$xproc_helper_source" || {
         echo "Crossproc helper protocol mismatch: expected $expected_xproc_protocol." >&2
         exit 1

@@ -68,3 +68,13 @@ Track p95 UI response, cold-cache re-read latency, memory available before/after
 | Normal-mode production GUI launch and GTK header-bar close | PASS | `MEMREDUCT_CI` and `MEMREDUCT_TEST` unset in private Xvfb; exit 0, no GTK/GDK warnings; this does not exercise Hyprland or a reclaim action |
 | Authorized protocol-v3 installation and post-install file verification | PASS | Only GUI and Crossproc helper were replaced; M0 helper and both Polkit policies retained their verified SHA-256; no reclaim operation was run |
 | Real Hyprland large-app reclaim and measured outcome | NOT RUN | Requires a separately authorized live operation against a verified target |
+
+## R5.1 PAGEOUT private-resident selection (2026-11-07)
+
+| Gate | Environment | Exercise | Pass condition |
+|---|---|---|---|
+| PAGEOUT estimate parser | fixture procfs | Parse per-VMA `Private_Clean` and `Private_Dirty` for both picker and helper | Same eligible VMA set and resident estimate; malformed/missing fields fail closed |
+| PAGEOUT page selection | fixture `pagemap` + syscall stub | Present+exclusive, present+nonexclusive, swapped, absent, missing `pagemap` | Only present exclusive pages form iovecs; shared/swapped/absent pages are skipped; no eligible page means zero syscall calls |
+| GUI limit explanation | isolated Xvfb simulation | Select a 1 GiB budget with a 192 MiB private-resident fixture | Effective request is 192 MiB and the confirmation identifies private resident estimate as the cap |
+| Protocol/build agreement | local production build | Build production GUI and helper from the same source header | Both embed protocol v4; production GUI contains no CI/test hooks |
+| Live large-request behavior | real Hyprland + explicit target approval | Run through GUI and Polkit on one verified app instance | NOT RUN by this local checkpoint; fixture PASS does not establish live reclaim or released RAM |

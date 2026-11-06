@@ -193,7 +193,7 @@ class ProductionBinaryTest(BuildMixin, unittest.TestCase):
     def test_binary_embeds_exact_protocol_abi_marker(self):
         with open(self.prod, "rb") as handle:
             binary = handle.read()
-        self.assertIn(b"MR_XPROC_PROTOCOL_ABI=3;", binary)
+        self.assertIn(b"MR_XPROC_PROTOCOL_ABI=4;", binary)
 
     def test_usage_errors_exit_2_and_print_nothing_to_stdout(self):
         cases = [
@@ -306,7 +306,7 @@ class FixtureProc:
         self.add(1, "init", 0, 1, ppid=0)
 
     def add(self, pid, name, uid, start_time, ppid=1, state="S", maps=FIXTURE_MAPS,
-            rss_kib=8192):
+            rss_kib=8192, private_resident_by_start=None, page_states=None):
         directory = os.path.join(self.root, str(pid))
         os.makedirs(directory, exist_ok=True)
         with open(os.path.join(directory, "status"), "w", encoding="utf-8") as handle:
@@ -333,6 +333,62 @@ class FixtureProc:
         if maps is not None:
             with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
                 handle.write(maps)
+            private_resident_by_start = private_resident_by_start or {}
+            page_states = page_states or {}
+
+            def pagemap_bits(state_value):
+                if state_value == "present":
+                    return (1 << 63) | (1 << 56)
+                if state_value == "present_nonexclusive":
+                    return 1 << 63
+                if state_value == "swapped":
+                    return 1 << 62
+                return 0
+
+            smaps_rows = []
+            with open(os.path.join(directory, "pagemap"), "wb") as pagemap:
+                for line in maps.splitlines():
+                    fields = line.split(maxsplit=5)
+                    if len(fields) < 5:
+                        continue
+                    start_text, end_text = fields[0].split("-", 1)
+                    start, end = int(start_text, 16), int(end_text, 16)
+                    perms, offset, device, inode = fields[1], int(fields[2], 16), fields[3], int(fields[4])
+                    name = fields[5] if len(fields) >= 6 else ""
+                    length = end - start
+                    eligible = (length > 0 and perms[0] == "r" and perms[3] == "p" and
+                                not (inode != 0 and perms[1] == "w") and not name.startswith("["))
+                    resident = private_resident_by_start.get(start, length if eligible else 0)
+                    if resident < 0 or resident > length or resident % 4096:
+                        raise ValueError("fixture private resident bytes must be page aligned and within the mapping")
+                    smaps_rows.append(
+                        f"{start:08x}-{end:08x} {perms} {offset:08x} {device} {inode} {name}\n"
+                        f"Size: {length // 1024} kB\nRss: {resident // 1024} kB\n"
+                        f"Private_Clean: 0 kB\nPrivate_Dirty: {resident // 1024} kB\n"
+                    )
+                    if eligible:
+                        pages = length // 4096
+                        resident_pages = resident // 4096
+                        if pages == 0:
+                            continue
+                        pagemap.truncate((end // 4096) * 8)
+                        for first in range(0, resident_pages, 8192):
+                            count = min(8192, resident_pages - first)
+                            values = bytearray(count * 8)
+                            for page_index in range(count):
+                                address = start + (first + page_index) * 4096
+                                state_value = page_states.get(address, "present")
+                                bits = pagemap_bits(state_value)
+                                struct.pack_into("=Q", values, page_index * 8, bits)
+                            pagemap.seek((start // 4096 + first) * 8)
+                            pagemap.write(values)
+                        for address, state_value in page_states.items():
+                            if start <= address < end:
+                                bits = pagemap_bits(state_value)
+                                pagemap.seek((address // 4096) * 8)
+                                pagemap.write(struct.pack("=Q", bits))
+            with open(os.path.join(directory, "smaps"), "w", encoding="utf-8") as handle:
+                handle.write("".join(smaps_rows))
         return directory
 
 
@@ -467,28 +523,28 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
                 self.assert_refused(result, "target_identity_changed")
 
     def test_reviewed_mapping_summary_must_still_match_after_authorization(self):
-        directory = self.tree.add(4242, "demo", 1000, 777)
+        self.tree.add(4242, "demo", 1000, 777)
         selected_token = fixture_identity_token(self.proc, 4242, 777, 1000)
         reviewed_summary = fixture_map_summary(self.proc, 4242)
-        with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
-            handle.write("00400000-00401000 r--p 00000000 00:00 0\n")
+        self.tree.add(4242, "demo", 1000, 777,
+                      maps="00400000-00401000 r--p 00000000 00:00 0\n")
         result = self.run_helper(4242, 777, 1048576,
                                  identity_token=selected_token,
                                  reviewed_summary=reviewed_summary)
         self.assert_refused(result, "target_mappings_changed")
 
     def test_exact_region_digest_rejects_same_size_different_mapping(self):
-        directory = self.tree.add(4242, "demo", 1000, 777)
+        self.tree.add(4242, "demo", 1000, 777)
         selected_summary = fixture_map_summary(self.proc, 4242)
-        with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
-            handle.write(textwrap.dedent("""\
+        changed_maps = textwrap.dedent("""\
                 01400000-01452000 r-xp 00000000 08:01 100 /usr/bin/demo
                 01651000-01652000 r--p 00051000 08:01 100 /usr/bin/demo
                 01652000-01653000 rw-p 00052000 08:01 100 /usr/bin/demo
                 02000000-02400000 rw-p 00000000 00:00 0
                 03000000-03001000 r-xp 00000000 00:00 0 [vdso]
                 04000000-04001000 rw-p 00000000 00:00 0 [stack]
-            """))
+            """)
+        self.tree.add(4242, "demo", 1000, 777, maps=changed_maps)
         self.assertEqual(fixture_map_summary(self.proc, 4242)[:2], selected_summary[:2])
         result = self.run_helper(4242, 777, 1048576, reviewed_summary=selected_summary)
         self.assert_refused(result, "target_mappings_changed")
@@ -697,7 +753,7 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         fields = self.parse(result.stdout)
         self.assertIsNotNone(fields, result.stdout + result.stderr)
         self.assertEqual(fields["status"], "no_regions", fields)
-        self.assertEqual(fields["reason"], "no_reclaimable_private_region")
+        self.assertEqual(fields["reason"], "no_private_resident_pages")
         self.assertEqual(fields["call_count"], "0")
         self.assertEqual(fields["advised_bytes"], "0")
         self.assertNotEqual(result.returncode, 0)
@@ -744,6 +800,7 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         self.assertEqual(fields["status"], "accepted", fields)
         self.assertLessEqual(int(fields["advised_bytes"]), 4096,
                              "a request must never exceed the byte budget")
+        self.assertEqual(fields["requested_bytes"], "4096")
 
     def test_one_gib_pageout_budget_covers_a_large_mapping_in_one_call(self):
         maps = "01000000-41000000 rw-p 00000000 00:00 0\n"
@@ -756,6 +813,65 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         self.assertEqual(fields["advised_bytes"], str(1024 * 1024 * 1024))
         self.assertEqual(fields["call_count"], "1")
 
+    def test_pageout_selects_only_present_pages_and_skips_swapped_pages(self):
+        maps = "01000000-01002000 rw-p 00000000 00:00 0\n"
+        self.tree.add(4242, "demo", 1000, 777, maps=maps,
+                      private_resident_by_start={0x01000000: 8192},
+                      page_states={0x01001000: "swapped"})
+        result = self.run_helper(4242, 777, 8192)
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "accepted", fields)
+        self.assertEqual(fields["requested_bytes"], "4096")
+        self.assertEqual(fields["advised_bytes"], "4096")
+        self.assertEqual(fields["call_count"], "1")
+        self.assertEqual(fields["reason"], "present_page_limit_request_capped")
+
+    def test_pageout_skips_present_pages_that_are_not_exclusively_mapped(self):
+        maps = "01000000-01002000 rw-p 00000000 00:00 0\n"
+        self.tree.add(4242, "demo", 1000, 777, maps=maps,
+                      private_resident_by_start={0x01000000: 8192},
+                      page_states={0x01000000: "present_nonexclusive"})
+        result = self.run_helper(4242, 777, 8192)
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "accepted", fields)
+        self.assertEqual(fields["requested_bytes"], "4096")
+        self.assertEqual(fields["advised_bytes"], "4096")
+        self.assertEqual(fields["call_count"], "1")
+        self.assertEqual(fields["reason"], "exclusive_private_page_limit_request_capped")
+
+    def test_pageout_refuses_when_only_present_pages_are_shared(self):
+        maps = "01000000-01001000 rw-p 00000000 00:00 0\n"
+        self.tree.add(4242, "demo", 1000, 777, maps=maps,
+                      private_resident_by_start={0x01000000: 4096},
+                      page_states={0x01000000: "present_nonexclusive"})
+        fields = self.parse(self.run_helper(4242, 777, 4096).stdout)
+        self.assertEqual(fields["status"], "no_regions", fields)
+        self.assertEqual(fields["reason"], "no_exclusively_mapped_private_pages")
+        self.assertEqual(fields["requested_bytes"], "0")
+        self.assertEqual(fields["call_count"], "0")
+        self.assertEqual(fields["advised_bytes"], "0")
+
+    def test_private_resident_estimate_with_no_present_page_refuses_before_syscall(self):
+        maps = "01000000-01001000 rw-p 00000000 00:00 0\n"
+        self.tree.add(4242, "demo", 1000, 777, maps=maps,
+                      private_resident_by_start={0x01000000: 4096},
+                      page_states={0x01000000: "absent"})
+        fields = self.parse(self.run_helper(4242, 777, 4096).stdout)
+        self.assertEqual(fields["status"], "no_regions", fields)
+        self.assertEqual(fields["reason"], "no_present_private_pages")
+        self.assertEqual(fields["requested_bytes"], "0")
+        self.assertEqual(fields["call_count"], "0")
+        self.assertEqual(fields["advised_bytes"], "0")
+
+    def test_unreadable_pagemap_refuses_without_call(self):
+        directory = self.tree.add(4242, "demo", 1000, 777)
+        os.unlink(os.path.join(directory, "pagemap"))
+        fields = self.parse(self.run_helper(4242, 777, 4096).stdout)
+        self.assertEqual(fields["status"], "refused", fields)
+        self.assertEqual(fields["reason"], "target_pagemap_unreadable")
+        self.assertEqual(fields["call_count"], "0")
+        self.assertEqual(fields["advised_bytes"], "0")
+
     def test_pageout_budget_is_capped_by_live_rss(self):
         maps = "01000000-41000000 rw-p 00000000 00:00 0\n"
         self.tree.add(4242, "demo", 1000, 777, maps=maps,
@@ -766,6 +882,33 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         self.assertEqual(fields["requested_bytes"], str(128 * 1024 * 1024))
         self.assertEqual(fields["advised_bytes"], str(128 * 1024 * 1024))
         self.assertEqual(fields["call_count"], "1")
+
+    def test_pageout_budget_is_capped_by_private_resident_pages(self):
+        maps = "01000000-41000000 rw-p 00000000 00:00 0\n"
+        resident = 64 * 1024 * 1024
+        self.tree.add(4242, "demo", 1000, 777, maps=maps,
+                      rss_kib=2 * 1024 * 1024,
+                      private_resident_by_start={0x01000000: resident})
+        fields = self.parse(self.run_helper(4242, 777, 1024 * 1024 * 1024).stdout)
+        self.assertEqual(fields["status"], "accepted", fields)
+        self.assertEqual(fields["requested_bytes"], str(resident))
+        self.assertEqual(fields["advised_bytes"], str(resident))
+        self.assertEqual(fields["reason"], "private_resident_limit_request_capped")
+        self.assertEqual(fields["call_count"], "1")
+
+    def test_pagemap_scan_limit_is_reported_without_calling_the_backend(self):
+        start = 0x01000000
+        end = start + 10 * 1024 * 1024 * 1024
+        late_page = start + 9 * 1024 * 1024 * 1024
+        maps = f"{start:08x}-{end:08x} rw-p 00000000 00:00 0\n"
+        self.tree.add(4242, "demo", 1000, 777, maps=maps,
+                      private_resident_by_start={start: 4096},
+                      page_states={start: "absent", late_page: "present"})
+        fields = self.parse(self.run_helper(4242, 777, 4096).stdout)
+        self.assertEqual(fields["status"], "no_regions", fields)
+        self.assertEqual(fields["reason"], "pagemap_scan_limit_no_present_pages")
+        self.assertEqual(fields["call_count"], "0")
+        self.assertEqual(fields["advised_bytes"], "0")
 
     def test_app_scope_reclaim_is_bounded_to_anon_file_charge_and_one_write(self):
         anon = 1024 * 1024 * 1024
@@ -787,6 +930,17 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         with open(os.path.join(scope, "memory.reclaim"), encoding="ascii") as handle:
             self.assertEqual(handle.read(), f"{1024 * 1024 * 1024}\n")
         self.assertIn("phase=helper_pre_scope_write", result.stderr)
+
+    def test_app_scope_reclaim_does_not_require_process_pagemap(self):
+        anon = 4 * 1024 * 1024
+        self.add_scope(anon_bytes=anon, file_bytes=0, current_bytes=anon)
+        directory = self.tree.add(4242, "demo", 1000, 777)
+        os.unlink(os.path.join(directory, "pagemap"))
+        result = self.run_helper(4242, 777, anon, mode="app_scope")
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "accepted", fields)
+        self.assertEqual(fields["requested_bytes"], str(anon))
+        self.assertEqual(fields["call_count"], "1")
 
     def test_app_scope_budget_is_limited_when_charge_is_below_one_gib(self):
         anon = 192 * 1024 * 1024
@@ -1039,7 +1193,7 @@ class DriverTest(unittest.TestCase):
               mode="pageout"):
         return (
             "MR_CROSSPROC_RESULT\n"
-            "protocol_version=3\n"
+            "protocol_version=4\n"
             f"mode={mode}\n"
             f"status={status}\n"
             f"reason={reason}\n"
@@ -1512,13 +1666,13 @@ class PolicyPreflightFileTest(unittest.TestCase):
         ) == 1
 
     def test_runtime_helper_probe_accepts_only_the_exact_protocol_marker(self):
-        self.assertTrue(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=3;"))
+        self.assertTrue(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=4;"))
         self.assertTrue(self.protocol_matches(
-            b"MR_XPROC_PROTOCOL_ABI=3;", prefix=b"x" * (4096 - 4)))
+            b"MR_XPROC_PROTOCOL_ABI=4;", prefix=b"x" * (4096 - 4)))
         self.assertFalse(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=2;"))
-        self.assertFalse(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=3-extra"))
+        self.assertFalse(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=4-extra"))
         self.assertFalse(self.protocol_matches(
-            b"MR_XPROC_PROTOCOL_ABI=3;", mode=0o755 | 0o020))
+            b"MR_XPROC_PROTOCOL_ABI=4;", mode=0o755 | 0o020))
 
 
 class SourceContractTest(unittest.TestCase):
@@ -1640,7 +1794,7 @@ class InstallSurfaceTest(unittest.TestCase):
         self.assertIn("incompatible protocol", gui)
         self.assertIn("协议不兼容", gui)
 
-    def candidate_preflight(self, helper_version):
+    def candidate_preflight(self, helper_version, gui_version=4):
         compiler = shutil.which("cc")
         if not compiler:
             self.skipTest("C compiler unavailable")
@@ -1675,6 +1829,7 @@ class InstallSurfaceTest(unittest.TestCase):
             os.chmod(path, 0o755)
         source = os.path.join(tmp.name, "candidate.c")
         with open(source, "w", encoding="utf-8") as handle:
+            handle.write(f'const char xproc_protocol_marker[] = "MR_XPROC_PROTOCOL_ABI={gui_version};";\n')
             handle.write(textwrap.dedent("""\
                 #include <stdint.h>
                 int64_t mr_production_clean_enabled(void) { return 1; }
@@ -1704,11 +1859,19 @@ class InstallSurfaceTest(unittest.TestCase):
             tmp.cleanup()
 
     def test_candidate_preflight_accepts_the_matching_crossproc_helper(self):
-        tmp, result = self.candidate_preflight(3)
+        tmp, result = self.candidate_preflight(4)
         try:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("helper_protocol=3", result.stdout)
+            self.assertIn("helper_protocol=4", result.stdout)
             self.assertIn("install=not_run", result.stdout)
+        finally:
+            tmp.cleanup()
+
+    def test_candidate_preflight_rejects_a_gui_with_a_stale_protocol_marker(self):
+        tmp, result = self.candidate_preflight(4, gui_version=3)
+        try:
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("Candidate GUI protocol mismatch", result.stderr)
         finally:
             tmp.cleanup()
 
@@ -1719,6 +1882,7 @@ class InstallSurfaceTest(unittest.TestCase):
         self.assertIn("mr_build_profile_m0_m1_candidate", build)
         self.assertIn("mr_build_profile_m0_m1_candidate", gate)
         self.assertIn("return mr_build_profile_m0_m1_candidate();", gate)
+        self.assertIn("Production GUI has a stale or missing Crossproc protocol marker", build)
 
     def test_production_manifests_swap_out_the_ci_gtk_window_wrapper(self):
         manifest = self.read("zam.toml")
