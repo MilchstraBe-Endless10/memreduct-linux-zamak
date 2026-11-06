@@ -1,5 +1,12 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-06 — R5 live RSS 解析修复；256 MiB 实测未执行
+
+- **根因与修复：**生产候选扫描器比较 `VmRSS` 单位时，把整份 `/proc/<pid>/status` 缓冲区中该行的换行后内容也带进字符串比较；当 `VmSwap` 等字段紧随其后，RSS 就保持为 `-1`，GUI 因而把 PAGEOUT 预算算成 0。扫描器现在逐行终止并解析，回归夹具特意在 `VmRSS` 后追加 `VmSwap`。
+- **复现与修复后证据：**23 项候选扫描回归通过；只读扫描当前隔离 Pinta 时，修复后的候选器正确返回约 11.5 MiB RSS 和约 1.64 GiB 映射长度。映射长度不是驻留量或回收量；同一时段 `/proc` RSS 约 11–14 MiB，scope `anon + file` 不足 1 MiB，约 1.06 GiB 进程页处于 Swap。目标不足 256 MiB 驻留，故本轮没有 Polkit/helper 请求，也没有 `process_madvise` 或 `memory.reclaim` 调用。
+- **验证：**治理 34 项通过；Python/C 233 项通过、1 项因文件系统超长路径限制跳过；Zamak 0.2.0 `check`、`test`（82 项）、`build` 和 `scripts/build-arch.sh` 均通过；新生产候选 GUI SHA-256 为 `262055157c8620a436683d05e36960bca99cc8412e95f9dfdb659eb4f160f4b8`。已安装 R5 GUI 与 helper 的 SHA 保持不变；未安装本地修复、未操作 Hyprland 窗口、未清理缓存或 Swap/ZRAM。
+- **剩余阻塞：**当前隔离目标没有足够驻留页，真实 256 MiB 回收尚不可执行；当前会话没有可用的原生桌面输入 API，不能替用户触发重载/重绘来人为恢复目标驻留页。需在同一已批准实例自然回到足够 RSS 后，经正常 GUI 重新确认身份和额度，才可进行一次真实请求。整页 UI 1:1 仍 NOT PASS。
+
 ## 2026-11-06 — R5 经授权完成两文件安装
 
 - **操作范围：**收到所有者对 R5 新哈希的授权后，通过一次 `pkexec` 只替换 `/usr/bin/memreduct-zamak` 与 `/usr/libexec/memreduct-zamak-crossproc-helper`。更新前的文件已备份；安装脚本固定路径/旧新 SHA，并验证已有 M0 helper 与两份 Polkit policy 不变。没有安装其它服务或修改系统配置。

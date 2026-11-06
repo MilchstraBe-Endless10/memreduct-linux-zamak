@@ -99,7 +99,7 @@ class CandidateScannerTest(unittest.TestCase):
         directory = self._add_stat(pid, name, 1, 77)
         uid_text = "\t".join(map(str, uids))
         with open(os.path.join(directory, "status"), "w", encoding="utf-8") as handle:
-            handle.write(f"Name:\t{name}\nState:\t{state}\nUid:\t{uid_text}\nVmRSS:\t4096 kB\n")
+            handle.write(f"Name:\t{name}\nState:\t{state}\nUid:\t{uid_text}\nVmRSS:\t4096 kB\nVmSwap:\t1024 kB\n")
         with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
             handle.write("00400000-00401000 r--p 00000000 00:00 0\n")
         exe_path = os.path.join(directory, "exe")

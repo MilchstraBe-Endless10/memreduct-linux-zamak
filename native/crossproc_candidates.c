@@ -248,8 +248,13 @@ static int read_status(int32_t pid, struct cand_status *out)
     if (read_text(path, buffer, sizeof(buffer)) != 0) {
         return -1;
     }
-    const char *line = buffer;
+    char *line = buffer;
     while (line != NULL && *line != '\0') {
+        char *next = strchr(line, '\n');
+        if (next != NULL) {
+            *next = '\0';
+            next++;
+        }
         if (strncmp(line, "Name:", 5) == 0) {
             const char *value = line + 5;
             while (*value == ' ' || *value == '\t') {
@@ -324,13 +329,12 @@ static int read_status(int32_t pid, struct cand_status *out)
             const char *unit = amount_end;
             while (*unit == ' ' || *unit == '\t') unit++;
             if (parse_decimal(value, (size_t)(amount_end - value), &kib) == 0 &&
-                strcmp(unit, "kB\n") == 0 && kib <= (uint64_t)INT64_MAX / 1024u) {
+                strcmp(unit, "kB") == 0 && kib <= (uint64_t)INT64_MAX / 1024u) {
                 out->rss_bytes = (int64_t)(kib * 1024u);
                 out->have_rss = 1;
             }
         }
-        const char *next = strchr(line, '\n');
-        line = next == NULL ? NULL : next + 1;
+        line = next;
     }
     return (out->have_name && out->have_uid && out->have_state) ? 0 : -1;
 }
