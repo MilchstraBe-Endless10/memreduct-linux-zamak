@@ -9,6 +9,7 @@ The point of every assertion is the same: an outcome the program cannot prove is
 never reported as success.
 """
 
+import errno
 import os
 import re
 import shutil
@@ -63,10 +64,12 @@ class BuildMixin:
         )
         cls.credentials = ctypes.CDLL(cls.credentials_probe)
         cls.credentials.mr_xproc_test_validate_helper_credentials.argtypes = [
-            ctypes.c_uint64, ctypes.c_uint64, ctypes.c_int, ctypes.c_char_p,
+            ctypes.c_uint64, ctypes.c_uint64, ctypes.c_char_p,
             ctypes.POINTER(ctypes.c_uint64),
         ]
         cls.credentials.mr_xproc_test_validate_helper_credentials.restype = ctypes.c_char_p
+        cls.credentials.mr_xproc_test_validate_pageout_capability.argtypes = [ctypes.c_int]
+        cls.credentials.mr_xproc_test_validate_pageout_capability.restype = ctypes.c_char_p
         cls.credentials.mr_xproc_test_target_is_self.argtypes = [
             ctypes.c_int32, ctypes.c_int32,
         ]
@@ -190,19 +193,21 @@ class ProductionBinaryTest(BuildMixin, unittest.TestCase):
     def test_binary_embeds_exact_protocol_abi_marker(self):
         with open(self.prod, "rb") as handle:
             binary = handle.read()
-        self.assertIn(b"MR_XPROC_PROTOCOL_ABI=2;", binary)
+        self.assertIn(b"MR_XPROC_PROTOCOL_ABI=3;", binary)
 
     def test_usage_errors_exit_2_and_print_nothing_to_stdout(self):
         cases = [
             [],
             ["reclaim"],
-            ["reclaim", "1234"],
-            ["reclaim", "1234", "5"],
+            ["reclaim", "pageout"],
+            ["reclaim", "pageout", "1234"],
+            ["reclaim", "pageout", "1234", "5"],
             ["poke", "1234", "5", "4096"],
-            ["reclaim", "1234", "5", "4096", "extra"],
-            ["reclaim", "12x4", "5", "1000", "1", "4096", "1", "4096"],
-            ["reclaim", "1234", "-5", "1000", "1", "4096", "1", "4096"],
-            ["reclaim", "1234", "5", "1000", "1", "4096", "1", "0"],
+            ["reclaim", "bad-mode", "1234", "5", "1000", "1", "2", "3", "4096", "1", "4096"],
+            ["reclaim", "pageout", "1234", "5", "4096", "extra"],
+            ["reclaim", "pageout", "12x4", "5", "1000", "1", "2", "3", "4096", "1", "4096"],
+            ["reclaim", "pageout", "1234", "-5", "1000", "1", "2", "3", "4096", "1", "4096"],
+            ["reclaim", "pageout", "1234", "5", "1000", "1", "2", "3", "4096", "1", "0"],
         ]
         for argv in cases:
             with self.subTest(argv=argv):
@@ -216,24 +221,24 @@ class ProductionBinaryTest(BuildMixin, unittest.TestCase):
         for pid in ("0", "1"):
             with self.subTest(pid=pid):
                 result = subprocess.run(
-                    [self.prod, "reclaim", "987654321", pid, "5", "1000",
+                    [self.prod, "reclaim", "pageout", "987654321", pid, "5", "1000",
                      "1", "2", "3", "4096", "1", "4096"],
                     capture_output=True, text=True, timeout=10,
                 )
                 self.assertEqual(result.returncode, 2)
 
     def test_budget_above_ceiling_is_a_usage_error(self):
-        # 64 MiB is the ceiling; one byte more must not parse.
+        # 1 GiB is the hard ceiling; one byte more must not parse.
         result = subprocess.run(
-            [self.prod, "reclaim", "987654321", "1234", "5", "1000",
-             "1", "2", "3", "4096", "1", str(64 * 1024 * 1024 + 1)],
+            [self.prod, "reclaim", "pageout", "987654321", "1234", "5", "1000",
+             "1", "2", "3", "4096", "1", str(1024 * 1024 * 1024 + 1)],
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 2)
 
     def test_unprivileged_run_refuses_and_never_claims_a_target_was_inspected(self):
         result = subprocess.run(
-            [self.prod, "reclaim", "987654321", "2", "5", "1000",
+            [self.prod, "reclaim", "pageout", "987654321", "2", "5", "1000",
              "1", "2", "3", "4096", "1", "1048576"],
             capture_output=True, text=True, timeout=10,
         )
@@ -261,11 +266,14 @@ class ProductionBinaryTest(BuildMixin, unittest.TestCase):
             blob = handle.read()
         for marker in (
             b"MEMREDUCT_TEST_PROC_ROOT",
+            b"MEMREDUCT_TEST_CGROUP_ROOT",
+            b"MEMREDUCT_TEST_SCOPE_WRITE_RESULT",
             b"MEMREDUCT_TEST_SKIP_PRIVILEGE",
             b"MEMREDUCT_TEST_SKIP_REQUESTER",
             b"MEMREDUCT_TEST_BACKEND",
             b"mr_xproc_test_target_is_self",
             b"mr_xproc_test_validate_helper_credentials",
+            b"mr_xproc_test_validate_pageout_capability",
         ):
             self.assertNotIn(marker, blob, f"{marker!r} leaking into the production binary")
 
@@ -297,13 +305,15 @@ class FixtureProc:
         os.makedirs(os.path.join(root, "1"), exist_ok=True)
         self.add(1, "init", 0, 1, ppid=0)
 
-    def add(self, pid, name, uid, start_time, ppid=1, state="S", maps=FIXTURE_MAPS):
+    def add(self, pid, name, uid, start_time, ppid=1, state="S", maps=FIXTURE_MAPS,
+            rss_kib=8192):
         directory = os.path.join(self.root, str(pid))
         os.makedirs(directory, exist_ok=True)
         with open(os.path.join(directory, "status"), "w", encoding="utf-8") as handle:
             handle.write(f"Name:\t{name}\n")
             handle.write(f"State:\t{state}\n")
             handle.write(f"Uid:\t{uid}\t{uid}\t{uid}\t{uid}\n")
+            handle.write(f"VmRSS:\t{rss_kib} kB\nVmSwap:\t1024 kB\n")
         # stat: pid (comm) state ppid ... field 22 = start_time.
         # Fields after ')' are: state, ppid, then 17 more before start_time.
         rest = [state, str(ppid)] + ["0"] * 17 + [str(start_time)]
@@ -336,6 +346,7 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
 
     def setUp(self):
         self.proc = tempfile.mkdtemp(prefix="memreduct-proc-")
+        self.cgroups = tempfile.mkdtemp(prefix="memreduct-cgroup-")
         self.tree = FixtureProc(self.proc)
         # pidfd_open() cannot succeed for a fixture-only PID, so the test build
         # is given a private file to open instead. It is not a pidfd and is
@@ -346,16 +357,42 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.proc, ignore_errors=True)
+        shutil.rmtree(self.cgroups, ignore_errors=True)
+
+    def add_scope(self, process_name="demo", anon_bytes=512 * 1024 * 1024,
+                  file_bytes=512 * 1024 * 1024, current_bytes=1024 * 1024 * 1024,
+                  swap_bytes=0, members=(4242,)):
+        scope = os.path.join(
+            self.cgroups, "user.slice", "user-1000.slice", "user@1000.service",
+            "app.slice", f"app-{process_name}.scope",
+        )
+        os.makedirs(scope, exist_ok=True)
+        with open(os.path.join(scope, "cgroup.procs"), "w", encoding="ascii") as handle:
+            handle.write("".join(f"{pid}\n" for pid in members))
+        with open(os.path.join(scope, "memory.current"), "w", encoding="ascii") as handle:
+            handle.write(f"{current_bytes}\n")
+        with open(os.path.join(scope, "memory.stat"), "w", encoding="ascii") as handle:
+            handle.write(f"anon {anon_bytes}\nfile {file_bytes}\nslab 4096\n")
+        with open(os.path.join(scope, "memory.swap.current"), "w", encoding="ascii") as handle:
+            handle.write(f"{swap_bytes}\n")
+        with open(os.path.join(scope, "memory.reclaim"), "w", encoding="ascii") as handle:
+            handle.write("")
+        return scope
 
     def run_helper(self, pid, start_time, max_bytes, env_extra=None, uid_env="1000",
                    selected_uid=1000, identity_token=None, reviewed_summary=None,
-                   request_id=987654321, scope_token=None, region_digest=None):
+                   request_id=987654321, scope_token=None, region_digest=None,
+                   mode="pageout"):
         env = {
             "PATH": "/usr/bin:/bin",
             "MEMREDUCT_TEST_PROC_ROOT": self.proc,
+            "MEMREDUCT_TEST_CGROUP_ROOT": self.cgroups,
             "MEMREDUCT_TEST_SKIP_PRIVILEGE": "1",
             "MEMREDUCT_TEST_SKIP_CAPABILITY": "1",
-            "MEMREDUCT_TEST_SKIP_REQUESTER": "1",
+            # App-scope validation needs the real selected UID from the
+            # pkexec model; using the generic skipped requester (UID 1) would
+            # correctly reject a UID 1000 fixture's cgroup path.
+            "MEMREDUCT_TEST_SKIP_REQUESTER": "0" if mode == "app_scope" else "1",
             # The ancestry walk starts at the helper's own PID, which no fixture
             # tree can contain. Its own behaviour is asserted separately in
             # test_ancestry_walk_refuses_an_unprovable_chain.
@@ -381,7 +418,7 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         selected_scope_token = fixture_scope_token(self.proc, pid) if scope_token is None else scope_token
         selected_region_digest = reviewed_digest if region_digest is None else region_digest
         return subprocess.run(
-            [self.test, "reclaim", str(request_id), str(pid), str(start_time),
+            [self.test, "reclaim", mode, str(request_id), str(pid), str(start_time),
              str(selected_uid), str(token), str(selected_scope_token),
              str(selected_region_digest), str(reviewed_bytes), str(reviewed_regions),
              str(max_bytes)],
@@ -608,29 +645,34 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
     def test_pkexec_uses_root_for_both_real_and_effective_uid(self):
         requester = ctypes.c_uint64()
         reason = self.credentials.mr_xproc_test_validate_helper_credentials(
-            0, 0, 1, b"1000", ctypes.byref(requester)
+            0, 0, b"1000", ctypes.byref(requester)
         )
         self.assertIsNone(reason)
         self.assertEqual(requester.value, 1000)
 
     def test_invalid_credentials_and_pkexec_uid_claims_are_rejected(self):
         cases = (
-            (1000, 0, 1, b"1000", "invalid_pkexec_root_credentials"),
-            (0, 1000, 1, b"1000", "not_root"),
-            (0, 0, 0, b"1000", "missing_cap_sys_nice"),
-            (0, 0, -1, b"1000", "capget_failed"),
-            (0, 0, 1, None, "not_launched_via_pkexec"),
-            (0, 0, 1, b"", "not_launched_via_pkexec"),
-            (0, 0, 1, b"abc", "malformed_requester_uid"),
-            (0, 0, 1, b"4294967296", "malformed_requester_uid"),
-            (0, 0, 1, b"0", "invalid_requester_uid"),
+            (1000, 0, b"1000", "invalid_pkexec_root_credentials"),
+            (0, 1000, b"1000", "not_root"),
+            (0, 0, None, "not_launched_via_pkexec"),
+            (0, 0, b"", "not_launched_via_pkexec"),
+            (0, 0, b"abc", "malformed_requester_uid"),
+            (0, 0, b"4294967296", "malformed_requester_uid"),
+            (0, 0, b"0", "invalid_requester_uid"),
         )
-        for real_uid, effective_uid, capability, claim, expected in cases:
+        for real_uid, effective_uid, claim, expected in cases:
             with self.subTest(real_uid=real_uid, effective_uid=effective_uid, claim=claim):
                 requester = ctypes.c_uint64()
                 reason = self.credentials.mr_xproc_test_validate_helper_credentials(
-                    real_uid, effective_uid, capability, claim, ctypes.byref(requester)
+                    real_uid, effective_uid, claim, ctypes.byref(requester)
                 )
+                self.assertEqual(reason.decode() if reason else None, expected)
+
+    def test_capability_requirement_is_specific_to_pageout(self):
+        for value, expected in ((1, None), (0, "missing_cap_sys_nice"),
+                                (-1, "capget_failed")):
+            with self.subTest(value=value):
+                reason = self.credentials.mr_xproc_test_validate_pageout_capability(value)
                 self.assertEqual(reason.decode() if reason else None, expected)
 
     def test_ancestry_walk_refuses_an_unprovable_chain(self):
@@ -647,7 +689,6 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
     def test_no_reclaimable_region_is_reported_as_such_not_as_success(self):
         maps = textwrap.dedent("""\
             00400000-00452000 rw-p 00000000 08:01 100 /usr/bin/demo
-            01000000-01400000 rw-p 00000000 00:00 0
             02000000-02400000 r--s 00000000 08:01 100 /usr/lib/shared.dat
             04000000-04001000 rw-p 00000000 00:00 0 [stack]
             """)
@@ -703,6 +744,129 @@ class FixtureTreeTest(BuildMixin, unittest.TestCase):
         self.assertEqual(fields["status"], "accepted", fields)
         self.assertLessEqual(int(fields["advised_bytes"]), 4096,
                              "a request must never exceed the byte budget")
+
+    def test_one_gib_pageout_budget_covers_a_large_mapping_in_one_call(self):
+        maps = "01000000-41000000 rw-p 00000000 00:00 0\n"
+        self.tree.add(4242, "demo", 1000, 777, maps=maps,
+                      rss_kib=2 * 1024 * 1024)
+        result = self.run_helper(4242, 777, 1024 * 1024 * 1024)
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "accepted", fields)
+        self.assertEqual(fields["requested_bytes"], str(1024 * 1024 * 1024))
+        self.assertEqual(fields["advised_bytes"], str(1024 * 1024 * 1024))
+        self.assertEqual(fields["call_count"], "1")
+
+    def test_pageout_budget_is_capped_by_live_rss(self):
+        maps = "01000000-41000000 rw-p 00000000 00:00 0\n"
+        self.tree.add(4242, "demo", 1000, 777, maps=maps,
+                      rss_kib=128 * 1024)
+        result = self.run_helper(4242, 777, 1024 * 1024 * 1024)
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "accepted", fields)
+        self.assertEqual(fields["requested_bytes"], str(128 * 1024 * 1024))
+        self.assertEqual(fields["advised_bytes"], str(128 * 1024 * 1024))
+        self.assertEqual(fields["call_count"], "1")
+
+    def test_app_scope_reclaim_is_bounded_to_anon_file_charge_and_one_write(self):
+        anon = 1024 * 1024 * 1024
+        file = 512 * 1024 * 1024
+        scope = self.add_scope(anon_bytes=anon, file_bytes=file,
+                               current_bytes=anon + file + 4096)
+        self.tree.add(4242, "demo", 1000, 777, rss_kib=2 * 1024 * 1024)
+        result = self.run_helper(4242, 777, 1024 * 1024 * 1024,
+                                 mode="app_scope",
+                                 env_extra={"MEMREDUCT_TEST_SKIP_CAPABILITY": "0"})
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "accepted", fields)
+        self.assertEqual(fields["mode"], "app_scope")
+        self.assertEqual(fields["requested_bytes"], str(1024 * 1024 * 1024))
+        self.assertEqual(fields["advised_bytes"], "0")
+        self.assertEqual(fields["regions"], "0")
+        self.assertEqual(fields["call_count"], "1")
+        self.assertEqual(fields["scope_current_before_bytes"], str(anon + file + 4096))
+        with open(os.path.join(scope, "memory.reclaim"), encoding="ascii") as handle:
+            self.assertEqual(handle.read(), f"{1024 * 1024 * 1024}\n")
+        self.assertIn("phase=helper_pre_scope_write", result.stderr)
+
+    def test_app_scope_budget_is_limited_when_charge_is_below_one_gib(self):
+        anon = 192 * 1024 * 1024
+        file = 64 * 1024 * 1024
+        scope = self.add_scope(anon_bytes=anon, file_bytes=file,
+                               current_bytes=anon + file + 4096)
+        self.tree.add(4242, "demo", 1000, 777, rss_kib=2 * 1024 * 1024)
+        result = self.run_helper(4242, 777, 1024 * 1024 * 1024,
+                                 mode="app_scope")
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "accepted", fields)
+        self.assertEqual(fields["requested_bytes"], str(anon + file))
+        with open(os.path.join(scope, "memory.reclaim"), encoding="ascii") as handle:
+            self.assertEqual(handle.read(), f"{anon + file}\n")
+
+    def test_app_scope_rejects_child_cgroups_before_writing(self):
+        scope = self.add_scope()
+        os.makedirs(os.path.join(scope, "nested.scope"))
+        self.tree.add(4242, "demo", 1000, 777)
+        result = self.run_helper(4242, 777, 1024 * 1024 * 1024,
+                                 mode="app_scope")
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "scope_unavailable", fields)
+        self.assertEqual(fields["call_count"], "0")
+        with open(os.path.join(scope, "memory.reclaim"), encoding="ascii") as handle:
+            self.assertEqual(handle.read(), "")
+
+    def test_app_scope_accepts_multiple_verified_members_in_the_same_scope(self):
+        scope = self.add_scope(members=(4242, 4243))
+        self.tree.add(4242, "demo", 1000, 777)
+        other = self.tree.add(4243, "renderer", 1000, 778)
+        with open(os.path.join(other, "cgroup"), "w", encoding="ascii") as handle:
+            handle.write(
+                "0::/user.slice/user-1000.slice/user@1000.service/"
+                "app.slice/app-demo.scope\n"
+            )
+        result = self.run_helper(4242, 777, 1024 * 1024 * 1024,
+                                 mode="app_scope")
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "accepted", fields)
+        self.assertEqual(fields["call_count"], "1")
+        with open(os.path.join(scope, "memory.reclaim"), encoding="ascii") as handle:
+            self.assertEqual(handle.read(), f"{1024 * 1024 * 1024}\n")
+
+    def test_app_scope_rejects_a_member_from_another_scope_before_writing(self):
+        scope = self.add_scope(members=(4242, 4243))
+        self.tree.add(4242, "demo", 1000, 777)
+        self.tree.add(4243, "other", 1000, 778)
+        result = self.run_helper(4242, 777, 1024 * 1024 * 1024,
+                                 mode="app_scope")
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "scope_unavailable", fields)
+        self.assertEqual(fields["reason"], "app_scope_membership_unverifiable")
+        self.assertEqual(fields["call_count"], "0")
+        with open(os.path.join(scope, "memory.reclaim"), encoding="ascii") as handle:
+            self.assertEqual(handle.read(), "")
+
+    def test_app_scope_eagain_is_partial_and_is_not_retried(self):
+        self.add_scope()
+        self.tree.add(4242, "demo", 1000, 777)
+        result = self.run_helper(4242, 777, 1024 * 1024 * 1024,
+                                 mode="app_scope",
+                                 env_extra={"MEMREDUCT_TEST_SCOPE_WRITE_RESULT": "eagain"})
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "partial", fields)
+        self.assertEqual(fields["reason"], "scope_reclaim_shortfall")
+        self.assertEqual(fields["error_code"], str(errno.EAGAIN))
+        self.assertEqual(fields["call_count"], "1")
+
+    def test_app_scope_short_write_is_uncertain_and_is_not_retried(self):
+        self.add_scope()
+        self.tree.add(4242, "demo", 1000, 777)
+        result = self.run_helper(4242, 777, 1024 * 1024 * 1024,
+                                 mode="app_scope",
+                                 env_extra={"MEMREDUCT_TEST_SCOPE_WRITE_RESULT": "short"})
+        fields = self.parse(result.stdout)
+        self.assertEqual(fields["status"], "unknown", fields)
+        self.assertEqual(fields["reason"], "scope_reclaim_outcome_uncertain")
+        self.assertEqual(fields["error_code"], str(errno.EIO))
+        self.assertEqual(fields["call_count"], "1")
 
 
 class ProductionBridgeTest(unittest.TestCase):
@@ -794,10 +958,10 @@ class DriverTest(unittest.TestCase):
 
                 int64_t mr_xproc_test_classify_expected(
                     const char *, int64_t, int64_t, int64_t, int64_t, int64_t,
-                    int64_t, int64_t, int64_t);
+                    int64_t, int64_t, int64_t, int64_t);
 
                 int main(int argc, char **argv) {
-                    if (argc != 3 && argc != 10) return 2;
+                    if (argc != 3 && argc != 11) return 2;
                     FILE *f = fopen(argv[1], "rb");
                     static char buffer[8192];
                     size_t used = 0;
@@ -807,13 +971,13 @@ class DriverTest(unittest.TestCase):
                     }
                     buffer[used] = '\\0';
                     long code = strtol(argv[2], NULL, 10);
-                    if (argc == 10) {
-                        long long values[7];
-                        for (int index = 0; index < 7; index++)
+                    if (argc == 11) {
+                        long long values[8];
+                        for (int index = 0; index < 8; index++)
                             values[index] = strtoll(argv[index + 3], NULL, 10);
                         long verdict = mr_xproc_test_classify_expected(
                             buffer, code, values[0], values[1], values[2], values[3],
-                            values[4], values[5], values[6]);
+                            values[4], values[5], values[6], values[7]);
                         printf("verdict=%ld\\n", verdict);
                         return 0;
                     }
@@ -871,10 +1035,12 @@ class DriverTest(unittest.TestCase):
 
     @staticmethod
     def block(status, reason="none", advised=1048576, requested=1048576,
-              regions=1, error=0, calls=1, pid=4242, verified="true", uid="1000"):
+              regions=1, error=0, calls=1, pid=4242, verified="true", uid="1000",
+              mode="pageout"):
         return (
             "MR_CROSSPROC_RESULT\n"
-            "protocol_version=2\n"
+            "protocol_version=3\n"
+            f"mode={mode}\n"
             f"status={status}\n"
             f"reason={reason}\n"
             "request_id=987654321\n"
@@ -904,6 +1070,18 @@ class DriverTest(unittest.TestCase):
             "skipped_budget=0\n"
             "skipped_malformed=0\n"
             "bytes_advised_is_not_bytes_freed=true\n"
+            "target_rss_before_kib=8192\n"
+            "target_rss_after_kib=4096\n"
+            "target_swap_before_kib=1024\n"
+            "target_swap_after_kib=2048\n"
+            "scope_current_before_bytes=unavailable\n"
+            "scope_current_after_bytes=unavailable\n"
+            "scope_anon_before_bytes=unavailable\n"
+            "scope_anon_after_bytes=unavailable\n"
+            "scope_file_before_bytes=unavailable\n"
+            "scope_file_after_bytes=unavailable\n"
+            "scope_swap_before_bytes=unavailable\n"
+            "scope_swap_after_bytes=unavailable\n"
         )
 
     def test_accepted_with_one_call_and_nonzero_bytes(self):
@@ -914,7 +1092,7 @@ class DriverTest(unittest.TestCase):
         self.assertEqual(fields["verified"], "1")
 
     def test_accepted_result_must_match_the_selected_request_and_target(self):
-        target = [987654321, 4242, 777, 1000, 1111, 2222, 3333]
+        target = [987654321, 4242, 777, 1000, 1111, 2222, 3333, 1048576]
         self.assertEqual(self.classify_expected(self.block("accepted"), 0, target), 0)
         for index, label in enumerate(("request", "pid", "start_time", "uid",
                                        "identity", "scope", "region_digest")):
@@ -924,6 +1102,11 @@ class DriverTest(unittest.TestCase):
                 self.assertEqual(
                     self.classify_expected(self.block("accepted"), 0, changed), 9,
                 )
+
+        undersized_budget = list(target)
+        undersized_budget[7] -= 1
+        self.assertEqual(self.classify_expected(self.block("accepted"), 0,
+                                                undersized_budget), 9)
 
         for field in ("observed_identity_hash", "observed_scope_hash",
                       "observed_region_digest"):
@@ -940,6 +1123,40 @@ class DriverTest(unittest.TestCase):
         fields = self.classify(self.block("partial", advised=4096), 0)
         self.assertEqual(fields["verdict"], "1")  # MR_XPROC_POLL_PARTIAL
         self.assertEqual(fields["advised"], "4096")
+
+    def test_one_gib_pageout_result_is_parsed_without_truncation(self):
+        one_gib = 1024 * 1024 * 1024
+        fields = self.classify(self.block("accepted", advised=one_gib,
+                                          requested=one_gib), 0)
+        self.assertEqual(fields["verdict"], "0")
+        self.assertEqual(fields["advised"], str(one_gib))
+        self.assertEqual(fields["requested"], str(one_gib))
+
+    def test_pageout_advice_cannot_exceed_or_understate_a_full_acceptance(self):
+        one_gib = 1024 * 1024 * 1024
+        for status, advised, requested in (
+            ("accepted", one_gib + 1, one_gib),
+            ("partial", one_gib + 1, one_gib),
+            ("accepted", one_gib - 1, one_gib),
+        ):
+            with self.subTest(status=status, advised=advised, requested=requested):
+                fields = self.classify(self.block(status, advised=advised,
+                                                  requested=requested), 0)
+                self.assertEqual(fields["verdict"], "9")
+
+    def test_scope_reclaim_reports_the_write_request_without_fake_advised_bytes(self):
+        one_gib = 1024 * 1024 * 1024
+        fields = self.classify(self.block("accepted", advised=0, requested=one_gib,
+                                          mode="app_scope"), 0)
+        self.assertEqual(fields["verdict"], "0")
+        self.assertEqual(fields["advised"], "0")
+        self.assertEqual(fields["requested"], str(one_gib))
+        fields = self.classify(self.block("accepted", advised=1, requested=one_gib,
+                                          mode="app_scope"), 0)
+        self.assertEqual(fields["verdict"], "9")
+        fields = self.classify(self.block("partial", advised=0, requested=one_gib,
+                                          mode="app_scope"), 0)
+        self.assertEqual(fields["verdict"], "1")
 
     def test_zero_bytes_cannot_be_accepted(self):
         # A claimed acceptance with no covered bytes contradicts itself.
@@ -1064,11 +1281,11 @@ static void show(const char *label, int64_t rc)
 
 int main(void)
 {
-    show("gate_off", mr_xproc_start(123, 1192, 11338, 1000, 1, 2, 3, 4096, 1, 16 * 1024 * 1024));
-    show("bad_pid", mr_xproc_start(123, 0, 11338, 1000, 1, 2, 3, 4096, 1, 16 * 1024 * 1024));
-    show("bad_start", mr_xproc_start(123, 1192, 0, 1000, 1, 2, 3, 4096, 1, 16 * 1024 * 1024));
-    show("bad_budget", mr_xproc_start(123, 1192, 11338, 1000, 1, 2, 3, 4096, 1, 0));
-    show("over_ceiling", mr_xproc_start(123, 1192, 11338, 1000, 1, 2, 3, 4096, 1, 64 * 1024 * 1024 + 1));
+    show("gate_off", mr_xproc_start(123, MR_XPROC_MODE_PROCESS_PAGEOUT, 1192, 11338, 1000, 1, 2, 3, 4096, 1, 256 * 1024 * 1024));
+    show("bad_pid", mr_xproc_start(123, MR_XPROC_MODE_PROCESS_PAGEOUT, 0, 11338, 1000, 1, 2, 3, 4096, 1, 256 * 1024 * 1024));
+    show("bad_start", mr_xproc_start(123, MR_XPROC_MODE_PROCESS_PAGEOUT, 1192, 0, 1000, 1, 2, 3, 4096, 1, 256 * 1024 * 1024));
+    show("bad_budget", mr_xproc_start(123, MR_XPROC_MODE_PROCESS_PAGEOUT, 1192, 11338, 1000, 1, 2, 3, 4096, 1, 0));
+    show("over_ceiling", mr_xproc_start(123, MR_XPROC_MODE_PROCESS_PAGEOUT, 1192, 11338, 1000, 1, 2, 3, 4096, 1, 1024ll * 1024ll * 1024ll + 1));
     printf("idle %lld\\n", (long long)mr_xproc_poll());
     return 0;
 }
@@ -1295,13 +1512,13 @@ class PolicyPreflightFileTest(unittest.TestCase):
         ) == 1
 
     def test_runtime_helper_probe_accepts_only_the_exact_protocol_marker(self):
-        self.assertTrue(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=2;"))
+        self.assertTrue(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=3;"))
         self.assertTrue(self.protocol_matches(
-            b"MR_XPROC_PROTOCOL_ABI=2;", prefix=b"x" * (4096 - 4)))
-        self.assertFalse(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=1;"))
-        self.assertFalse(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=2-extra"))
+            b"MR_XPROC_PROTOCOL_ABI=3;", prefix=b"x" * (4096 - 4)))
+        self.assertFalse(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=2;"))
+        self.assertFalse(self.protocol_matches(b"MR_XPROC_PROTOCOL_ABI=3-extra"))
         self.assertFalse(self.protocol_matches(
-            b"MR_XPROC_PROTOCOL_ABI=2;", mode=0o755 | 0o020))
+            b"MR_XPROC_PROTOCOL_ABI=3;", mode=0o755 | 0o020))
 
 
 class SourceContractTest(unittest.TestCase):
@@ -1487,10 +1704,10 @@ class InstallSurfaceTest(unittest.TestCase):
             tmp.cleanup()
 
     def test_candidate_preflight_accepts_the_matching_crossproc_helper(self):
-        tmp, result = self.candidate_preflight(2)
+        tmp, result = self.candidate_preflight(3)
         try:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("helper_protocol=2", result.stdout)
+            self.assertIn("helper_protocol=3", result.stdout)
             self.assertIn("install=not_run", result.stdout)
         finally:
             tmp.cleanup()

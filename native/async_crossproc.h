@@ -31,6 +31,11 @@ enum mr_xproc_start {
     MR_XPROC_START_LAUNCH_FAILED = 3
 };
 
+enum mr_xproc_mode {
+    MR_XPROC_MODE_PROCESS_PAGEOUT = 0,
+    MR_XPROC_MODE_APP_SCOPE = 1
+};
+
 /* Poll results. Negative values are nonterminal. The terminal set keeps four
  * kinds of "no" apart, because they need four different sentences:
  *   - we refused before spawning (REFUSED_LOCAL);
@@ -96,7 +101,7 @@ int64_t mr_xproc_audit_confirmation(int64_t request_id, int64_t pid,
                                     int64_t start_time, int64_t uid,
                                     int64_t scope_hash, int64_t identity_hash,
                                     int64_t region_digest);
-int64_t mr_xproc_start(int64_t request_id, int64_t pid, int64_t start_time,
+int64_t mr_xproc_start(int64_t request_id, int64_t mode, int64_t pid, int64_t start_time,
                        int64_t uid, int64_t identity_hash,
                        int64_t scope_hash, int64_t region_digest,
                        int64_t reviewed_bytes, int64_t reviewed_regions,
@@ -123,6 +128,19 @@ int64_t mr_xproc_result_uid(void);
  * waitpid reported signal termination. */
 int64_t mr_xproc_result_exit_code(void);
 int64_t mr_xproc_result_signal(void);
+int64_t mr_xproc_result_mode(void);
+int64_t mr_xproc_result_target_rss_before_kib(void);
+int64_t mr_xproc_result_target_rss_after_kib(void);
+int64_t mr_xproc_result_target_swap_before_kib(void);
+int64_t mr_xproc_result_target_swap_after_kib(void);
+int64_t mr_xproc_result_scope_current_before_bytes(void);
+int64_t mr_xproc_result_scope_current_after_bytes(void);
+int64_t mr_xproc_result_scope_anon_before_bytes(void);
+int64_t mr_xproc_result_scope_anon_after_bytes(void);
+int64_t mr_xproc_result_scope_file_before_bytes(void);
+int64_t mr_xproc_result_scope_file_after_bytes(void);
+int64_t mr_xproc_result_scope_swap_before_bytes(void);
+int64_t mr_xproc_result_scope_swap_after_bytes(void);
 /* The helper's own reason token, stable ASCII, e.g. "target_other_uid".
  * Empty string when the helper produced no result block. */
 const char *mr_xproc_result_reason(void);

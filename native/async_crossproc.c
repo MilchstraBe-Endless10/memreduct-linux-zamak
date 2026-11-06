@@ -75,15 +75,30 @@ static uint64_t last_observed_region_digest;
 static int64_t last_region_digest_verified;
 static int64_t last_exit_code = -1;
 static int64_t last_signal;
+static int64_t last_mode;
+static int64_t last_target_rss_before_kib = -1;
+static int64_t last_target_rss_after_kib = -1;
+static int64_t last_target_swap_before_kib = -1;
+static int64_t last_target_swap_after_kib = -1;
+static int64_t last_scope_current_before_bytes = -1;
+static int64_t last_scope_current_after_bytes = -1;
+static int64_t last_scope_anon_before_bytes = -1;
+static int64_t last_scope_anon_after_bytes = -1;
+static int64_t last_scope_file_before_bytes = -1;
+static int64_t last_scope_file_after_bytes = -1;
+static int64_t last_scope_swap_before_bytes = -1;
+static int64_t last_scope_swap_after_bytes = -1;
 static char last_reason[MR_XPROC_REASON_BYTES];
 static int64_t local_refusal;
 static int64_t expected_pid;
 static int64_t expected_start_time;
 static int64_t expected_uid;
+static int64_t expected_mode;
 static uint64_t expected_request_id;
 static uint64_t expected_identity_hash;
 static uint64_t expected_scope_hash;
 static uint64_t expected_region_digest;
+static uint64_t expected_max_bytes;
 
 /* ---------------------------------------------------------------------------
  * Capability switch.
@@ -422,6 +437,7 @@ int mr_xproc_test_helper_protocol_matches(const char *path, uid_t owner, gid_t g
 struct parsed_result {
     int have_marker;
     int protocol_seen;
+    int mode_seen;
     int status_seen;
     int reason_seen;
     int advised_seen;
@@ -442,11 +458,26 @@ struct parsed_result {
     int expected_region_digest_seen;
     int observed_region_digest_seen;
     int region_digest_verified_seen;
+    int target_rss_before_seen;
+    int target_rss_after_seen;
+    int target_swap_before_seen;
+    int target_swap_after_seen;
+    int scope_current_before_seen;
+    int scope_current_after_seen;
+    int scope_anon_before_seen;
+    int scope_anon_after_seen;
+    int scope_file_before_seen;
+    int scope_file_after_seen;
+    int scope_swap_before_seen;
+    int scope_swap_after_seen;
     uint64_t protocol_version;
     const char *status_text;
     size_t status_len;
     const char *reason_text;
     size_t reason_len;
+    const char *mode_text;
+    size_t mode_len;
+    int64_t mode;
     uint64_t advised;
     uint64_t requested;
     uint64_t regions;
@@ -468,6 +499,18 @@ struct parsed_result {
     uint64_t expected_region_digest;
     uint64_t observed_region_digest;
     int region_digest_verified;
+    int64_t target_rss_before_kib;
+    int64_t target_rss_after_kib;
+    int64_t target_swap_before_kib;
+    int64_t target_swap_after_kib;
+    int64_t scope_current_before_bytes;
+    int64_t scope_current_after_bytes;
+    int64_t scope_anon_before_bytes;
+    int64_t scope_anon_after_bytes;
+    int64_t scope_file_before_bytes;
+    int64_t scope_file_after_bytes;
+    int64_t scope_swap_before_bytes;
+    int64_t scope_swap_after_bytes;
 };
 
 static int key_is(const char *line, size_t line_len, const char *key, const char **value,
@@ -525,9 +568,32 @@ static int parse_i64_text(const char *text, size_t length, int64_t *out)
     return 0;
 }
 
+static int parse_measurement_text(const char *text, size_t length, int64_t *out)
+{
+    if (length == sizeof("unavailable") - 1u &&
+        memcmp(text, "unavailable", length) == 0) {
+        *out = -1;
+        return 0;
+    }
+    return parse_i64_text(text, length, out);
+}
+
 static int parse_result(const char *text, size_t length, struct parsed_result *out)
 {
     memset(out, 0, sizeof(*out));
+    out->mode = -1;
+    out->target_rss_before_kib = INT64_MIN;
+    out->target_rss_after_kib = INT64_MIN;
+    out->target_swap_before_kib = INT64_MIN;
+    out->target_swap_after_kib = INT64_MIN;
+    out->scope_current_before_bytes = INT64_MIN;
+    out->scope_current_after_bytes = INT64_MIN;
+    out->scope_anon_before_bytes = INT64_MIN;
+    out->scope_anon_after_bytes = INT64_MIN;
+    out->scope_file_before_bytes = INT64_MIN;
+    out->scope_file_after_bytes = INT64_MIN;
+    out->scope_swap_before_bytes = INT64_MIN;
+    out->scope_swap_after_bytes = INT64_MIN;
 
     const char *cursor = text;
     const char *end = text + length;
@@ -553,6 +619,15 @@ static int parse_result(const char *text, size_t length, struct parsed_result *o
                 if (key_is(cursor, line_len, "protocol_version", &value, &value_len)) {
                     out->protocol_seen++;
                     (void)parse_u64_text(value, value_len, &out->protocol_version);
+                } else if (key_is(cursor, line_len, "mode", &value, &value_len)) {
+                    out->mode_seen++;
+                    out->mode_text = value;
+                    out->mode_len = value_len;
+                    if (value_len == strlen(MR_XPROC_MODE_PAGEOUT_TEXT) &&
+                        memcmp(value, MR_XPROC_MODE_PAGEOUT_TEXT, value_len) == 0) out->mode = 0;
+                    else if (value_len == strlen(MR_XPROC_MODE_APP_SCOPE_TEXT) &&
+                             memcmp(value, MR_XPROC_MODE_APP_SCOPE_TEXT, value_len) == 0) out->mode = 1;
+                    else out->mode = -1;
                 } else if (key_is(cursor, line_len, "status", &value, &value_len)) {
                     out->status_seen++;
                     out->status_text = value;
@@ -625,6 +700,42 @@ static int parse_result(const char *text, size_t length, struct parsed_result *o
                     out->region_digest_verified_seen++;
                     out->region_digest_verified = value_len == 4u &&
                         memcmp(value, "true", 4u) == 0;
+                } else if (key_is(cursor, line_len, "target_rss_before_kib", &value, &value_len)) {
+                    out->target_rss_before_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->target_rss_before_kib);
+                } else if (key_is(cursor, line_len, "target_rss_after_kib", &value, &value_len)) {
+                    out->target_rss_after_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->target_rss_after_kib);
+                } else if (key_is(cursor, line_len, "target_swap_before_kib", &value, &value_len)) {
+                    out->target_swap_before_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->target_swap_before_kib);
+                } else if (key_is(cursor, line_len, "target_swap_after_kib", &value, &value_len)) {
+                    out->target_swap_after_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->target_swap_after_kib);
+                } else if (key_is(cursor, line_len, "scope_current_before_bytes", &value, &value_len)) {
+                    out->scope_current_before_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->scope_current_before_bytes);
+                } else if (key_is(cursor, line_len, "scope_current_after_bytes", &value, &value_len)) {
+                    out->scope_current_after_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->scope_current_after_bytes);
+                } else if (key_is(cursor, line_len, "scope_anon_before_bytes", &value, &value_len)) {
+                    out->scope_anon_before_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->scope_anon_before_bytes);
+                } else if (key_is(cursor, line_len, "scope_anon_after_bytes", &value, &value_len)) {
+                    out->scope_anon_after_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->scope_anon_after_bytes);
+                } else if (key_is(cursor, line_len, "scope_file_before_bytes", &value, &value_len)) {
+                    out->scope_file_before_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->scope_file_before_bytes);
+                } else if (key_is(cursor, line_len, "scope_file_after_bytes", &value, &value_len)) {
+                    out->scope_file_after_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->scope_file_after_bytes);
+                } else if (key_is(cursor, line_len, "scope_swap_before_bytes", &value, &value_len)) {
+                    out->scope_swap_before_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->scope_swap_before_bytes);
+                } else if (key_is(cursor, line_len, "scope_swap_after_bytes", &value, &value_len)) {
+                    out->scope_swap_after_seen++;
+                    (void)parse_measurement_text(value, value_len, &out->scope_swap_after_bytes);
                 } else if (key_is(cursor, line_len, "bytes_advised_is_not_bytes_freed",
                                    &value, &value_len)) {
                     /* Present for readers of the raw stream; the bridge does not
@@ -644,6 +755,7 @@ static int result_is_complete(const struct parsed_result *parsed)
 {
     return parsed->protocol_seen == 1 &&
            parsed->protocol_version == MR_XPROC_PROTOCOL_VERSION &&
+           parsed->mode_seen == 1 && parsed->mode >= 0 &&
            parsed->request_id_seen == 1 &&
            parsed->expected_identity_hash_seen == 1 &&
            parsed->observed_identity_hash_seen == 1 &&
@@ -659,7 +771,28 @@ static int result_is_complete(const struct parsed_result *parsed)
            parsed->regions_seen == 1 && parsed->error_seen == 1 &&
            parsed->calls_seen == 1 && parsed->pid_seen == 1 &&
            parsed->start_time_seen == 1 && parsed->verified_seen == 1 &&
-           parsed->uid_seen == 1 && parsed->start_time > 0;
+           parsed->uid_seen == 1 && parsed->start_time > 0 &&
+           parsed->target_rss_before_seen == 1 && parsed->target_rss_after_seen == 1 &&
+           parsed->target_swap_before_seen == 1 && parsed->target_swap_after_seen == 1 &&
+           parsed->scope_current_before_seen == 1 && parsed->scope_current_after_seen == 1 &&
+           parsed->scope_anon_before_seen == 1 && parsed->scope_anon_after_seen == 1 &&
+           parsed->scope_file_before_seen == 1 && parsed->scope_file_after_seen == 1 &&
+           parsed->scope_swap_before_seen == 1 && parsed->scope_swap_after_seen == 1 &&
+           parsed->target_rss_before_kib != INT64_MIN &&
+           parsed->target_rss_after_kib != INT64_MIN &&
+           parsed->target_swap_before_kib != INT64_MIN &&
+           parsed->target_swap_after_kib != INT64_MIN &&
+           parsed->scope_current_before_bytes != INT64_MIN &&
+           parsed->scope_current_after_bytes != INT64_MIN &&
+           parsed->scope_anon_before_bytes != INT64_MIN &&
+           parsed->scope_anon_after_bytes != INT64_MIN &&
+           parsed->scope_file_before_bytes != INT64_MIN &&
+           parsed->scope_file_after_bytes != INT64_MIN &&
+           parsed->scope_swap_before_bytes != INT64_MIN &&
+           parsed->scope_swap_after_bytes != INT64_MIN &&
+           parsed->advised <= (uint64_t)INT64_MAX &&
+           parsed->requested <= (uint64_t)INT64_MAX &&
+           parsed->requested <= MR_XPROC_MAX_BYTES;
 }
 
 static int text_equals(const char *text, size_t length, const char *literal)
@@ -682,6 +815,7 @@ static int64_t classify_token(const struct parsed_result *parsed)
     if (text_equals(text, length, "bad_request")) return MR_XPROC_POLL_REFUSED;
     if (text_equals(text, length, "unsupported")) return MR_XPROC_POLL_UNSUPPORTED;
     if (text_equals(text, length, "no_regions")) return MR_XPROC_POLL_NO_REGIONS;
+    if (text_equals(text, length, "scope_unavailable")) return MR_XPROC_POLL_REFUSED;
     return MR_XPROC_POLL_OUTCOME_UNKNOWN;
 }
 
@@ -712,6 +846,19 @@ static void reset_last_result(void)
     last_region_digest_verified = 0;
     last_exit_code = -1;
     last_signal = 0;
+    last_mode = -1;
+    last_target_rss_before_kib = -1;
+    last_target_rss_after_kib = -1;
+    last_target_swap_before_kib = -1;
+    last_target_swap_after_kib = -1;
+    last_scope_current_before_bytes = -1;
+    last_scope_current_after_bytes = -1;
+    last_scope_anon_before_bytes = -1;
+    last_scope_anon_after_bytes = -1;
+    last_scope_file_before_bytes = -1;
+    last_scope_file_after_bytes = -1;
+    last_scope_swap_before_bytes = -1;
+    last_scope_swap_after_bytes = -1;
     last_reason[0] = '\0';
 }
 
@@ -743,6 +890,19 @@ static int64_t classify(const char *text, size_t length, int exit_code)
         last_expected_region_digest = parsed.expected_region_digest;
         last_observed_region_digest = parsed.observed_region_digest;
         last_region_digest_verified = parsed.region_digest_verified;
+        last_mode = parsed.mode;
+        last_target_rss_before_kib = parsed.target_rss_before_kib;
+        last_target_rss_after_kib = parsed.target_rss_after_kib;
+        last_target_swap_before_kib = parsed.target_swap_before_kib;
+        last_target_swap_after_kib = parsed.target_swap_after_kib;
+        last_scope_current_before_bytes = parsed.scope_current_before_bytes;
+        last_scope_current_after_bytes = parsed.scope_current_after_bytes;
+        last_scope_anon_before_bytes = parsed.scope_anon_before_bytes;
+        last_scope_anon_after_bytes = parsed.scope_anon_after_bytes;
+        last_scope_file_before_bytes = parsed.scope_file_before_bytes;
+        last_scope_file_after_bytes = parsed.scope_file_after_bytes;
+        last_scope_swap_before_bytes = parsed.scope_swap_before_bytes;
+        last_scope_swap_after_bytes = parsed.scope_swap_after_bytes;
         size_t copy = parsed.reason_len < sizeof(last_reason) - 1u
                           ? parsed.reason_len
                           : sizeof(last_reason) - 1u;
@@ -782,8 +942,19 @@ static int64_t classify(const char *text, size_t length, int exit_code)
         return MR_XPROC_POLL_OUTCOME_UNKNOWN;
     }
 
-    if (verdict == MR_XPROC_POLL_ACCEPTED && parsed.advised == 0) {
-        /* "Accepted" with zero bytes covered contradicts itself. */
+    if (verdict == MR_XPROC_POLL_ACCEPTED && parsed.mode == MR_XPROC_MODE_PROCESS_PAGEOUT &&
+        (parsed.advised == 0 || parsed.advised != parsed.requested)) {
+        /* PAGEOUT acceptance means every requested byte was covered. */
+        return MR_XPROC_POLL_OUTCOME_UNKNOWN;
+    }
+    if ((verdict == MR_XPROC_POLL_ACCEPTED || verdict == MR_XPROC_POLL_PARTIAL) &&
+        parsed.mode == MR_XPROC_MODE_PROCESS_PAGEOUT && parsed.advised > parsed.requested) {
+        return MR_XPROC_POLL_OUTCOME_UNKNOWN;
+    }
+    if ((parsed.mode == MR_XPROC_MODE_APP_SCOPE && parsed.advised != 0) ||
+        (parsed.mode == MR_XPROC_MODE_APP_SCOPE &&
+         (verdict == MR_XPROC_POLL_ACCEPTED || verdict == MR_XPROC_POLL_PARTIAL) &&
+         (parsed.requested == 0 || parsed.calls != 1))) {
         return MR_XPROC_POLL_OUTCOME_UNKNOWN;
     }
     if (parsed.calls != 1 && verdict != MR_XPROC_POLL_REFUSED) {
@@ -910,7 +1081,7 @@ static void drain_output(void)
     }
 }
 
-int64_t mr_xproc_start(int64_t request_id, int64_t pid, int64_t start_time,
+int64_t mr_xproc_start(int64_t request_id, int64_t mode, int64_t pid, int64_t start_time,
                        int64_t uid, int64_t identity_hash,
                        int64_t scope_hash, int64_t region_digest,
                        int64_t reviewed_bytes, int64_t reviewed_regions,
@@ -928,12 +1099,18 @@ int64_t mr_xproc_start(int64_t request_id, int64_t pid, int64_t start_time,
     expected_pid = 0;
     expected_start_time = 0;
     expected_uid = 0;
+    expected_mode = -1;
     expected_request_id = 0u;
     expected_identity_hash = 0u;
     expected_scope_hash = 0u;
     expected_region_digest = 0u;
+    expected_max_bytes = 0u;
     reset_last_result();
     if (request_id <= 0) {
+        local_refusal = MR_XPROC_LOCAL_BAD_IDENTITY;
+        return MR_XPROC_START_BAD_REQUEST;
+    }
+    if (mode != MR_XPROC_MODE_PROCESS_PAGEOUT && mode != MR_XPROC_MODE_APP_SCOPE) {
         local_refusal = MR_XPROC_LOCAL_BAD_IDENTITY;
         return MR_XPROC_START_BAD_REQUEST;
     }
@@ -969,6 +1146,8 @@ int64_t mr_xproc_start(int64_t request_id, int64_t pid, int64_t start_time,
     }
 
     char request_text[24];
+    const char *mode_text = mode == MR_XPROC_MODE_APP_SCOPE
+                                ? MR_XPROC_MODE_APP_SCOPE_TEXT : MR_XPROC_MODE_PAGEOUT_TEXT;
     char pid_text[16];
     char start_text[24];
     char uid_text[16];
@@ -1018,6 +1197,7 @@ int64_t mr_xproc_start(int64_t request_id, int64_t pid, int64_t start_time,
             (char *)pkexec_path(),
             (char *)helper_path(),
             (char *)MR_XPROC_VERB,
+            (char *)mode_text,
             request_text,
             pid_text,
             start_text,
@@ -1050,10 +1230,12 @@ int64_t mr_xproc_start(int64_t request_id, int64_t pid, int64_t start_time,
     expected_pid = pid;
     expected_start_time = start_time;
     expected_uid = uid;
+    expected_mode = mode;
     expected_request_id = (uint64_t)request_id;
     expected_identity_hash = (uint64_t)identity_hash;
     expected_scope_hash = (uint64_t)scope_hash;
     expected_region_digest = (uint64_t)region_digest;
+    expected_max_bytes = (uint64_t)max_bytes;
     child_stdout = pipe_fds[0];
     output_used = 0;
     output_overflowed = 0;
@@ -1070,11 +1252,16 @@ static int result_matches_expected_target(int64_t verdict)
         last_expected_scope_hash != expected_scope_hash ||
         last_expected_region_digest != expected_region_digest ||
         last_pid != expected_pid || last_start_time != expected_start_time ||
+        last_mode != expected_mode ||
         (last_uid >= 0 && last_uid != expected_uid)) {
         return 0;
     }
     if (verdict == MR_XPROC_POLL_ACCEPTED || verdict == MR_XPROC_POLL_PARTIAL) {
-        return last_start_time_verified == 1 && last_uid == expected_uid &&
+        return last_requested_bytes > 0 &&
+               (uint64_t)last_requested_bytes <= expected_max_bytes &&
+               (last_mode != MR_XPROC_MODE_PROCESS_PAGEOUT ||
+                last_advised_bytes <= last_requested_bytes) &&
+               last_start_time_verified == 1 && last_uid == expected_uid &&
                last_identity_hash_verified == 1 && last_scope_hash_verified == 1 &&
                last_region_digest_verified == 1 &&
                last_observed_identity_hash == expected_identity_hash &&
@@ -1142,6 +1329,19 @@ int64_t mr_xproc_result_start_time_verified(void) { return last_start_time_verif
 int64_t mr_xproc_result_uid(void) { return last_uid; }
 int64_t mr_xproc_result_exit_code(void) { return last_exit_code; }
 int64_t mr_xproc_result_signal(void) { return last_signal; }
+int64_t mr_xproc_result_mode(void) { return last_mode; }
+int64_t mr_xproc_result_target_rss_before_kib(void) { return last_target_rss_before_kib; }
+int64_t mr_xproc_result_target_rss_after_kib(void) { return last_target_rss_after_kib; }
+int64_t mr_xproc_result_target_swap_before_kib(void) { return last_target_swap_before_kib; }
+int64_t mr_xproc_result_target_swap_after_kib(void) { return last_target_swap_after_kib; }
+int64_t mr_xproc_result_scope_current_before_bytes(void) { return last_scope_current_before_bytes; }
+int64_t mr_xproc_result_scope_current_after_bytes(void) { return last_scope_current_after_bytes; }
+int64_t mr_xproc_result_scope_anon_before_bytes(void) { return last_scope_anon_before_bytes; }
+int64_t mr_xproc_result_scope_anon_after_bytes(void) { return last_scope_anon_after_bytes; }
+int64_t mr_xproc_result_scope_file_before_bytes(void) { return last_scope_file_before_bytes; }
+int64_t mr_xproc_result_scope_file_after_bytes(void) { return last_scope_file_after_bytes; }
+int64_t mr_xproc_result_scope_swap_before_bytes(void) { return last_scope_swap_before_bytes; }
+int64_t mr_xproc_result_scope_swap_after_bytes(void) { return last_scope_swap_after_bytes; }
 const char *mr_xproc_result_reason(void) { return last_reason; }
 int64_t mr_xproc_local_refusal(void) { return local_refusal; }
 
@@ -1159,8 +1359,9 @@ int64_t mr_xproc_test_classify_expected(const char *stdout_text, int64_t exit_co
                                          int64_t request_id, int64_t pid,
                                          int64_t start_time, int64_t uid,
                                          int64_t identity_hash, int64_t scope_hash,
-                                         int64_t region_digest)
+                                         int64_t region_digest, int64_t max_bytes)
 {
+    expected_mode = MR_XPROC_MODE_PROCESS_PAGEOUT;
     expected_request_id = (uint64_t)request_id;
     expected_pid = pid;
     expected_start_time = start_time;
@@ -1168,6 +1369,7 @@ int64_t mr_xproc_test_classify_expected(const char *stdout_text, int64_t exit_co
     expected_identity_hash = (uint64_t)identity_hash;
     expected_scope_hash = (uint64_t)scope_hash;
     expected_region_digest = (uint64_t)region_digest;
+    expected_max_bytes = (uint64_t)max_bytes;
     const char *text = stdout_text == NULL ? "" : stdout_text;
     int64_t verdict = classify(text, strlen(text), (int)exit_code);
     return result_matches_expected_target(verdict)

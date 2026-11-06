@@ -21,6 +21,8 @@ long long mr_runtime_xproc_candidate_pid(long long index) { (void)index; return 
 long long mr_runtime_xproc_candidate_start_time(long long index) { (void)index; return -1; }
 long long mr_runtime_xproc_candidate_uid(long long index) { (void)index; return -1; }
 long long mr_runtime_xproc_candidate_bytes(long long index) { (void)index; return -1; }
+long long mr_runtime_xproc_candidate_scope_bytes(long long index) { (void)index; return -1; }
+long long mr_runtime_xproc_candidate_rss_bytes(long long index) { (void)index; return -1; }
 long long mr_runtime_xproc_candidate_regions(long long index) { (void)index; return 0; }
 const char *mr_runtime_xproc_candidate_name(long long index) { (void)index; return ""; }
 const char *mr_runtime_xproc_candidate_app_name(long long index) { (void)index; return ""; }
@@ -43,13 +45,14 @@ long long mr_runtime_xproc_audit_confirmation(long long request_id, long long pi
     (void)region_digest;
     return 1;
 }
-long long mr_runtime_xproc_start(long long request_id, long long pid,
+long long mr_runtime_xproc_start(long long request_id, long long mode, long long pid,
                                  long long start_time, long long uid,
                                  long long identity_hash, long long scope_hash,
                                  long long region_digest, long long reviewed_bytes,
                                  long long reviewed_regions, long long max_bytes)
 {
     (void)request_id;
+    (void)mode;
     (void)pid;
     (void)start_time;
     (void)uid;
@@ -63,6 +66,7 @@ long long mr_runtime_xproc_start(long long request_id, long long pid,
 }
 long long mr_runtime_xproc_poll(void) { return -2; }
 long long mr_runtime_xproc_stage(void) { return 0; }
+long long mr_runtime_xproc_result_mode(void) { return 0; }
 long long mr_runtime_xproc_result_advised_bytes(void) { return 0; }
 long long mr_runtime_xproc_result_requested_bytes(void) { return 0; }
 long long mr_runtime_xproc_result_regions(void) { return 0; }

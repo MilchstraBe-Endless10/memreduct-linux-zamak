@@ -8,7 +8,7 @@
 ## Risks / mitigations
 | Threat | Mitigation | Evidence gate |
 |---|---|---|
-| GUI elevates arbitrary action | page-cache helper accepts only fixed `pagecache`; cross-process helper accepts one bounded target identity and derives mappings itself; neither accepts shell text | invalid/legacy args tests + manual review |
+| GUI elevates arbitrary action | page-cache helper accepts only fixed `pagecache`; Crossproc accepts one bounded target identity and a fixed mode (`pageout` or exact `app_scope`), derives the target/cgroup itself, and accepts no shell text or path | invalid/legacy args tests + manual review |
 | Helper executable replaced | root-owned absolute path; verify mode/owner after install | packaging E2E test |
 | Authorized action unexpectedly repeats | no background default; per-action state + cooldown | P4 tests + UX review |
 | Cache eviction harms latency | product warning; opt-in only, never as best-performance claim | perf comparison (cold re-read) |
@@ -19,9 +19,16 @@
 
 ## Policy for privileged writes
 - No automatic writes to `/proc/sys/vm/drop_caches` on unattended CI or developer machine.
-- No unattended manipulation of ZRAM/swap; no arbitrary PID, address, mapping, executable path or cgroup path. M1.3 may pass one manually selected PID/start-time candidate to the fixed cross-process helper, which must independently revalidate UID, executable, cgroup, start time, pidfd, protected-process rules and its own bounded mappings. No batch target list is accepted.
+- No unattended manipulation of ZRAM/swap; no arbitrary PID, address, mapping, executable path or cgroup path. M1.3 passes one manually selected PID/start-time candidate to the fixed helper, which independently revalidates UID, executable, cgroup, start time, pidfd and protected-process rules. `pageout` derives its bounded mappings from procfs. `app_scope` derives the exact user application cgroup from that PID, rejects child cgroups, verifies each current member has the same requester UID and scope, and writes the requested byte ceiling to that scope's `memory.reclaim` exactly once. Neither mode accepts a batch target list. The hard ceiling is 1 GiB; the UI further limits it to sampled RSS or `anon + file` cgroup charge. These values bound a request and do not guarantee reclaimed RAM.
 - Document command, rollback, permissions, output, and expected performance impact before approved new capability.
 - No blanket claims “safe / stable / no impact”; user intent defines design target, not proved result.
+
+## R5 large-request checkpoint (2026-11-06)
+
+- The local candidate supports 256 MiB (default), 512 MiB, and 1 GiB per request for PAGEOUT and app-scope cgroup reclaim. The helper retains the 1 GiB hard ceiling and independently clamps against live target RSS or the selected scope's `anon + file` charge.
+- App-scope requests are fixed to the exact cgroup v2 path re-derived from the selected process. The helper uses descriptor-relative traversal with `O_NOFOLLOW`, refuses child cgroups, verifies all members belong to the requester and that exact scope, checks identity again immediately before one `memory.reclaim` write, and never retries.
+- Capability checks are operation-specific: PAGEOUT requires effective `CAP_SYS_NICE` for `process_madvise`; app-scope reclaim does not require that unrelated capability and instead relies on the fixed Polkit action plus an actual write-open of the re-derived `memory.reclaim` control. A denied or unavailable control fails before any write.
+- Fixture tests use a stub for PAGEOUT and a temporary regular file for `memory.reclaim`; they do not call the live kernel reclaim interfaces. Real Hyprland operation and large daily-app reclaim remain NOT RUN for this checkpoint.
 
 ## Helper write result contract
 

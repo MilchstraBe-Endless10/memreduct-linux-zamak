@@ -51,3 +51,19 @@ Track p95 UI response, cold-cache re-read latency, memory available before/after
 2. Browser tabs + development tool memory pressure, observation only unless user approves write.
 3. Creative software open and save operation (performance regression, never deliberately interrupt real work).
 4. Baseline, same test with action, warm-cache penalty and 10-minute follow-up; repeat several trials.
+
+## R5 large-request implementation checks (2026-11-06)
+
+| Check | Local result | Evidence boundary |
+|---|---|---|
+| PAGEOUT request up to 1 GiB | PASS in helper fixture | One stubbed `process_madvise` result; no live target operation |
+| PAGEOUT ceiling against target RSS and eligible mappings | PASS in helper fixture | Request is bounded and call count remains one |
+| `memory.reclaim` exact app-scope path and 1 GiB request | PASS in helper fixture | One write to a temporary file, not cgroupfs |
+| App-scope charge below 1 GiB | PASS in helper fixture | Request clamps to `anon + file` charge |
+| Capability checks match the operation | PASS in helper fixture | PAGEOUT rejects missing `CAP_SYS_NICE`; app-scope fixture succeeds without it |
+| Scope with child cgroup / member outside exact scope | PASS, refused before write | No `memory.reclaim` write occurs |
+| App scope with multiple verified members | PASS in helper fixture | Members must match requester UID and exact user app scope |
+| `EAGAIN` and short-write behavior | PASS in helper fixtures | One attempt only; short write stays outcome-unknown |
+| Xvfb GUI interaction for 256/512 MiB, 1 GiB, app-scope selection, result, and close | PASS | Mock bridge; helper calls 0, syscall count 0, normal exit 0; evidence under AI output `报告与研究/MemReduct-R5-2026-11-06/xvfb-simulation-r4/` |
+| Normal-mode production GUI launch and GTK header-bar close | PASS | `MEMREDUCT_CI` and `MEMREDUCT_TEST` unset in private Xvfb; exit 0, no GTK/GDK warnings; this does not exercise Hyprland or a reclaim action |
+| Real Hyprland large-app reclaim and measured outcome | NOT RUN | Requires matched protocol-v3 install and separately authorized live operation |

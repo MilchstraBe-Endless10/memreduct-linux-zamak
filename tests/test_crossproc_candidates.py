@@ -50,6 +50,9 @@ class CandidateScannerTest(unittest.TestCase):
         cls.library.mr_cand_snapshot_clear.restype = None
         cls.library.mr_cand_snapshot_verify.argtypes = [ctypes.c_int64] * 9
         cls.library.mr_cand_snapshot_verify.restype = ctypes.c_int64
+        for name in ("mr_cand_scope_anon_file_bytes", "mr_cand_rss_bytes"):
+            getattr(cls.library, name).argtypes = [ctypes.c_int64]
+            getattr(cls.library, name).restype = ctypes.c_int64
 
     @classmethod
     def tearDownClass(cls):
@@ -57,12 +60,16 @@ class CandidateScannerTest(unittest.TestCase):
 
     def setUp(self):
         self.proc = tempfile.mkdtemp(prefix="fixture-proc-")
+        self.cgroups = tempfile.mkdtemp(prefix="fixture-cgroup-")
         self.previous_root = os.environ.get("MEMREDUCT_TEST_PROC_ROOT")
+        self.previous_cgroup_root = os.environ.get("MEMREDUCT_TEST_CGROUP_ROOT")
         self.previous_uid = os.environ.get("MEMREDUCT_TEST_UID")
         os.environ["MEMREDUCT_TEST_PROC_ROOT"] = self.proc
+        os.environ["MEMREDUCT_TEST_CGROUP_ROOT"] = self.cgroups
         os.environ["MEMREDUCT_TEST_UID"] = str(UID)
         self.addCleanup(self.cleanup_env)
         self.addCleanup(lambda: shutil.rmtree(self.proc, ignore_errors=True))
+        self.addCleanup(lambda: shutil.rmtree(self.cgroups, ignore_errors=True))
         self._add_stat(1, "init", 0, 1)
         self._add_stat(os.getpid(), "scanner", 1, 2)
 
@@ -71,6 +78,10 @@ class CandidateScannerTest(unittest.TestCase):
             os.environ.pop("MEMREDUCT_TEST_PROC_ROOT", None)
         else:
             os.environ["MEMREDUCT_TEST_PROC_ROOT"] = self.previous_root
+        if self.previous_cgroup_root is None:
+            os.environ.pop("MEMREDUCT_TEST_CGROUP_ROOT", None)
+        else:
+            os.environ["MEMREDUCT_TEST_CGROUP_ROOT"] = self.previous_cgroup_root
         if self.previous_uid is None:
             os.environ.pop("MEMREDUCT_TEST_UID", None)
         else:
@@ -88,7 +99,7 @@ class CandidateScannerTest(unittest.TestCase):
         directory = self._add_stat(pid, name, 1, 77)
         uid_text = "\t".join(map(str, uids))
         with open(os.path.join(directory, "status"), "w", encoding="utf-8") as handle:
-            handle.write(f"Name:\t{name}\nState:\t{state}\nUid:\t{uid_text}\n")
+            handle.write(f"Name:\t{name}\nState:\t{state}\nUid:\t{uid_text}\nVmRSS:\t4096 kB\n")
         with open(os.path.join(directory, "maps"), "w", encoding="utf-8") as handle:
             handle.write("00400000-00401000 r--p 00000000 00:00 0\n")
         exe_path = os.path.join(directory, "exe")
@@ -107,6 +118,20 @@ class CandidateScannerTest(unittest.TestCase):
         with open(os.path.join(directory, "cmdline"), "wb") as handle:
             handle.write(argv0 + b"\0--fixture\0")
         return directory
+
+    def add_scope_stats(self, process_name="demo", anon_bytes=128 * 1024 * 1024,
+                        file_bytes=64 * 1024 * 1024, include_reclaim=True):
+        scope = os.path.join(
+            self.cgroups, "user.slice", f"user-{UID}.slice", f"user@{UID}.service",
+            "app.slice", f"app-{process_name}.scope",
+        )
+        os.makedirs(scope, exist_ok=True)
+        with open(os.path.join(scope, "memory.stat"), "w", encoding="ascii") as handle:
+            handle.write(f"anon {anon_bytes}\nfile {file_bytes}\n")
+        if include_reclaim:
+            with open(os.path.join(scope, "memory.reclaim"), "w", encoding="ascii") as handle:
+                handle.write("")
+        return scope
 
     def scan(self):
         self.assertEqual(self.library.mr_cand_scan_run(), 0)
@@ -130,6 +155,30 @@ class CandidateScannerTest(unittest.TestCase):
     def test_same_uid_user_app_with_known_exe_and_app_cgroup_is_offered(self):
         self.add_process()
         self.assertEqual(self.scan(), 1)
+
+    def test_candidate_exposes_live_rss_and_app_scope_charge_estimate(self):
+        self.add_process()
+        self.add_scope_stats(anon_bytes=768 * 1024 * 1024,
+                             file_bytes=512 * 1024 * 1024)
+        self.assertEqual(self.scan(), 1)
+        self.assertEqual(self.library.mr_cand_rss_bytes(0), 4 * 1024 * 1024)
+        self.assertEqual(self.library.mr_cand_scope_anon_file_bytes(0),
+                         1280 * 1024 * 1024)
+
+    def test_app_scope_mode_is_unavailable_without_its_kernel_control(self):
+        self.add_process()
+        self.add_scope_stats(include_reclaim=False)
+        self.assertEqual(self.scan(), 1)
+        self.assertEqual(self.library.mr_cand_scope_anon_file_bytes(0), -1)
+
+    def test_app_scope_charge_is_not_part_of_immutable_process_snapshot(self):
+        self.add_process()
+        scope = self.add_scope_stats()
+        self.assertEqual(self.scan(), 1)
+        values = self.select_snapshot(0, request_id=900008)
+        with open(os.path.join(scope, "memory.stat"), "w", encoding="ascii") as handle:
+            handle.write("anon 536870912\nfile 268435456\n")
+        self.assertEqual(self.library.mr_cand_snapshot_verify(*values), 0)
 
     def test_dotnet_application_in_user_scope_is_not_protected(self):
         directory = self.add_process(

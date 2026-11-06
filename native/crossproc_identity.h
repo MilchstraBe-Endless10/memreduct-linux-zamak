@@ -110,7 +110,8 @@ static inline void mr_xproc_audit_emit(const char *phase,
         (strcmp(phase, "selection") != 0 &&
          strcmp(phase, "confirmation") != 0 &&
          strcmp(phase, "bridge_argv") != 0 &&
-         strcmp(phase, "helper_pre_syscall") != 0)) {
+         strcmp(phase, "helper_pre_syscall") != 0 &&
+         strcmp(phase, "helper_pre_scope_write") != 0)) {
         return;
     }
 #ifdef MEMREDUCT_TESTING

@@ -8,9 +8,9 @@
  *   3. tests/                     — Python and C regressions.
  *
  * It deliberately describes no path argument, no address range, no advice
- * number and no signal. The helper accepts one verb and ten decimal numbers;
- * these are immutable request/target claims, and everything that decides
- * whether memory is touched is re-derived by the helper from the kernel.
+ * number and no signal. The helper accepts one fixed verb, one fixed mode,
+ * and ten decimal request/target claims; everything that decides whether
+ * memory is touched is re-derived by the helper from the kernel.
  */
 #ifndef MEMREDUCT_CROSSPROC_HELPER_H
 #define MEMREDUCT_CROSSPROC_HELPER_H
@@ -20,7 +20,7 @@
 /* Fixed verb. The GUI cannot ask for another action through this helper, and
  * the helper cannot be asked to do anything the page-cache helper does. */
 #define MR_XPROC_VERB "reclaim"
-#define MR_XPROC_PROTOCOL_VERSION 2
+#define MR_XPROC_PROTOCOL_VERSION 3
 #define MR_XPROC_PROTOCOL_STRINGIFY_INNER(value) #value
 #define MR_XPROC_PROTOCOL_STRINGIFY(value) MR_XPROC_PROTOCOL_STRINGIFY_INNER(value)
 #define MR_XPROC_PROTOCOL_MARKER \
@@ -35,13 +35,16 @@
 #define MR_XPROC_ACTION_ID \
     "io.github.milchstrasse_endless10.memreduct.zamak.crossproc"
 
-/* Ceilings. A caller may request less than these; never more. Kept small on
- * purpose: the first real target class is an ordinary user application, not an
- * entire desktop session. */
-#define MR_XPROC_MAX_IOVECS 32u
-#define MR_XPROC_MAX_BYTES (64ull * 1024ull * 1024ull)
-/* The size the GUI offers by default for a first, conservative action. */
-#define MR_XPROC_DEFAULT_BYTES (16ull * 1024ull * 1024ull)
+/* A request targets either one selected process or its exact systemd app
+ * scope. Both choices remain bounded by a fixed 1 GiB hard ceiling. */
+#define MR_XPROC_MODE_PAGEOUT_TEXT "pageout"
+#define MR_XPROC_MODE_APP_SCOPE_TEXT "app_scope"
+#define MR_XPROC_MAX_IOVECS 1024u
+#define MR_XPROC_MAX_BYTES (1024ull * 1024ull * 1024ull)
+#define MR_XPROC_DEFAULT_BYTES (256ull * 1024ull * 1024ull)
+#define MR_XPROC_BUDGET_512_MIB (512ull * 1024ull * 1024ull)
+#define MR_XPROC_BUDGET_1_GIB (1024ull * 1024ull * 1024ull)
+#define MR_XPROC_MAX_SCOPE_PROCESSES 256u
 /* The size used by the controlled first-run test against a spawned child. */
 #define MR_XPROC_FIRST_RUN_BYTES (1ull * 1024ull * 1024ull)
 
@@ -56,7 +59,8 @@ enum mr_xproc_status {
     MR_XPROC_STATUS_TARGET_GONE = 5,    /* ESRCH/EBADF: the target vanished */
     MR_XPROC_STATUS_BAD_REQUEST = 6,    /* EINVAL */
     MR_XPROC_STATUS_UNSUPPORTED = 7,    /* ENOSYS: no process_madvise here */
-    MR_XPROC_STATUS_NO_REGIONS = 8      /* nothing eligible to ask about */
+    MR_XPROC_STATUS_NO_REGIONS = 8,     /* nothing eligible to ask about */
+    MR_XPROC_STATUS_SCOPE_UNAVAILABLE = 9 /* exact app scope cannot be proven */
 };
 
 /* Exit codes. Distinct on purpose:

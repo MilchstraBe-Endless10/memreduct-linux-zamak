@@ -13,11 +13,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <linux/magic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -28,8 +30,12 @@
 #ifndef MR_CAND_PROC_ROOT
 #  define MR_CAND_PROC_ROOT "/proc"
 #endif
+#ifndef MR_CAND_CGROUP_ROOT
+#  define MR_CAND_CGROUP_ROOT "/sys/fs/cgroup"
+#endif
 
 static const char *cand_proc_root = MR_CAND_PROC_ROOT;
+static const char *cand_cgroup_root = MR_CAND_CGROUP_ROOT;
 
 #ifdef MEMREDUCT_TESTING
 /* Test build only: point enumeration at a fixture tree with fake PIDs. The
@@ -39,6 +45,10 @@ static void cand_test_root(void)
     const char *value = getenv("MEMREDUCT_TEST_PROC_ROOT");
     if (value != NULL && value[0] == '/') {
         cand_proc_root = value;
+    }
+    value = getenv("MEMREDUCT_TEST_CGROUP_ROOT");
+    if (value != NULL && value[0] == '/') {
+        cand_cgroup_root = value;
     }
 }
 
@@ -159,11 +169,15 @@ static int read_start_time(int32_t pid, uint64_t *out)
 struct cand_status {
     char name[MR_CAND_NAME_BYTES];
     uint64_t uid;
+    int64_t rss_bytes;
     char state;
     int have_name;
     int have_uid;
+    int have_rss;
     int have_state;
 };
+
+static int parse_decimal(const char *text, size_t length, uint64_t *out);
 
 /* Names from procfs are bytes controlled by the target process. Keep drawing
  * inputs valid UTF-8 and replace control or malformed bytes before returning
@@ -301,6 +315,19 @@ static int read_status(int32_t pid, struct cand_status *out)
                 out->state = *value;
                 out->have_state = 1;
             }
+        } else if (strncmp(line, "VmRSS:", 6) == 0) {
+            const char *value = line + 6;
+            while (*value == ' ' || *value == '\t') value++;
+            const char *amount_end = value;
+            while (*amount_end >= '0' && *amount_end <= '9') amount_end++;
+            uint64_t kib = 0;
+            const char *unit = amount_end;
+            while (*unit == ' ' || *unit == '\t') unit++;
+            if (parse_decimal(value, (size_t)(amount_end - value), &kib) == 0 &&
+                strcmp(unit, "kB\n") == 0 && kib <= (uint64_t)INT64_MAX / 1024u) {
+                out->rss_bytes = (int64_t)(kib * 1024u);
+                out->have_rss = 1;
+            }
         }
         const char *next = strchr(line, '\n');
         line = next == NULL ? NULL : next + 1;
@@ -333,6 +360,190 @@ static int read_cgroup(int32_t pid, char *out, size_t size)
         return -1;
     }
     return read_text(path, out, size);
+}
+
+static int read_fd_text(int fd, char *buffer, size_t size)
+{
+    if (fd < 0 || buffer == NULL || size < 2u) return -1;
+    size_t used = 0;
+    while (used + 1u < size) {
+        ssize_t got = read(fd, buffer + used, size - used - 1u);
+        if (got < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (got == 0) break;
+        used += (size_t)got;
+    }
+    if (used + 1u >= size) {
+        errno = EOVERFLOW;
+        return -1;
+    }
+    buffer[used] = '\0';
+    return (int)used;
+}
+
+static int parse_decimal(const char *text, size_t length, uint64_t *out)
+{
+    if (text == NULL || out == NULL || length == 0u) return -1;
+    uint64_t value = 0;
+    for (size_t index = 0; index < length; index++) {
+        if (text[index] < '0' || text[index] > '9') return -1;
+        unsigned int digit = (unsigned int)(text[index] - '0');
+        if (value > (UINT64_MAX - digit) / 10u) return -1;
+        value = value * 10u + digit;
+    }
+    *out = value;
+    return 0;
+}
+
+/* Open only the exact user app scope already accepted by the shared policy.
+ * Each component is opened relative to the verified parent without following
+ * symlinks, matching the privileged helper's traversal. */
+static int open_app_scope(const char *cgroup, uint32_t uid)
+{
+    if (cgroup == NULL || mr_xproc_cgroup_text_is_user_app(cgroup, uid) != 1 ||
+        strncmp(cgroup, "0::/", 4u) != 0) return -1;
+    const char *line_end = strchr(cgroup, '\n');
+    if (line_end == NULL || line_end[1] != '\0') return -1;
+    size_t path_length = (size_t)(line_end - (cgroup + 3));
+    if (path_length < 2u || path_length >= MR_CAND_PROC_PATH_BYTES) return -1;
+
+    int current = open(cand_cgroup_root,
+                       O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (current < 0) return -1;
+#ifndef MEMREDUCT_TESTING
+    struct statfs fs;
+    if (fstatfs(current, &fs) != 0 || (unsigned long)fs.f_type != CGROUP2_SUPER_MAGIC) {
+        (void)close(current);
+        errno = ENODEV;
+        return -1;
+    }
+#endif
+    const char *cursor = cgroup + 4;
+    const char *end = line_end;
+    while (cursor < end) {
+        const char *slash = memchr(cursor, '/', (size_t)(end - cursor));
+        size_t length = slash == NULL ? (size_t)(end - cursor)
+                                      : (size_t)(slash - cursor);
+        if (length == 0u || length >= NAME_MAX ||
+            (length == 1u && cursor[0] == '.') ||
+            (length == 2u && cursor[0] == '.' && cursor[1] == '.')) {
+            (void)close(current);
+            errno = EINVAL;
+            return -1;
+        }
+        char component[NAME_MAX];
+        memcpy(component, cursor, length);
+        component[length] = '\0';
+        int next = openat(current, component,
+                          O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+        int saved = errno;
+        (void)close(current);
+        if (next < 0) {
+            errno = saved;
+            return -1;
+        }
+        current = next;
+        cursor = slash == NULL ? end : slash + 1;
+    }
+    return current;
+}
+
+static int app_scope_has_no_children(int scope_fd)
+{
+    int duplicate = dup(scope_fd);
+    if (duplicate < 0) return -1;
+    DIR *directory = fdopendir(duplicate);
+    if (directory == NULL) {
+        (void)close(duplicate);
+        return -1;
+    }
+    int valid = 1;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        struct stat info;
+        if (fstatat(scope_fd, entry->d_name, &info, AT_SYMLINK_NOFOLLOW) != 0 ||
+            S_ISDIR(info.st_mode) || S_ISLNK(info.st_mode)) {
+            valid = 0;
+            break;
+        }
+    }
+    (void)closedir(directory);
+    return valid ? 0 : -1;
+}
+
+/* The sum of anon+file cgroup charges is a useful upper bound for a user
+ * choice; it is not a reclaimability measurement. Offer whole-scope mode only
+ * when the dedicated kernel control and its accounting are both present. */
+static int app_scope_anon_file_bytes(const char *cgroup, uint32_t uid,
+                                     int64_t *bytes_out)
+{
+    if (bytes_out == NULL) return -1;
+    *bytes_out = -1;
+    int scope_fd = open_app_scope(cgroup, uid);
+    if (scope_fd < 0) return -1;
+    if (app_scope_has_no_children(scope_fd) != 0) {
+        (void)close(scope_fd);
+        return -1;
+    }
+
+    struct stat reclaim_info;
+    if (fstatat(scope_fd, "memory.reclaim", &reclaim_info, AT_SYMLINK_NOFOLLOW) != 0 ||
+        !S_ISREG(reclaim_info.st_mode)) {
+        (void)close(scope_fd);
+        return -1;
+    }
+    int fd = openat(scope_fd, "memory.stat", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    (void)close(scope_fd);
+    if (fd < 0) return -1;
+    char contents[8192];
+    int length = read_fd_text(fd, contents, sizeof(contents));
+    (void)close(fd);
+    if (length < 0) return -1;
+
+    uint64_t anon = 0;
+    uint64_t file = 0;
+    int have_anon = 0;
+    int have_file = 0;
+    for (char *line = contents; *line != '\0';) {
+        char *end = strchr(line, '\n');
+        if (end == NULL) end = line + strlen(line);
+        char saved = *end;
+        *end = '\0';
+        char *space = strchr(line, ' ');
+        if (space != NULL) {
+            *space++ = '\0';
+            uint64_t value = 0;
+            size_t value_length = strlen(space);
+            if (parse_decimal(space, value_length, &value) != 0) {
+                *end = saved;
+                return -1;
+            }
+            if (strcmp(line, "anon") == 0) {
+                if (have_anon) {
+                    *end = saved;
+                    return -1;
+                }
+                anon = value;
+                have_anon = 1;
+            } else if (strcmp(line, "file") == 0) {
+                if (have_file) {
+                    *end = saved;
+                    return -1;
+                }
+                file = value;
+                have_file = 1;
+            }
+        }
+        *end = saved;
+        if (saved == '\0') break;
+        line = end + 1;
+    }
+    if (!have_anon || !have_file || anon > (uint64_t)INT64_MAX - file) return -1;
+    *bytes_out = (int64_t)(anon + file);
+    return 0;
 }
 
 /* Preserve the exact argv bytes for identity binding. A very large or empty
@@ -685,6 +896,10 @@ int mr_cand_scan(struct mr_cand_list *out)
         slot->uid = status.uid;
         slot->state = status.state;
         slot->reclaimable_bytes = reclaimable;
+        slot->rss_bytes = status.have_rss ? status.rss_bytes : -1;
+        slot->scope_anon_file_bytes = -1;
+        (void)app_scope_anon_file_bytes(cgroup, (uint32_t)status.uid,
+                                        &slot->scope_anon_file_bytes);
         slot->regions = regions;
         slot->start_time = start_time;
         slot->scope_token = mr_xproc_scope_token(cgroup);
@@ -789,6 +1004,22 @@ int64_t mr_cand_reclaimable_bytes(int64_t index)
         return -1;
     }
     return (int64_t)scan_slot.entries[index].reclaimable_bytes;
+}
+
+int64_t mr_cand_scope_anon_file_bytes(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return -1;
+    }
+    return scan_slot.entries[index].scope_anon_file_bytes;
+}
+
+int64_t mr_cand_rss_bytes(int64_t index)
+{
+    if (index < 0 || index >= (int64_t)scan_slot.count) {
+        return -1;
+    }
+    return scan_slot.entries[index].rss_bytes;
 }
 
 int64_t mr_cand_regions(int64_t index)

@@ -25,6 +25,8 @@ extern fn mr_runtime_xproc_candidate_pid(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_start_time(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_uid(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_bytes(index: i64) -> i64
+extern fn mr_runtime_xproc_candidate_scope_bytes(index: i64) -> i64
+extern fn mr_runtime_xproc_candidate_rss_bytes(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_regions(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_name(index: i64) -> string
 extern fn mr_runtime_xproc_candidate_app_name(index: i64) -> string
@@ -34,13 +36,14 @@ extern fn mr_runtime_xproc_candidate_scope_hash(index: i64) -> i64
 extern fn mr_runtime_xproc_candidate_region_digest(index: i64) -> i64
 extern fn mr_runtime_xproc_request_id_new() -> i64
 extern fn mr_runtime_xproc_audit_confirmation(request_id: i64, pid: i64, start_time: i64, uid: i64, scope_hash: i64, identity_hash: i64, region_digest: i64) -> i64
-extern fn mr_runtime_xproc_start(request_id: i64, pid: i64, start_time: i64, uid: i64, identity_hash: i64, scope_hash: i64, region_digest: i64, reviewed_bytes: i64, reviewed_regions: i64, max_bytes: i64) -> i64
+extern fn mr_runtime_xproc_start(request_id: i64, mode: i64, pid: i64, start_time: i64, uid: i64, identity_hash: i64, scope_hash: i64, region_digest: i64, reviewed_bytes: i64, reviewed_regions: i64, max_bytes: i64) -> i64
 extern fn mr_runtime_xproc_poll() -> i64
 extern fn mr_runtime_xproc_stage() -> i64
 extern fn mr_runtime_xproc_result_advised_bytes() -> i64
 extern fn mr_runtime_xproc_result_requested_bytes() -> i64
 extern fn mr_runtime_xproc_result_regions() -> i64
 extern fn mr_runtime_xproc_result_call_count() -> i64
+extern fn mr_runtime_xproc_result_mode() -> i64
 extern fn mr_runtime_emit(line: &string)
 extern fn mr_production_clean_enabled() -> i64
 # Read-only check of the fixed privileged chain (helper / polkit action /
@@ -68,6 +71,8 @@ extern fn mr_cand_pid(index: i64) -> i64
 extern fn mr_cand_start_time(index: i64) -> i64
 extern fn mr_cand_uid(index: i64) -> i64
 extern fn mr_cand_reclaimable_bytes(index: i64) -> i64
+extern fn mr_cand_scope_anon_file_bytes(index: i64) -> i64
+extern fn mr_cand_rss_bytes(index: i64) -> i64
 extern fn mr_cand_regions(index: i64) -> i64
 extern fn mr_cand_identity_token(index: i64) -> i64
 extern fn mr_cand_scope_token(index: i64) -> i64
@@ -85,7 +90,7 @@ extern fn mr_xproc_enabled() -> i64
 extern fn mr_xproc_preflight() -> i64
 extern fn mr_xproc_request_id_new() -> i64
 extern fn mr_xproc_audit_confirmation(request_id: i64, pid: i64, start_time: i64, uid: i64, scope_hash: i64, identity_hash: i64, region_digest: i64) -> i64
-extern fn mr_xproc_start(request_id: i64, pid: i64, start_time: i64, uid: i64, identity_hash: i64, scope_hash: i64, region_digest: i64, reviewed_bytes: i64, reviewed_regions: i64, max_bytes: i64) -> i64
+extern fn mr_xproc_start(request_id: i64, mode: i64, pid: i64, start_time: i64, uid: i64, identity_hash: i64, scope_hash: i64, region_digest: i64, reviewed_bytes: i64, reviewed_regions: i64, max_bytes: i64) -> i64
 extern fn mr_xproc_poll() -> i64
 extern fn mr_xproc_result_advised_bytes() -> i64
 extern fn mr_xproc_result_requested_bytes() -> i64
@@ -94,6 +99,19 @@ extern fn mr_xproc_result_error_code() -> i64
 extern fn mr_xproc_result_call_count() -> i64
 extern fn mr_xproc_result_exit_code() -> i64
 extern fn mr_xproc_result_signal() -> i64
+extern fn mr_xproc_result_mode() -> i64
+extern fn mr_xproc_result_target_rss_before_kib() -> i64
+extern fn mr_xproc_result_target_rss_after_kib() -> i64
+extern fn mr_xproc_result_target_swap_before_kib() -> i64
+extern fn mr_xproc_result_target_swap_after_kib() -> i64
+extern fn mr_xproc_result_scope_current_before_bytes() -> i64
+extern fn mr_xproc_result_scope_current_after_bytes() -> i64
+extern fn mr_xproc_result_scope_anon_before_bytes() -> i64
+extern fn mr_xproc_result_scope_anon_after_bytes() -> i64
+extern fn mr_xproc_result_scope_file_before_bytes() -> i64
+extern fn mr_xproc_result_scope_file_after_bytes() -> i64
+extern fn mr_xproc_result_scope_swap_before_bytes() -> i64
+extern fn mr_xproc_result_scope_swap_after_bytes() -> i64
 extern fn mr_xproc_result_reason() -> string
 extern fn mr_xproc_local_refusal() -> i64
 extern fn mr_self_reclaim_bytes() -> i64
@@ -163,6 +181,9 @@ struct MainWindow:
     xproc_scroll: i64
     xproc_focus: i64
     xproc_budget_choice: i64
+    xproc_mode_choice: i64
+    xproc_target_scope_bytes: i64
+    xproc_target_rss_bytes: i64
     xproc_preflight: i64
     xproc_scan_status: i64
     xproc_target_pid: i64
@@ -183,6 +204,18 @@ struct MainWindow:
     xproc_regions: i64
     xproc_error_code: i64
     xproc_call_count: i64
+    xproc_target_rss_before_kib: i64
+    xproc_target_rss_after_kib: i64
+    xproc_target_swap_before_kib: i64
+    xproc_target_swap_after_kib: i64
+    xproc_scope_current_before_bytes: i64
+    xproc_scope_current_after_bytes: i64
+    xproc_scope_anon_before_bytes: i64
+    xproc_scope_anon_after_bytes: i64
+    xproc_scope_file_before_bytes: i64
+    xproc_scope_file_after_bytes: i64
+    xproc_scope_swap_before_bytes: i64
+    xproc_scope_swap_after_bytes: i64
     preferences_load_status: i64
     settings_open: bool
     settings: settings_ui.State
@@ -333,18 +366,20 @@ fn xproc_operation_busy(s: &MainWindow) -> bool:
     xproc_picker_busy(s.xproc_state) and s.xproc_view == 3
 
 fn xproc_budget_limit(choice: i64) -> i64:
-    if choice == 1: return 33554432
-    if choice == 2: return 67108864
-    16777216
+    if choice == 1: return 536870912
+    if choice == 2: return 1073741824
+    268435456
 
-fn xproc_budget(candidate_bytes: i64, choice: i64) -> i64:
-    if candidate_bytes <= 0: return 0
-    min(candidate_bytes, xproc_budget_limit(choice))
+fn xproc_budget(candidate_bytes: i64, rss_bytes: i64, scope_bytes: i64, choice: i64, mode: i64) -> i64:
+    let capacity = if mode == 1: scope_bytes else: min(candidate_bytes, rss_bytes)
+    if capacity <= 0: return 0
+    min(capacity, xproc_budget_limit(choice))
 
 fn xproc_budget_label(bytes: i64) -> string:
+    if bytes >= 1073741824: return "1 GiB"
     if bytes >= 1048576:
         let tenths = bytes * 10 // 1048576
-        return f"{tenths // 10}.{tenths % 10} MiB"
+        return f"{tenths // 10} MiB"
     f"{bytes} bytes"
 
 fn xproc_confirmation_start_time(zh: bool, start_time: i64) -> string:
@@ -386,14 +421,18 @@ fn xproc_result_name(state: i64) -> string:
     if state == 26: return "target-identity-changed"
     "in-progress"
 
-fn xproc_result_text(zh: bool, state: i64, simulated: bool) -> string:
+fn xproc_result_text(zh: bool, state: i64, simulated: bool, mode: i64) -> string:
     if state == 10:
         if simulated: return label(zh, "Simulation: test helper reported the full request.", "模拟：测试 helper 报告完整建议请求。")
+        if mode == 1: return label(zh, "memory.reclaim request write completed.", "memory.reclaim 请求写入已完成。")
         return label(zh, "Kernel accepted the full advice request.", "内核已接受完整回收建议请求。")
     if state == 11:
         if simulated: return label(zh, "Simulation: test helper reported a partial request.", "模拟：测试 helper 报告部分建议请求。")
+        if mode == 1: return label(zh, "Kernel reported a scope reclaim shortfall.", "内核报告作用域回收未达请求量。")
         return label(zh, "Kernel accepted only part of the advice request.", "内核只接受了部分回收建议请求。")
-    if state == 12: return label(zh, "The helper refused this target before advising it.", "helper 在发出回收建议前拒绝了此目标。")
+    if state == 12:
+        if mode == 1: return label(zh, "The helper refused this app scope before writing.", "helper 在写入前拒绝了此应用作用域。")
+        return label(zh, "The helper refused this target before advising it.", "helper 在发出回收建议前拒绝了此目标。")
     if state == 13:
         if simulated: return label(zh, "Simulation: the mock helper reported a permission denial.", "模拟：测试 helper 返回权限拒绝。")
         return label(zh, "The kernel denied permission for this target.", "内核拒绝了此目标的权限请求。")
@@ -425,6 +464,15 @@ fn xproc_exit_detail(zh: bool, exit_code: i64, signal: i64) -> string:
 fn xproc_advised_bytes_label(zh: bool, simulated: bool) -> string:
     if simulated: return label(zh, "Mock bytes advised:", "模拟建议字节：")
     label(zh, "Bytes advised:", "建议字节：")
+
+fn xproc_kib(value: i64) -> string:
+    if value < 0: return "unavailable"
+    f"{value} KiB"
+
+fn xproc_mib_bytes(value: i64) -> string:
+    if value < 0: return "unavailable"
+    let tenths = value * 10 // 1048576
+    f"{tenths // 10}.{tenths % 10} MiB"
 
 fn xproc_helper_calls_label(zh: bool, simulated: bool) -> string:
     if simulated: return label(zh, "Mock helper calls:", "模拟 helper 调用：")
@@ -468,6 +516,9 @@ fn xproc_confirm_accept_rect(panel: &ui.Rect) -> ui.Rect:
 fn xproc_budget_rect(choice: i64, panel: &ui.Rect) -> ui.Rect:
     ui.rect(panel.x + 10.0 + f64(choice) * 97.0, panel.y + 98.0, 90.0, 20.0)
 
+fn xproc_mode_rect(choice: i64, panel: &ui.Rect) -> ui.Rect:
+    ui.rect(panel.x + 10.0 + f64(choice) * 142.0, panel.y + 124.0, 132.0, 20.0)
+
 fn xproc_confirm_cancel_rect(panel: &ui.Rect) -> ui.Rect:
     ui.rect(panel.x + 216.0, panel.bottom() - 30.0, 78.0, 22.0)
 
@@ -493,6 +544,14 @@ fn xproc_uid(s: &MainWindow, index: i64) -> i64:
 fn xproc_candidate_bytes(s: &MainWindow, index: i64) -> i64:
     if s.xproc_simulation: return mr_runtime_xproc_candidate_bytes(index)
     mr_cand_reclaimable_bytes(index)
+
+fn xproc_candidate_scope_bytes(s: &MainWindow, index: i64) -> i64:
+    if s.xproc_simulation: return mr_runtime_xproc_candidate_scope_bytes(index)
+    mr_cand_scope_anon_file_bytes(index)
+
+fn xproc_candidate_rss_bytes(s: &MainWindow, index: i64) -> i64:
+    if s.xproc_simulation: return mr_runtime_xproc_candidate_rss_bytes(index)
+    mr_cand_rss_bytes(index)
 
 fn xproc_candidate_regions(s: &MainWindow, index: i64) -> i64:
     if s.xproc_simulation: return mr_runtime_xproc_candidate_regions(index)
@@ -565,6 +624,8 @@ fn xproc_scan(s: &mut MainWindow):
     s.xproc_target_scope_hash = -1
     s.xproc_target_region_digest = -1
     s.xproc_target_bytes = -1
+    s.xproc_target_scope_bytes = -1
+    s.xproc_target_rss_bytes = -1
     s.xproc_target_regions = -1
     s.xproc_target_name = ""
     s.xproc_target_app_name = ""
@@ -598,6 +659,8 @@ fn xproc_set_selected(s: &mut MainWindow, index: i64):
     let scope_hash = xproc_candidate_scope_hash(s, index)
     let region_digest = xproc_candidate_region_digest(s, index)
     let candidate_bytes = xproc_candidate_bytes(s, index)
+    let candidate_scope_bytes = xproc_candidate_scope_bytes(s, index)
+    let candidate_rss_bytes = xproc_candidate_rss_bytes(s, index)
     let regions = xproc_candidate_regions(s, index)
     let name = xproc_candidate_name(s, index)
     let app_name = xproc_candidate_app_name(s, index)
@@ -617,6 +680,8 @@ fn xproc_set_selected(s: &mut MainWindow, index: i64):
         s.xproc_target_scope_hash = -1
         s.xproc_target_region_digest = -1
         s.xproc_target_bytes = -1
+        s.xproc_target_scope_bytes = -1
+        s.xproc_target_rss_bytes = -1
         s.xproc_target_regions = -1
         s.xproc_target_name = ""
         s.xproc_target_app_name = ""
@@ -635,6 +700,7 @@ fn xproc_set_selected(s: &mut MainWindow, index: i64):
         return
     s.xproc_selected = index
     s.xproc_budget_choice = 0
+    s.xproc_mode_choice = 0
     s.xproc_target_pid = pid
     s.xproc_target_start_time = start_time
     s.xproc_target_uid = uid
@@ -643,13 +709,15 @@ fn xproc_set_selected(s: &mut MainWindow, index: i64):
     s.xproc_target_scope_hash = scope_hash
     s.xproc_target_region_digest = region_digest
     s.xproc_target_bytes = candidate_bytes
+    s.xproc_target_scope_bytes = candidate_scope_bytes
+    s.xproc_target_rss_bytes = candidate_rss_bytes
     s.xproc_target_regions = regions
     s.xproc_target_name = name
     s.xproc_target_app_name = app_name
     if index < s.xproc_scroll: s.xproc_scroll = index
     if index >= s.xproc_scroll + 4: s.xproc_scroll = index - 3
     if s.test_mode: mr_runtime_emit(f"CI_XPROC_AUDIT phase=selection request_id={request_id} pid={pid} uid={uid} start_time={start_time} scope_hash={scope_hash} identity_hash={identity_token} region_digest={region_digest}")
-    if s.test_mode: mr_runtime_emit(f"CI_XPROC_SELECT index={index} pid={pid} uid={uid} start_time={start_time} request_id={request_id} scope_hash={scope_hash} identity_hash={identity_token} region_digest={region_digest} process={s.xproc_target_name} app={s.xproc_target_app_name} process_state={xproc_candidate_state_text(false, xproc_candidate_state(s, index))} regions={regions} candidate_bytes={candidate_bytes} selected=true snapshot=pinned")
+    if s.test_mode: mr_runtime_emit(f"CI_XPROC_SELECT index={index} pid={pid} uid={uid} start_time={start_time} request_id={request_id} scope_hash={scope_hash} identity_hash={identity_token} region_digest={region_digest} process={s.xproc_target_name} app={s.xproc_target_app_name} process_state={xproc_candidate_state_text(false, xproc_candidate_state(s, index))} regions={regions} candidate_bytes={candidate_bytes} rss_bytes={candidate_rss_bytes} scope_anon_file_bytes={candidate_scope_bytes} selected=true snapshot=pinned")
 
 fn xproc_local_failure(s: &mut MainWindow, state: i64):
     s.xproc_state = state
@@ -660,7 +728,7 @@ fn xproc_local_failure(s: &mut MainWindow, state: i64):
     s.xproc_regions = 0
     s.xproc_error_code = 0
     s.xproc_call_count = 0
-    s.status = xproc_result_text(s.zh, state, s.xproc_simulation)
+    s.status = xproc_result_text(s.zh, state, s.xproc_simulation, s.xproc_mode_choice)
     if s.test_mode: mr_runtime_emit(f"CI_XPROC_RESULT state={xproc_result_name(state)} authorization_started=false call_count=0 no_system_write={s.xproc_simulation}")
     s.canvas.redraw()
 
@@ -671,13 +739,26 @@ fn xproc_finish(s: &mut MainWindow, result: i64):
     s.xproc_regions = if s.xproc_simulation: mr_runtime_xproc_result_regions() else: mr_xproc_result_regions()
     s.xproc_error_code = if s.xproc_simulation: 0 else: mr_xproc_result_error_code()
     s.xproc_call_count = if s.xproc_simulation: mr_runtime_xproc_result_call_count() else: mr_xproc_result_call_count()
+    s.xproc_mode_choice = if s.xproc_simulation: mr_runtime_xproc_result_mode() else: mr_xproc_result_mode()
+    s.xproc_target_rss_before_kib = if s.xproc_simulation: -1 else: mr_xproc_result_target_rss_before_kib()
+    s.xproc_target_rss_after_kib = if s.xproc_simulation: -1 else: mr_xproc_result_target_rss_after_kib()
+    s.xproc_target_swap_before_kib = if s.xproc_simulation: -1 else: mr_xproc_result_target_swap_before_kib()
+    s.xproc_target_swap_after_kib = if s.xproc_simulation: -1 else: mr_xproc_result_target_swap_after_kib()
+    s.xproc_scope_current_before_bytes = if s.xproc_simulation: -1 else: mr_xproc_result_scope_current_before_bytes()
+    s.xproc_scope_current_after_bytes = if s.xproc_simulation: -1 else: mr_xproc_result_scope_current_after_bytes()
+    s.xproc_scope_anon_before_bytes = if s.xproc_simulation: -1 else: mr_xproc_result_scope_anon_before_bytes()
+    s.xproc_scope_anon_after_bytes = if s.xproc_simulation: -1 else: mr_xproc_result_scope_anon_after_bytes()
+    s.xproc_scope_file_before_bytes = if s.xproc_simulation: -1 else: mr_xproc_result_scope_file_before_bytes()
+    s.xproc_scope_file_after_bytes = if s.xproc_simulation: -1 else: mr_xproc_result_scope_file_after_bytes()
+    s.xproc_scope_swap_before_bytes = if s.xproc_simulation: -1 else: mr_xproc_result_scope_swap_before_bytes()
+    s.xproc_scope_swap_after_bytes = if s.xproc_simulation: -1 else: mr_xproc_result_scope_swap_after_bytes()
     let child_exit = if s.xproc_simulation: -1 else: mr_xproc_result_exit_code()
     let child_signal = if s.xproc_simulation: 0 else: mr_xproc_result_signal()
     s.xproc_after_available = -1
     s.xproc_view = 4
     let after = memory.sample() catch e:
         let reason = if s.xproc_simulation: "simulated-partial" else: mr_xproc_result_reason()
-        if s.test_mode: mr_runtime_emit(f"CI_XPROC_RESULT state={xproc_result_name(s.xproc_state)} poll={result} advised_bytes={s.xproc_advised_bytes} requested_bytes={s.xproc_requested_bytes} regions={s.xproc_regions} error_code={s.xproc_error_code} call_count={s.xproc_call_count} pkexec_exit_code={child_exit} child_signal={child_signal} reason={reason} memavailable_before_kib={s.xproc_before_available} memavailable_after_kib=unavailable causal_attribution=none no_retry=true mock={s.xproc_simulation} no_system_write={s.xproc_simulation}")
+        if s.test_mode: mr_runtime_emit(f"CI_XPROC_RESULT state={xproc_result_name(s.xproc_state)} mode={s.xproc_mode_choice} poll={result} advised_bytes={s.xproc_advised_bytes} requested_bytes={s.xproc_requested_bytes} regions={s.xproc_regions} error_code={s.xproc_error_code} call_count={s.xproc_call_count} pkexec_exit_code={child_exit} child_signal={child_signal} reason={reason} memavailable_before_kib={s.xproc_before_available} memavailable_after_kib=unavailable causal_attribution=none no_retry=true mock={s.xproc_simulation} no_system_write={s.xproc_simulation}")
         if s.test_mode: mr_runtime_emit(f"CI_XPROC_AFTER_SAMPLE available=false error={e}")
         s.status = label(s.zh, "Result recorded; after-sample unavailable", "结果已记录；无法取得操作后采样")
         s.canvas.redraw()
@@ -689,8 +770,8 @@ fn xproc_finish(s: &mut MainWindow, result: i64):
     s.page_cache_estimate = after.page_cache
     s.sample_ok = true
     s.xproc_after_available = after.available
-    s.status = xproc_result_text(s.zh, s.xproc_state, s.xproc_simulation)
-    if s.test_mode: mr_runtime_emit(f"CI_XPROC_RESULT state={xproc_result_name(s.xproc_state)} poll={result} advised_bytes={s.xproc_advised_bytes} requested_bytes={s.xproc_requested_bytes} regions={s.xproc_regions} error_code={s.xproc_error_code} call_count={s.xproc_call_count} pkexec_exit_code={child_exit} child_signal={child_signal} memavailable_before_kib={s.xproc_before_available} memavailable_after_kib={s.xproc_after_available} causal_attribution=none no_retry=true mock={s.xproc_simulation} no_system_write={s.xproc_simulation}")
+    s.status = xproc_result_text(s.zh, s.xproc_state, s.xproc_simulation, s.xproc_mode_choice)
+    if s.test_mode: mr_runtime_emit(f"CI_XPROC_RESULT state={xproc_result_name(s.xproc_state)} mode={s.xproc_mode_choice} poll={result} advised_bytes={s.xproc_advised_bytes} requested_bytes={s.xproc_requested_bytes} regions={s.xproc_regions} error_code={s.xproc_error_code} call_count={s.xproc_call_count} pkexec_exit_code={child_exit} child_signal={child_signal} memavailable_before_kib={s.xproc_before_available} memavailable_after_kib={s.xproc_after_available} causal_attribution=none no_retry=true mock={s.xproc_simulation} no_system_write={s.xproc_simulation}")
     s.canvas.redraw()
 
 fn xproc_start_selected(s: &mut MainWindow):
@@ -700,7 +781,7 @@ fn xproc_start_selected(s: &mut MainWindow):
     if s.xproc_selected < 0 or s.xproc_request_id <= 0 or s.xproc_target_pid <= 0 or s.xproc_target_start_time <= 0 or s.xproc_target_uid <= 0 or s.xproc_target_identity_token <= 0 or s.xproc_target_scope_hash <= 0 or s.xproc_target_region_digest <= 0 or s.xproc_target_bytes <= 0 or s.xproc_target_regions <= 0:
         xproc_local_failure(s, 20)
         return
-    let budget = xproc_budget(s.xproc_target_bytes, s.xproc_budget_choice)
+    let budget = xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)
     if budget <= 0:
         xproc_local_failure(s, 20)
         return
@@ -710,7 +791,7 @@ fn xproc_start_selected(s: &mut MainWindow):
         s.xproc_view = 4
         s.xproc_before_available = -1
         s.xproc_after_available = -1
-        s.status = xproc_result_text(s.zh, 22, s.xproc_simulation)
+        s.status = xproc_result_text(s.zh, 22, s.xproc_simulation, s.xproc_mode_choice)
         s.canvas.redraw()
         return
     s.xproc_before_available = before.available
@@ -720,9 +801,9 @@ fn xproc_start_selected(s: &mut MainWindow):
         if s.test_mode: mr_runtime_emit(f"CI_XPROC_START blocked=target-snapshot-changed request_id={s.xproc_request_id} status={snapshot_status} selected_pid={s.xproc_target_pid} selected_start_time={s.xproc_target_start_time} selected_uid={s.xproc_target_uid} scope_hash={s.xproc_target_scope_hash} identity_hash={s.xproc_target_identity_token} region_digest={s.xproc_target_region_digest} helper_calls=0 authorization_started=false")
         return
     let start_result = if s.xproc_simulation:
-        mr_runtime_xproc_start(s.xproc_request_id, s.xproc_target_pid, s.xproc_target_start_time, s.xproc_target_uid, s.xproc_target_identity_token, s.xproc_target_scope_hash, s.xproc_target_region_digest, s.xproc_target_bytes, s.xproc_target_regions, budget)
+        mr_runtime_xproc_start(s.xproc_request_id, s.xproc_mode_choice, s.xproc_target_pid, s.xproc_target_start_time, s.xproc_target_uid, s.xproc_target_identity_token, s.xproc_target_scope_hash, s.xproc_target_region_digest, s.xproc_target_bytes, s.xproc_target_regions, budget)
     else:
-        mr_xproc_start(s.xproc_request_id, s.xproc_target_pid, s.xproc_target_start_time, s.xproc_target_uid, s.xproc_target_identity_token, s.xproc_target_scope_hash, s.xproc_target_region_digest, s.xproc_target_bytes, s.xproc_target_regions, budget)
+        mr_xproc_start(s.xproc_request_id, s.xproc_mode_choice, s.xproc_target_pid, s.xproc_target_start_time, s.xproc_target_uid, s.xproc_target_identity_token, s.xproc_target_scope_hash, s.xproc_target_region_digest, s.xproc_target_bytes, s.xproc_target_regions, budget)
     if start_result != 0:
         let mut state = 20
         if start_result == 1: state = 23
@@ -736,18 +817,26 @@ fn xproc_start_selected(s: &mut MainWindow):
     if s.test_mode:
         let backend = if s.xproc_simulation: "mock" else: "pkexec"
         mr_runtime_emit(f"CI_XPROC_AUDIT phase=bridge_argv request_id={s.xproc_request_id} pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} scope_hash={s.xproc_target_scope_hash} identity_hash={s.xproc_target_identity_token} region_digest={s.xproc_target_region_digest}")
-        mr_runtime_emit(f"CI_XPROC_START started=true backend={backend} request_id={s.xproc_request_id} pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} identity_hash={s.xproc_target_identity_token} scope_hash={s.xproc_target_scope_hash} region_digest={s.xproc_target_region_digest} max_bytes={budget} reviewed_candidate_bytes={s.xproc_target_bytes} reviewed_regions={s.xproc_target_regions} observed_memavailable_before_kib={s.xproc_before_available} authorization_each_run=true automatic_retry=false")
+        mr_runtime_emit(f"CI_XPROC_START started=true backend={backend} mode={s.xproc_mode_choice} request_id={s.xproc_request_id} pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} identity_hash={s.xproc_target_identity_token} scope_hash={s.xproc_target_scope_hash} region_digest={s.xproc_target_region_digest} max_bytes={budget} reviewed_candidate_bytes={s.xproc_target_bytes} reviewed_regions={s.xproc_target_regions} observed_memavailable_before_kib={s.xproc_before_available} authorization_each_run=true automatic_retry=false")
     s.canvas.redraw()
 
 fn choose_xproc_budget(s: &mut MainWindow, choice: i64):
     if choice < 0 or choice > 2: return
     s.xproc_budget_choice = choice
-    if s.test_mode: mr_runtime_emit(f"CI_XPROC_BUDGET choice={choice} limit_bytes={xproc_budget_limit(choice)} effective_bytes={xproc_budget(s.xproc_target_bytes, choice)}")
+    if s.test_mode: mr_runtime_emit(f"CI_XPROC_BUDGET choice={choice} limit_bytes={xproc_budget_limit(choice)} effective_bytes={xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_scope_bytes, choice, s.xproc_mode_choice)}")
+
+fn choose_xproc_mode(s: &mut MainWindow, mode: i64):
+    if mode < 0 or mode > 1: return
+    if mode == 1 and s.xproc_target_scope_bytes <= 0: return
+    s.xproc_mode_choice = mode
+    if s.test_mode:
+        let action = if mode == 0: "process-pageout" else: "app-scope-memory-reclaim"
+        mr_runtime_emit(f"CI_XPROC_MODE choice={mode} action={action} target_pid={s.xproc_target_pid}")
 
 fn xproc_confirm_cancel(s: &mut MainWindow):
     s.xproc_state = 21
     s.xproc_view = 4
-    s.status = xproc_result_text(s.zh, 21, s.xproc_simulation)
+    s.status = xproc_result_text(s.zh, 21, s.xproc_simulation, s.xproc_mode_choice)
     if s.test_mode: mr_runtime_emit(f"CI_XPROC_RESULT state=confirmation-cancelled authorization_started=false call_count=0 mock={s.xproc_simulation}")
     s.canvas.redraw()
 
@@ -931,6 +1020,8 @@ fn xproc_hit(s: &MainWindow, x: f64, y: f64) -> f64:
     elif s.xproc_view == 2:
         for choice in 0..3:
             if xproc_budget_rect(choice, &panel).contains(x, y): return 822.0 + f64(choice)
+        for mode in 0..2:
+            if xproc_mode_rect(mode, &panel).contains(x, y): return 825.0 + f64(mode)
         if xproc_confirm_accept_rect(&panel).contains(x, y): return 820.0
         if xproc_confirm_cancel_rect(&panel).contains(x, y): return 821.0
     elif s.xproc_view == 4 and xproc_result_close_rect(&panel).contains(x, y):
@@ -1140,6 +1231,15 @@ fn draw_clean_confirmation(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, second
 
 fn xproc_bytes(bytes: i64) -> string:
     if bytes < 0: return "unavailable"
+    if bytes >= 1073741824:
+        let whole = bytes // 1073741824
+        let tenths = (bytes % 1073741824) * 10 // 1073741824
+        return f"{whole}.{tenths} GiB"
+    if bytes >= 1048576:
+        let whole = bytes // 1048576
+        let tenths = (bytes % 1048576) * 10 // 1048576
+        return f"{whole}.{tenths} MiB"
+    if bytes >= 1024: return f"{bytes // 1024} KiB"
     f"{bytes} bytes"
 
 fn xproc_button(p: &ui.Painter, rect: &ui.Rect, text: string, focused: bool, enabled: bool, fg: &ui.Color, disabled: &ui.Color, border: &ui.Color, surface: &ui.Color, hot: &ui.Color):
@@ -1193,44 +1293,64 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
         xproc_button(p, xproc_picker_cancel_rect(&panel), label(s.zh, "Close", "关闭"), s.xproc_focus == 3, true, fg, disabled, border, surface, hot)
     elif s.xproc_view == 2:
         let name = s.xproc_target_name
-        let budget = xproc_budget(s.xproc_target_bytes, s.xproc_budget_choice)
+        let budget = xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)
         p.text(panel.x + 9.0, panel.y + 27.0, label(s.zh, "Confirm one process and one bounded request.", "请确认单个进程和有限范围请求。"), fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 45.0, f"{name}  PID {s.xproc_target_pid}  UID {s.xproc_target_uid}", fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 60.0, xproc_confirmation_start_time(s.zh, s.xproc_target_start_time), secondary, size=8.0)
         p.text(panel.x + 9.0, panel.y + 73.0, f"Application: {s.xproc_target_app_name}", secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 86.0, f"Up to {xproc_budget_label(budget)} across {s.xproc_target_regions} reviewed regions.", secondary, size=8.0)
+        if s.xproc_mode_choice == 0:
+            p.text(panel.x + 9.0, panel.y + 86.0, f"Up to {xproc_budget_label(budget)} · RSS {xproc_bytes(s.xproc_target_rss_bytes)}", secondary, size=8.0)
+        else:
+            p.text(panel.x + 9.0, panel.y + 86.0, f"Up to {xproc_budget_label(budget)} · scope anon+file {xproc_bytes(s.xproc_target_scope_bytes)}", secondary, size=7.0)
         for choice in 0..3:
             let rect = xproc_budget_rect(choice, &panel)
-            let base_amount = if choice == 0: "16 MiB" elif choice == 1: "32 MiB" else: "64 MiB"
+            let base_amount = if choice == 0: "256 MiB" elif choice == 1: "512 MiB" else: "1 GiB"
             let amount = if s.xproc_budget_choice == choice: f"✓ {base_amount}" else: base_amount
             xproc_button(p, &rect, amount, s.xproc_focus == choice, true, fg, disabled, border, surface, hot)
-        p.text(panel.x + 9.0, panel.y + 122.0, label(s.zh, "The helper rechecks UID, executable, app scope,", "helper 会重新核验 UID、可执行文件、应用作用域，"), secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 136.0, label(s.zh, "start time and protected-process rules.", "启动时间和受保护进程规则。"), secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 158.0, label(s.zh, "PAGEOUT can use swap/I/O and cause visible", "PAGEOUT 可能使用 swap/I/O 并造成明显"), secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 172.0, label(s.zh, "latency. No released amount is guaranteed.", "延迟；不保证释放任何数量。"), secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 193.0, label(s.zh, "MemAvailable change is observational only.", "MemAvailable 变化仅供观察，不代表因果。"), secondary, size=8.0)
-        xproc_button(p, xproc_confirm_accept_rect(&panel), label(s.zh, "Authorize and run", "授权并执行"), s.xproc_focus == 3, true, fg, disabled, border, surface, hot)
-        xproc_button(p, xproc_confirm_cancel_rect(&panel), label(s.zh, "Cancel", "取消"), s.xproc_focus == 4, true, fg, disabled, border, surface, hot)
+        for mode in 0..2:
+            let rect = xproc_mode_rect(mode, &panel)
+            let base_mode = if mode == 0: label(s.zh, "This process", "仅此进程") else: label(s.zh, "Whole app scope", "整个应用作用域")
+            let mode_label = if s.xproc_mode_choice == mode: f"✓ {base_mode}" else: base_mode
+            let mode_available = mode == 0 or s.xproc_target_scope_bytes > 0
+            xproc_button(p, &rect, mode_label, s.xproc_focus == 3 + mode, mode_available, fg, disabled, border, surface, hot)
+        p.text(panel.x + 9.0, panel.y + 151.0, label(s.zh, "Helper rechecks identity, scope and the request limit.", "helper 会重核身份、作用域及请求额度。"), secondary, size=8.0)
+        let effect = if s.xproc_mode_choice == 0:
+            label(s.zh, "PAGEOUT may use swap/I/O and slow this process.", "PAGEOUT 可能使用 swap/I/O 并使该进程变慢。")
+        else:
+            label(s.zh, "memory.reclaim affects every process in this app scope.", "memory.reclaim 会影响此应用作用域内的全部进程。")
+        p.text(panel.x + 9.0, panel.y + 165.0, effect, secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 179.0, label(s.zh, "Kernel reclaim can be less or more than requested.", "内核实际回收可能少于或多于请求量。"), secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 193.0, label(s.zh, "Observed changes are not causal attribution.", "观测变化不能直接归因于本次操作。"), secondary, size=8.0)
+        let can_run = budget >= 4096
+        xproc_button(p, xproc_confirm_accept_rect(&panel), label(s.zh, "Authorize and run", "授权并执行"), s.xproc_focus == 5, can_run, fg, disabled, border, surface, hot)
+        xproc_button(p, xproc_confirm_cancel_rect(&panel), label(s.zh, "Cancel", "取消"), s.xproc_focus == 6, true, fg, disabled, border, surface, hot)
     elif s.xproc_view == 3:
         p.text(panel.x + 9.0, panel.y + 34.0, xproc_waiting_text(s.zh, s.xproc_state, s.xproc_simulation), fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 58.0, label(s.zh, "Do not start another reclaim request.", "请勿重复启动回收请求。"), secondary, size=8.0)
         p.text(panel.x + 9.0, panel.y + 77.0, label(s.zh, "This view stays open until a result is known.", "结果明确前，此窗口会保持打开。"), secondary, size=8.0)
     else:
         let reason = if s.xproc_simulation: "simulated-partial" else: mr_xproc_result_reason()
-        p.text(panel.x + 9.0, panel.y + 27.0, xproc_result_text(s.zh, s.xproc_state, s.xproc_simulation), fg, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 27.0, xproc_result_text(s.zh, s.xproc_state, s.xproc_simulation, s.xproc_mode_choice), fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 49.0, f"Target PID {s.xproc_target_pid} · UID {s.xproc_target_uid}", secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 68.0, f"{xproc_advised_bytes_label(s.zh, s.xproc_simulation)} {xproc_bytes(s.xproc_advised_bytes)}", fg, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 86.0, f"Requested: {xproc_bytes(s.xproc_requested_bytes)} · regions: {s.xproc_regions}", secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 104.0, f"{xproc_helper_calls_label(s.zh, s.xproc_simulation)} {s.xproc_call_count} · errno: {s.xproc_error_code}", secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 122.0, f"Reason: {reason}", secondary, size=8.0)
+        if s.xproc_mode_choice == 0:
+            p.text(panel.x + 9.0, panel.y + 68.0, f"{xproc_advised_bytes_label(s.zh, s.xproc_simulation)} {xproc_bytes(s.xproc_advised_bytes)}", fg, size=8.0)
+        else:
+            p.text(panel.x + 9.0, panel.y + 68.0, f"memory.reclaim request: {xproc_bytes(s.xproc_requested_bytes)}", fg, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 86.0, f"Regions: {s.xproc_regions} · helper calls: {s.xproc_call_count}", secondary, size=8.0)
+        if s.xproc_mode_choice == 0:
+            p.text(panel.x + 9.0, panel.y + 104.0, f"Target RSS: {xproc_kib(s.xproc_target_rss_before_kib)} → {xproc_kib(s.xproc_target_rss_after_kib)}", secondary, size=8.0)
+            p.text(panel.x + 9.0, panel.y + 122.0, f"Target swap: {xproc_kib(s.xproc_target_swap_before_kib)} → {xproc_kib(s.xproc_target_swap_after_kib)}", secondary, size=8.0)
+        else:
+            p.text(panel.x + 9.0, panel.y + 104.0, f"Scope current: {xproc_mib_bytes(s.xproc_scope_current_before_bytes)} → {xproc_mib_bytes(s.xproc_scope_current_after_bytes)}", secondary, size=8.0)
+            p.text(panel.x + 9.0, panel.y + 122.0, f"Scope anon/file: {xproc_mib_bytes(s.xproc_scope_anon_before_bytes)}/{xproc_mib_bytes(s.xproc_scope_file_before_bytes)} → {xproc_mib_bytes(s.xproc_scope_anon_after_bytes)}/{xproc_mib_bytes(s.xproc_scope_file_after_bytes)}", secondary, size=7.0)
+        p.text(panel.x + 9.0, panel.y + 140.0, f"Reason: {reason} · errno {s.xproc_error_code}", secondary, size=7.0)
         let child_exit = if s.xproc_simulation: -1 else: mr_xproc_result_exit_code()
         let child_signal = if s.xproc_simulation: 0 else: mr_xproc_result_signal()
         let exit_detail = xproc_exit_detail(s.zh, child_exit, child_signal)
         if exit_detail != "" and (s.xproc_state == 19 or s.xproc_state == 24 or s.xproc_state == 25):
-            p.text(panel.x + 9.0, panel.y + 138.0, exit_detail, secondary, size=7.0)
-        p.text(panel.x + 9.0, panel.y + 150.0, f"MemAvailable before: {value(s.xproc_before_available, s.xproc_before_available >= 0)}", secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 168.0, f"MemAvailable after: {value(s.xproc_after_available, s.xproc_after_available >= 0)}", secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 192.0, label(s.zh, "Observed change is not causal attribution.", "观测变化不能归因于本次操作。"), secondary, size=8.0)
+            p.text(panel.x + 9.0, panel.y + 153.0, exit_detail, secondary, size=7.0)
+        p.text(panel.x + 9.0, panel.y + 170.0, f"MemAvailable KiB: {s.xproc_before_available} → {s.xproc_after_available}", secondary, size=7.0)
+        p.text(panel.x + 9.0, panel.y + 189.0, label(s.zh, "Changes are observations, not bytes freed.", "观测变化不等于实际释放字节。"), secondary, size=8.0)
         xproc_button(p, xproc_result_close_rect(&panel), label(s.zh, "Close", "关闭"), true, true, fg, disabled, border, surface, hot)
 
 fn draw(s: &mut MainWindow, p: &ui.Painter):
@@ -1371,17 +1491,20 @@ fn test_ci_sample_failure_latch_is_test_only():
     assert(not suppress_ci_resample(false, true))
 
 fn test_xproc_budget_and_result_mapping_are_fail_closed():
-    assert(xproc_budget(-1, 0) == 0)
-    assert(xproc_budget(0, 0) == 0)
-    assert(xproc_budget(8 * 1024 * 1024, 0) == 8 * 1024 * 1024)
-    assert(xproc_budget(64 * 1024 * 1024, 0) == 16 * 1024 * 1024)
-    assert(xproc_budget(64 * 1024 * 1024, 1) == 32 * 1024 * 1024)
-    assert(xproc_budget(64 * 1024 * 1024, 2) == 64 * 1024 * 1024)
-    assert(xproc_budget(8 * 1024 * 1024, 2) == 8 * 1024 * 1024)
-    assert(xproc_budget_limit(-1) == 16 * 1024 * 1024)
-    assert(xproc_budget_limit(9) == 16 * 1024 * 1024)
-    assert(xproc_budget_label(32 * 1024 * 1024) == "32.0 MiB")
+    assert(xproc_budget(-1, 0, 0, 0, 0) == 0)
+    assert(xproc_budget(0, 0, 0, 0, 0) == 0)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 0, 0, 0) == 256 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 0, 1, 0) == 512 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 3 * 1024 * 1024 * 1024, 0, 2, 0) == 1024 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 128 * 1024 * 1024, 0, 2, 0) == 128 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 0, 768 * 1024 * 1024, 2, 1) == 768 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 0, 2 * 1024 * 1024 * 1024, 2, 1) == 1024 * 1024 * 1024)
+    assert(xproc_budget(2 * 1024 * 1024 * 1024, 0, -1, 2, 1) == 0)
+    assert(xproc_budget_limit(-1) == 256 * 1024 * 1024)
+    assert(xproc_budget_limit(9) == 256 * 1024 * 1024)
+    assert(xproc_budget_label(32 * 1024 * 1024) == "32 MiB")
     assert(xproc_budget_label(512 * 1024) == "524288 bytes")
+    assert(xproc_bytes(1024 * 1024 * 1024) == "1.0 GiB")
     assert(xproc_result_state(0) == 10)
     assert(xproc_result_state(1) == 11)
     assert(xproc_result_state(2) == 12)
@@ -1413,12 +1536,12 @@ fn test_xproc_candidate_process_state_text_is_explicit():
     assert(xproc_candidate_state_text(true, 83) == "休眠中")
 
 fn test_xproc_simulation_never_claims_a_kernel_result():
-    assert(xproc_result_text(false, 10, false) == "Kernel accepted the full advice request.")
-    assert(xproc_result_text(false, 11, false) == "Kernel accepted only part of the advice request.")
-    assert(xproc_result_text(false, 10, true) == "Simulation: test helper reported the full request.")
-    assert(xproc_result_text(false, 11, true) == "Simulation: test helper reported a partial request.")
-    assert(xproc_result_text(true, 11, true) == "模拟：测试 helper 报告部分建议请求。")
-    assert(xproc_result_text(false, 13, true) == "Simulation: the mock helper reported a permission denial.")
+    assert(xproc_result_text(false, 10, false, 0) == "Kernel accepted the full advice request.")
+    assert(xproc_result_text(false, 11, false, 0) == "Kernel accepted only part of the advice request.")
+    assert(xproc_result_text(false, 10, true, 0) == "Simulation: test helper reported the full request.")
+    assert(xproc_result_text(false, 11, true, 0) == "Simulation: test helper reported a partial request.")
+    assert(xproc_result_text(true, 11, true, 0) == "模拟：测试 helper 报告部分建议请求。")
+    assert(xproc_result_text(false, 13, true, 0) == "Simulation: the mock helper reported a permission denial.")
     assert(xproc_advised_bytes_label(false, true) == "Mock bytes advised:")
     assert(xproc_advised_bytes_label(false, false) == "Bytes advised:")
     assert(xproc_helper_calls_label(false, true) == "Mock helper calls:")
@@ -1644,9 +1767,9 @@ fn activate(s: &mut MainWindow, target: f64):
                 if s.test_mode: mr_runtime_emit(f"CI_XPROC_CONFIRM rejected=true request_id={s.xproc_request_id} reason=audit-invalid helper_calls=0 authorization_started=false")
             else:
                 s.xproc_view = 2
-                s.xproc_focus = 3
+                s.xproc_focus = 5
                 if s.test_mode: mr_runtime_emit(f"CI_XPROC_AUDIT phase=confirmation request_id={s.xproc_request_id} pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} scope_hash={s.xproc_target_scope_hash} identity_hash={s.xproc_target_identity_token} region_digest={s.xproc_target_region_digest}")
-                if s.test_mode: mr_runtime_emit(f"CI_XPROC_CONFIRM open=true request_id={s.xproc_request_id} pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} identity_hash={s.xproc_target_identity_token} scope_hash={s.xproc_target_scope_hash} region_digest={s.xproc_target_region_digest} application={s.xproc_target_app_name} budget_limit_bytes={xproc_budget_limit(s.xproc_budget_choice)} max_bytes={xproc_budget(s.xproc_target_bytes, s.xproc_budget_choice)} regions={s.xproc_target_regions} explicit_user_choice=true immutable_snapshot=true")
+                if s.test_mode: mr_runtime_emit(f"CI_XPROC_CONFIRM open=true request_id={s.xproc_request_id} pid={s.xproc_target_pid} uid={s.xproc_target_uid} start_time={s.xproc_target_start_time} identity_hash={s.xproc_target_identity_token} scope_hash={s.xproc_target_scope_hash} region_digest={s.xproc_target_region_digest} application={s.xproc_target_app_name} mode={s.xproc_mode_choice} budget_limit_bytes={xproc_budget_limit(s.xproc_budget_choice)} max_bytes={xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)} process_rss_bytes={s.xproc_target_rss_bytes} scope_anon_file_bytes={s.xproc_target_scope_bytes} regions={s.xproc_target_regions} explicit_user_choice=true immutable_snapshot=true")
         elif target == 812.0:
             s.xproc_view = 0
             s.status = label(s.zh, "Target selection cancelled", "已取消目标选择")
@@ -1662,6 +1785,10 @@ fn activate(s: &mut MainWindow, target: f64):
             let choice = i64(target - 822.0)
             choose_xproc_budget(s, choice)
             s.xproc_focus = choice
+        elif target >= 825.0 and target < 827.0:
+            let mode = i64(target - 825.0)
+            choose_xproc_mode(s, mode)
+            s.xproc_focus = 3 + mode
         s.canvas.redraw()
         return
     elif s.xproc_view == 3:
@@ -1839,7 +1966,7 @@ fn move_xproc_focus(s: &mut MainWindow):
         if s.xproc_focus > 3: s.xproc_focus = 0
     elif s.xproc_view == 2:
         s.xproc_focus += 1
-        if s.xproc_focus > 4: s.xproc_focus = 0
+        if s.xproc_focus > 6: s.xproc_focus = 0
 
 fn move_xproc_selection(s: &mut MainWindow, direction: i64):
     let count = xproc_count(s)
@@ -1916,13 +2043,18 @@ fn key(s: &mut MainWindow, event: &ui.Key):
                 let next = max(0, min(2, s.xproc_budget_choice + direction))
                 choose_xproc_budget(s, next)
                 s.xproc_focus = next
+            elif (name == "Left" or name == "Right") and s.xproc_focus >= 3 and s.xproc_focus < 5:
+                choose_xproc_mode(s, 1 - s.xproc_mode_choice)
+                s.xproc_focus = 3 + s.xproc_mode_choice
             elif name == "space" or name == " ":
                 if s.xproc_focus < 3: choose_xproc_budget(s, s.xproc_focus)
-                elif s.xproc_focus == 3: activate(s, 820.0)
+                elif s.xproc_focus < 5: choose_xproc_mode(s, s.xproc_focus - 3)
+                elif s.xproc_focus == 5: activate(s, 820.0)
                 else: activate(s, 821.0)
             elif name == "Enter" or name == "Return" or name == "\r" or name == "\n":
                 if s.xproc_focus < 3: choose_xproc_budget(s, s.xproc_focus)
-                else: activate(s, if s.xproc_focus == 3: 820.0 else: 821.0)
+                elif s.xproc_focus < 5: choose_xproc_mode(s, s.xproc_focus - 3)
+                else: activate(s, if s.xproc_focus == 5: 820.0 else: 821.0)
         elif s.xproc_view == 3:
             if name == "Escape" or name == "Esc" or name == "\x1b":
                 s.status = label(s.zh, "The authorized request is still running and cannot be cancelled here.", "已授权请求仍在运行，无法在此取消。")
@@ -2149,6 +2281,7 @@ fn main():
         clean_simulation: clean_simulation, clean_production: clean_production,
         xproc_simulation: xproc_simulation, xproc_view: 0, xproc_state: 0,
         xproc_selected: -1, xproc_scroll: 0, xproc_focus: 0, xproc_budget_choice: 0,
+        xproc_mode_choice: 0, xproc_target_scope_bytes: -1, xproc_target_rss_bytes: -1,
         xproc_preflight: -1, xproc_scan_status: -1,
         xproc_target_pid: -1, xproc_target_start_time: -1, xproc_target_uid: -1,
         xproc_target_identity_token: -1, xproc_request_id: -1,
@@ -2158,6 +2291,12 @@ fn main():
         xproc_before_available: -1, xproc_after_available: -1,
         xproc_advised_bytes: 0, xproc_requested_bytes: 0, xproc_regions: 0,
         xproc_error_code: 0, xproc_call_count: 0,
+        xproc_target_rss_before_kib: -1, xproc_target_rss_after_kib: -1,
+        xproc_target_swap_before_kib: -1, xproc_target_swap_after_kib: -1,
+        xproc_scope_current_before_bytes: -1, xproc_scope_current_after_bytes: -1,
+        xproc_scope_anon_before_bytes: -1, xproc_scope_anon_after_bytes: -1,
+        xproc_scope_file_before_bytes: -1, xproc_scope_file_after_bytes: -1,
+        xproc_scope_swap_before_bytes: -1, xproc_scope_swap_after_bytes: -1,
         clean_self: true,
         clean_state: 0, clean_confirm_focus: 0, clean_before_available: 0,
         preferences_load_status: preferences_status,

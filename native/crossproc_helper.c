@@ -11,9 +11,9 @@
  * Threat model in one paragraph: the GUI is unprivileged and the PID it sends
  * is untrusted. Everything that decides whether memory is touched is re-derived
  * from the kernel here: the requester's UID, the target's real UID, its
- * start_time, its liveness, its ancestry, and its actual mappings. Nothing is
- * accepted from argv except seven decimal numbers and one fixed verb. There is
- * no path argument, no shell, no address range, no signal, and no retry.
+ * start_time, its liveness, its ancestry, and its actual mappings/scope. The
+ * command line has one fixed verb, one fixed mode, and ten decimal claims.
+ * There is no path argument, shell text, address range, signal, or retry.
  *
  * The kernel only accepts an advice request. The number it returns is a length
  * it covered, never an amount of memory that stayed out. Every output line that
@@ -22,6 +22,7 @@
 #define _GNU_SOURCE
 
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -37,10 +38,12 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/uio.h>
+#include <sys/vfs.h>
 #include <sys/utsname.h>
 #include <unistd.h>
 
 #include <linux/capability.h>
+#include <linux/magic.h>
 
 #include "crossproc_helper.h"
 #include "crossproc_identity.h"
@@ -73,12 +76,12 @@
 #define MR_XPROC_LINE_BYTES 4096u
 #define MR_XPROC_COMM_BYTES 64u
 #define MR_XPROC_CMDLINE_BYTES 8192u
-/* One syscall, one target, one vector array. These are ceilings, not defaults:
- * a caller may ask for less, never more. */
-#define MR_XPROC_MAX_IOVECS 32u
-#define MR_XPROC_MAX_BYTES (64ull * 1024ull * 1024ull)
 /* Room for the walk up the parent chain before giving up on a malformed tree. */
 #define MR_XPROC_MAX_ANCESTRY 256
+
+#define MR_CGROUP_ROOT "/sys/fs/cgroup"
+#define MR_CGROUP_PATH_BYTES 4096u
+#define MR_CGROUP_FILE_BYTES 128u
 
 /* ---------------------------------------------------------------------------
  * Test-only injection points.
@@ -98,6 +101,12 @@ static const char *proc_root(void)
         test_proc_root = (value != NULL && value[0] == '/') ? value : "/proc";
     }
     return test_proc_root;
+}
+
+static const char *cgroup_root(void)
+{
+    const char *value = getenv("MEMREDUCT_TEST_CGROUP_ROOT");
+    return value != NULL && value[0] == '/' ? value : MR_CGROUP_ROOT;
 }
 
 /* Every test hook below is opt-in and explicit. None of them can be reached in
@@ -149,6 +158,7 @@ static int test_pidfd_open(int32_t pid)
 }
 #else
 static const char *proc_root(void) { return "/proc"; }
+static const char *cgroup_root(void) { return MR_CGROUP_ROOT; }
 static int test_skip_privilege(void) { return 0; }
 static int test_skip_requester(void) { return 0; }
 static int test_skip_capability(void) { return 0; }
@@ -285,6 +295,43 @@ static int status_uid_values(const char *status, uint64_t out[4])
         line = next == NULL ? NULL : next + 1;
     }
     return found ? 0 : -1;
+}
+
+static int read_status(int32_t pid, char *buffer, size_t size);
+
+static int status_memory_kib(const char *status, const char *key, int64_t *out)
+{
+    size_t key_length = strlen(key);
+    const char *line = status;
+    while (line != NULL && *line != '\0') {
+        if (strncmp(line, key, key_length) == 0 && line[key_length] == ':') {
+            const char *value = line + key_length + 1u;
+            while (*value == ' ' || *value == '\t') value++;
+            uint64_t amount = 0;
+            const char *start = value;
+            while (*value >= '0' && *value <= '9') {
+                unsigned int digit = (unsigned int)(*value - '0');
+                if (amount > ((uint64_t)INT64_MAX - digit) / 10u) return -1;
+                amount = amount * 10u + digit;
+                value++;
+            }
+            while (*value == ' ' || *value == '\t') value++;
+            if (value == start || strncmp(value, "kB", 2u) != 0 ||
+                (value[2] != '\n' && value[2] != '\0')) return -1;
+            *out = (int64_t)amount;
+            return 0;
+        }
+        const char *next = strchr(line, '\n');
+        line = next == NULL ? NULL : next + 1;
+    }
+    return -1;
+}
+
+static int read_target_memory_kib(int32_t pid, const char *key, int64_t *out)
+{
+    char status[MR_XPROC_LINE_BYTES];
+    if (out == NULL || read_status(pid, status, sizeof(status)) != 0) return -1;
+    return status_memory_kib(status, key, out);
 }
 
 /* Copy the process name from /proc/<pid>/status (the "Name:" line). */
@@ -605,6 +652,262 @@ static const char *inspect_target(int32_t pid, uint64_t requester_uid,
     return NULL;
 }
 
+struct mr_scope_snapshot {
+    int64_t current_bytes;
+    int64_t anon_bytes;
+    int64_t file_bytes;
+    int64_t swap_bytes;
+};
+
+static int read_fd_text(int fd, char *buffer, size_t size)
+{
+    if (fd < 0 || buffer == NULL || size < 2u) return -1;
+    size_t used = 0;
+    while (used + 1u < size) {
+        ssize_t got = read(fd, buffer + used, size - used - 1u);
+        if (got < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (got == 0) break;
+        used += (size_t)got;
+    }
+    if (used + 1u >= size) {
+        errno = EOVERFLOW;
+        return -1;
+    }
+    buffer[used] = '\0';
+    return (int)used;
+}
+
+static int read_cgroup_path(int32_t pid, uint32_t uid, char *path, size_t size)
+{
+    char text[MR_XPROC_LINE_BYTES];
+    if (path == NULL || size < 2u || read_target_cgroup(pid, text, sizeof(text)) != 0) {
+        return -1;
+    }
+    const char *line_end = strchr(text, '\n');
+    size_t line_length = line_end == NULL ? strlen(text) : (size_t)(line_end - text);
+    if (line_length < 4u || memcmp(text, "0::", 3u) != 0 ||
+        (line_end != NULL && line_end[1] != '\0') ||
+        mr_xproc_cgroup_path_is_user_app(text + 3u, line_length - 3u, uid) != 1) {
+        return -1;
+    }
+    size_t path_length = line_length - 3u;
+    if (path_length + 1u > size) return -1;
+    memcpy(path, text + 3u, path_length);
+    path[path_length] = '\0';
+    return 0;
+}
+
+static int open_scope_directory(int32_t pid, uint32_t uid, int *scope_fd_out,
+                                char *scope_path, size_t path_size)
+{
+    if (scope_fd_out == NULL || read_cgroup_path(pid, uid, scope_path, path_size) != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    int current = open(cgroup_root(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (current < 0) return -1;
+#ifndef MEMREDUCT_TESTING
+    struct statfs fs;
+    if (fstatfs(current, &fs) != 0 || (unsigned long)fs.f_type != CGROUP2_SUPER_MAGIC) {
+        (void)close(current);
+        errno = ENODEV;
+        return -1;
+    }
+#endif
+    const char *cursor = scope_path + 1;
+    while (*cursor != '\0') {
+        const char *slash = strchr(cursor, '/');
+        size_t component_length = slash == NULL ? strlen(cursor) : (size_t)(slash - cursor);
+        if (component_length == 0u || component_length >= NAME_MAX ||
+            (component_length == 1u && cursor[0] == '.') ||
+            (component_length == 2u && cursor[0] == '.' && cursor[1] == '.')) {
+            (void)close(current);
+            errno = EINVAL;
+            return -1;
+        }
+        char component[NAME_MAX];
+        memcpy(component, cursor, component_length);
+        component[component_length] = '\0';
+        int next = openat(current, component,
+                          O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+        int saved = errno;
+        (void)close(current);
+        if (next < 0) {
+            errno = saved;
+            return -1;
+        }
+        current = next;
+        cursor = slash == NULL ? cursor + component_length : slash + 1;
+    }
+    *scope_fd_out = current;
+    return 0;
+}
+
+static int scope_has_no_child_cgroups(int scope_fd)
+{
+    int duplicate = dup(scope_fd);
+    if (duplicate < 0) return -1;
+    DIR *directory = fdopendir(duplicate);
+    if (directory == NULL) {
+        (void)close(duplicate);
+        return -1;
+    }
+    int result = 0;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        struct stat info;
+        if (fstatat(scope_fd, entry->d_name, &info, AT_SYMLINK_NOFOLLOW) != 0 ||
+            S_ISDIR(info.st_mode) || S_ISLNK(info.st_mode)) {
+            result = -1;
+            break;
+        }
+    }
+    (void)closedir(directory);
+    return result;
+}
+
+static int validate_scope_members(int scope_fd, int32_t target_pid,
+                                  uint32_t requester_uid, uint64_t expected_scope_hash)
+{
+    int fd = openat(scope_fd, "cgroup.procs", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) return -1;
+    char contents[MR_XPROC_MAX_SCOPE_PROCESSES * 16u + 1u];
+    int length = read_fd_text(fd, contents, sizeof(contents));
+    (void)close(fd);
+    if (length < 0) return -1;
+
+    uint32_t count = 0;
+    int target_seen = 0;
+    char *cursor = contents;
+    while (*cursor != '\0') {
+        char *line_end = strchr(cursor, '\n');
+        if (line_end == NULL) line_end = cursor + strlen(cursor);
+        if (line_end == cursor || count >= MR_XPROC_MAX_SCOPE_PROCESSES) return -1;
+        char saved = *line_end;
+        *line_end = '\0';
+        uint64_t pid_value = 0;
+        if (parse_u64(cursor, 0x7fffffffull, &pid_value) != 0 || pid_value < 2u) return -1;
+        uint64_t member_uid = 0;
+        uint64_t member_identity = 0;
+        uint64_t member_scope = 0;
+        const char *error = inspect_target((int32_t)pid_value, requester_uid, 1,
+                                           &member_uid, &member_identity, &member_scope);
+        if (error != NULL || member_uid != requester_uid ||
+            member_scope != expected_scope_hash) return -1;
+        if ((int32_t)pid_value == target_pid) target_seen = 1;
+        count++;
+        if (saved == '\0') break;
+        cursor = line_end + 1;
+    }
+    return count > 0u && target_seen ? 0 : -1;
+}
+
+static int read_scope_number(int scope_fd, const char *name, int64_t *out)
+{
+    char text[MR_CGROUP_FILE_BYTES];
+    int fd = openat(scope_fd, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) return -1;
+    int length = read_fd_text(fd, text, sizeof(text));
+    (void)close(fd);
+    if (length < 0) return -1;
+    size_t value_length = strcspn(text, "\n");
+    if (text[value_length] == '\n' && text[value_length + 1u] != '\0') return -1;
+    text[value_length] = '\0';
+    uint64_t value = 0;
+    if (value_length == 0u || parse_u64(text, UINT64_MAX, &value) != 0 ||
+        value > (uint64_t)INT64_MAX) return -1;
+    *out = (int64_t)value;
+    return 0;
+}
+
+static int read_scope_stat(int scope_fd, int64_t *anon_bytes, int64_t *file_bytes)
+{
+    char text[MR_XPROC_LINE_BYTES];
+    int fd = openat(scope_fd, "memory.stat", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) return -1;
+    int length = read_fd_text(fd, text, sizeof(text));
+    (void)close(fd);
+    if (length < 0) return -1;
+    int have_anon = 0;
+    int have_file = 0;
+    for (char *line = text; *line != '\0';) {
+        char *line_end = strchr(line, '\n');
+        if (line_end == NULL) line_end = line + strlen(line);
+        char saved = *line_end;
+        *line_end = '\0';
+        char *space = strchr(line, ' ');
+        if (space != NULL) {
+            *space++ = '\0';
+            uint64_t value = 0;
+            if (parse_u64(space, (uint64_t)INT64_MAX, &value) == 0) {
+                if (strcmp(line, "anon") == 0) {
+                    *anon_bytes = (int64_t)value;
+                    have_anon = 1;
+                } else if (strcmp(line, "file") == 0) {
+                    *file_bytes = (int64_t)value;
+                    have_file = 1;
+                }
+            }
+        }
+        if (saved == '\0') break;
+        line = line_end + 1;
+    }
+    return have_anon && have_file ? 0 : -1;
+}
+
+static void read_scope_snapshot(int scope_fd, struct mr_scope_snapshot *snapshot)
+{
+    snapshot->current_bytes = -1;
+    snapshot->anon_bytes = -1;
+    snapshot->file_bytes = -1;
+    snapshot->swap_bytes = -1;
+    (void)read_scope_number(scope_fd, "memory.current", &snapshot->current_bytes);
+    (void)read_scope_stat(scope_fd, &snapshot->anon_bytes, &snapshot->file_bytes);
+    (void)read_scope_number(scope_fd, "memory.swap.current", &snapshot->swap_bytes);
+}
+
+static const char *scope_reclaim_once(int scope_fd, uint64_t requested_bytes,
+                                      int *error_code)
+{
+    int fd = openat(scope_fd, "memory.reclaim", O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) {
+        *error_code = errno;
+        return "scope_memory_reclaim_unavailable";
+    }
+    char value[32];
+    int length = snprintf(value, sizeof(value), "%llu\n", (unsigned long long)requested_bytes);
+#ifdef MEMREDUCT_TESTING
+    const char *injected = getenv("MEMREDUCT_TEST_SCOPE_WRITE_RESULT");
+    ssize_t written;
+    if (injected != NULL && strcmp(injected, "eagain") == 0) {
+        errno = EAGAIN;
+        written = -1;
+    } else if (injected != NULL && strcmp(injected, "short") == 0) {
+        written = length > 1 ? length - 1 : 0;
+    } else if (injected != NULL && strcmp(injected, "io") == 0) {
+        errno = EIO;
+        written = -1;
+    } else {
+        written = length > 0 ? write(fd, value, (size_t)length) : -1;
+    }
+#else
+    ssize_t written = length > 0 ? write(fd, value, (size_t)length) : -1;
+#endif
+    int saved = errno;
+    (void)close(fd);
+    if (written == length) {
+        *error_code = 0;
+        return "scope_reclaim_request_accepted";
+    }
+    *error_code = written < 0 ? saved : EIO;
+    if (written < 0 && saved == EAGAIN) return "scope_reclaim_shortfall";
+    return "scope_reclaim_outcome_uncertain";
+}
+
 /* Effective capability set, read from the kernel. Not from argv, not from the
  * environment. */
 static int has_effective_cap(int capability)
@@ -631,7 +934,6 @@ static int has_effective_cap(int capability)
  * target's kernel-reported UIDs are independently checked below. */
 static const char *validate_helper_credentials(uint64_t real_uid,
                                                uint64_t effective_uid,
-                                               int cap_sys_nice,
                                                const char *pkexec_uid,
                                                uint64_t *requester_uid)
 {
@@ -640,12 +942,6 @@ static const char *validate_helper_credentials(uint64_t real_uid,
     }
     if (real_uid != 0) {
         return "invalid_pkexec_root_credentials";
-    }
-    if (cap_sys_nice < 0) {
-        return "capget_failed";
-    }
-    if (cap_sys_nice != 1) {
-        return "missing_cap_sys_nice";
     }
     if (pkexec_uid == NULL || pkexec_uid[0] == '\0') {
         return "not_launched_via_pkexec";
@@ -667,12 +963,28 @@ static const char *validate_helper_credentials(uint64_t real_uid,
 /* Pure credential-model probe. It is compiled out of the installed helper. */
 const char *mr_xproc_test_validate_helper_credentials(uint64_t real_uid,
                                                        uint64_t effective_uid,
-                                                       int cap_sys_nice,
                                                        const char *pkexec_uid,
                                                        uint64_t *requester_uid)
 {
-    return validate_helper_credentials(real_uid, effective_uid, cap_sys_nice,
-                                       pkexec_uid, requester_uid);
+    return validate_helper_credentials(real_uid, effective_uid, pkexec_uid,
+                                       requester_uid);
+}
+#endif
+
+/* PAGEOUT crosses a process boundary and the kernel requires CAP_SYS_NICE.
+ * cgroup memory.reclaim is instead authorized by this root helper's Polkit
+ * action and the exact control-file open; it does not use process_madvise. */
+static const char *validate_pageout_capability(int cap_sys_nice)
+{
+    if (cap_sys_nice < 0) return "capget_failed";
+    if (cap_sys_nice != 1) return "missing_cap_sys_nice";
+    return NULL;
+}
+
+#ifdef MEMREDUCT_TESTING
+const char *mr_xproc_test_validate_pageout_capability(int cap_sys_nice)
+{
+    return validate_pageout_capability(cap_sys_nice);
 }
 #endif
 
@@ -781,8 +1093,6 @@ static int plan_regions(int32_t pid, uint64_t max_bytes, struct mr_region_plan *
             continue;
         }
 
-        uint64_t length = (uint64_t)(end - begin);
-
         /* Private only. */
         if (perms[3] != 'p') {
             plan->skipped_shared++;
@@ -824,11 +1134,7 @@ static int plan_regions(int32_t pid, uint64_t max_bytes, struct mr_region_plan *
             candidate_digest, aligned_start, aligned_end, perms,
             (uint64_t)offset, device, (uint64_t)inode, name);
 
-        if (length > max_bytes) {
-            plan->skipped_too_large++;
-            continue;
-        }
-        if (plan->bytes + aligned_length > max_bytes) {
+        if (plan->bytes >= max_bytes) {
             plan->skipped_budget++;
             continue;
         }
@@ -837,10 +1143,19 @@ static int plan_regions(int32_t pid, uint64_t max_bytes, struct mr_region_plan *
             continue;
         }
 
+        uint64_t remaining = max_bytes - plan->bytes;
+        uint64_t request_length = aligned_length < remaining ? aligned_length : remaining;
+        request_length &= ~(alignment - 1u);
+        if (request_length == 0u) {
+            plan->skipped_budget++;
+            continue;
+        }
+        if (request_length < aligned_length) plan->skipped_too_large++;
+
         plan->vectors[plan->count].iov_base = (void *)(uintptr_t)aligned_start;
-        plan->vectors[plan->count].iov_len = (size_t)aligned_length;
+        plan->vectors[plan->count].iov_len = (size_t)request_length;
         plan->count++;
-        plan->bytes += aligned_length;
+        plan->bytes += request_length;
     }
     int read_error = ferror(maps);
     (void)fclose(maps);
@@ -889,6 +1204,7 @@ static const char *classify_status(int64_t status)
         case MR_XPROC_STATUS_UNSUPPORTED: return "unsupported";
         case MR_XPROC_STATUS_UNKNOWN: return "unknown";
         case MR_XPROC_STATUS_NO_REGIONS: return "no_regions";
+        case MR_XPROC_STATUS_SCOPE_UNAVAILABLE: return "scope_unavailable";
         default: return "unknown";
     }
 }
@@ -901,6 +1217,7 @@ static const char *classify_status(int64_t status)
 struct mr_outcome {
     int64_t status;
     const char *reason;
+    const char *mode;
     uint64_t request_id;
     int32_t pid;
     /* The caller's claim, echoed back so the GUI can prove the helper answered
@@ -933,13 +1250,32 @@ struct mr_outcome {
     uint32_t skipped_too_large;
     uint32_t skipped_budget;
     uint32_t skipped_malformed;
+    int64_t target_rss_before_kib;
+    int64_t target_rss_after_kib;
+    int64_t target_swap_before_kib;
+    int64_t target_swap_after_kib;
+    int64_t scope_current_before_bytes;
+    int64_t scope_current_after_bytes;
+    int64_t scope_anon_before_bytes;
+    int64_t scope_anon_after_bytes;
+    int64_t scope_file_before_bytes;
+    int64_t scope_file_after_bytes;
+    int64_t scope_swap_before_bytes;
+    int64_t scope_swap_after_bytes;
 };
+
+static void emit_measurement(const char *name, int64_t value)
+{
+    if (value < 0) emit(stdout, "%s=unavailable\n", name);
+    else emit(stdout, "%s=%lld\n", name, (long long)value);
+}
 
 static void print_outcome(const struct mr_outcome *outcome)
 {
     emit(stdout, "MR_CROSSPROC_RESULT\n");
     emit(stdout, "protocol_version=%u\n", (unsigned)MR_XPROC_PROTOCOL_VERSION);
     emit(stdout, "protocol_marker=%s\n", MR_XPROC_PROTOCOL_MARKER);
+    emit(stdout, "mode=%s\n", outcome->mode == NULL ? "unknown" : outcome->mode);
     emit(stdout, "status=%s\n", classify_status(outcome->status));
     emit(stdout, "reason=%s\n", outcome->reason == NULL ? "none" : outcome->reason);
     emit(stdout, "request_id=%llu\n", (unsigned long long)outcome->request_id);
@@ -981,6 +1317,18 @@ static void print_outcome(const struct mr_outcome *outcome)
     emit(stdout, "skipped_too_large=%u\n", outcome->skipped_too_large);
     emit(stdout, "skipped_budget=%u\n", outcome->skipped_budget);
     emit(stdout, "skipped_malformed=%u\n", outcome->skipped_malformed);
+    emit_measurement("target_rss_before_kib", outcome->target_rss_before_kib);
+    emit_measurement("target_rss_after_kib", outcome->target_rss_after_kib);
+    emit_measurement("target_swap_before_kib", outcome->target_swap_before_kib);
+    emit_measurement("target_swap_after_kib", outcome->target_swap_after_kib);
+    emit_measurement("scope_current_before_bytes", outcome->scope_current_before_bytes);
+    emit_measurement("scope_current_after_bytes", outcome->scope_current_after_bytes);
+    emit_measurement("scope_anon_before_bytes", outcome->scope_anon_before_bytes);
+    emit_measurement("scope_anon_after_bytes", outcome->scope_anon_after_bytes);
+    emit_measurement("scope_file_before_bytes", outcome->scope_file_before_bytes);
+    emit_measurement("scope_file_after_bytes", outcome->scope_file_after_bytes);
+    emit_measurement("scope_swap_before_bytes", outcome->scope_swap_before_bytes);
+    emit_measurement("scope_swap_after_bytes", outcome->scope_swap_after_bytes);
     /* This line exists because the single most likely misreading of this tool
      * is that advised_bytes is memory that came back. It is not. */
     emit(stdout, "bytes_advised_is_not_bytes_freed=true\n");
@@ -1020,8 +1368,8 @@ static int refuse(struct mr_outcome *outcome, const char *reason)
 static int usage(void)
 {
     emit(stderr,
-         "usage: %s reclaim <request_id> <pid> <start_time> <uid> <identity_hash> <scope_hash> <region_digest> <reviewed_bytes> <reviewed_regions> <max_bytes>\n"
-         "All values are decimal and are treated as untrusted candidates;\n"
+         "usage: %s reclaim <pageout|app_scope> <request_id> <pid> <start_time> <uid> <identity_hash> <scope_hash> <region_digest> <reviewed_bytes> <reviewed_regions> <max_bytes>\n"
+         "All numeric values are decimal and treated as untrusted candidates;\n"
          "this helper re-verifies identity, ownership and mappings from the kernel.\n",
          MR_XPROC_HELPER_NAME);
     return 2;
@@ -1031,13 +1379,32 @@ int main(int argc, char **argv)
 {
     struct mr_outcome outcome;
     memset(&outcome, 0, sizeof(outcome));
+    outcome.target_rss_before_kib = -1;
+    outcome.target_rss_after_kib = -1;
+    outcome.target_swap_before_kib = -1;
+    outcome.target_swap_after_kib = -1;
+    outcome.scope_current_before_bytes = -1;
+    outcome.scope_current_after_bytes = -1;
+    outcome.scope_anon_before_bytes = -1;
+    outcome.scope_anon_after_bytes = -1;
+    outcome.scope_file_before_bytes = -1;
+    outcome.scope_file_after_bytes = -1;
+    outcome.scope_swap_before_bytes = -1;
+    outcome.scope_swap_after_bytes = -1;
 
-    /* Exactly eleven arguments, one fixed verb. The final values are numeric
-     * selection claims only; no path, command or arbitrary action is accepted. */
-    if (argc != 12) {
+    /* Twelve arguments follow argv[0]: fixed verb and mode plus ten decimal
+     * claims. No path, command, or arbitrary action is accepted. */
+    if (argc != 13) {
         return usage();
     }
     if (strcmp(argv[1], "reclaim") != 0) {
+        return usage();
+    }
+    if (strcmp(argv[2], MR_XPROC_MODE_PAGEOUT_TEXT) == 0) {
+        outcome.mode = MR_XPROC_MODE_PAGEOUT_TEXT;
+    } else if (strcmp(argv[2], MR_XPROC_MODE_APP_SCOPE_TEXT) == 0) {
+        outcome.mode = MR_XPROC_MODE_APP_SCOPE_TEXT;
+    } else {
         return usage();
     }
 
@@ -1051,16 +1418,16 @@ int main(int argc, char **argv)
     uint64_t raw_reviewed_bytes = 0;
     uint64_t raw_reviewed_regions = 0;
     uint64_t raw_max_bytes = 0;
-    if (parse_u64(argv[2], 0x7fffffffffffffffull, &raw_request_id) != 0 ||
-        parse_u64(argv[3], 0x7fffffffull, &raw_pid) != 0 ||
-        parse_u64(argv[4], UINT64_MAX, &raw_start_time) != 0 ||
-        parse_u64(argv[5], UINT32_MAX, &raw_uid) != 0 ||
-        parse_u64(argv[6], 0x7fffffffffffffffull, &raw_identity_token) != 0 ||
-        parse_u64(argv[7], 0x7fffffffffffffffull, &raw_scope_token) != 0 ||
-        parse_u64(argv[8], 0x7fffffffffffffffull, &raw_region_digest) != 0 ||
-        parse_u64(argv[9], UINT64_MAX, &raw_reviewed_bytes) != 0 ||
-        parse_u64(argv[10], UINT32_MAX, &raw_reviewed_regions) != 0 ||
-        parse_u64(argv[11], MR_XPROC_MAX_BYTES, &raw_max_bytes) != 0) {
+    if (parse_u64(argv[3], 0x7fffffffffffffffull, &raw_request_id) != 0 ||
+        parse_u64(argv[4], 0x7fffffffull, &raw_pid) != 0 ||
+        parse_u64(argv[5], UINT64_MAX, &raw_start_time) != 0 ||
+        parse_u64(argv[6], UINT32_MAX, &raw_uid) != 0 ||
+        parse_u64(argv[7], 0x7fffffffffffffffull, &raw_identity_token) != 0 ||
+        parse_u64(argv[8], 0x7fffffffffffffffull, &raw_scope_token) != 0 ||
+        parse_u64(argv[9], 0x7fffffffffffffffull, &raw_region_digest) != 0 ||
+        parse_u64(argv[10], UINT64_MAX, &raw_reviewed_bytes) != 0 ||
+        parse_u64(argv[11], UINT32_MAX, &raw_reviewed_regions) != 0 ||
+        parse_u64(argv[12], MR_XPROC_MAX_BYTES, &raw_max_bytes) != 0) {
         return usage();
     }
     if (raw_request_id == 0 || raw_pid < 2 || raw_uid == 0 ||
@@ -1085,17 +1452,22 @@ int main(int argc, char **argv)
     uint64_t requester_uid = 0;
     uint64_t real_uid = test_skip_privilege() ? 0u : (uint64_t)getuid();
     uint64_t effective_uid = test_skip_privilege() ? 0u : (uint64_t)geteuid();
-    int capability = test_skip_capability() ? 1 : -2;
-    if (!test_skip_capability() && real_uid == 0 && effective_uid == 0) {
-        capability = has_effective_cap(CAP_SYS_NICE);
-    }
     const char *pkexec_uid = test_skip_requester() ? "1" : getenv("PKEXEC_UID");
     const char *credential_error = validate_helper_credentials(
-        real_uid, effective_uid, capability, pkexec_uid, &requester_uid);
+        real_uid, effective_uid, pkexec_uid, &requester_uid);
     if (credential_error != NULL) {
         refuse(&outcome, credential_error);
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
+    }
+    if (strcmp(outcome.mode, MR_XPROC_MODE_PAGEOUT_TEXT) == 0) {
+        int capability = test_skip_capability() ? 1 : has_effective_cap(CAP_SYS_NICE);
+        const char *capability_error = validate_pageout_capability(capability);
+        if (capability_error != NULL) {
+            refuse(&outcome, capability_error);
+            print_outcome(&outcome);
+            return status_exit_code(outcome.status);
+        }
     }
     if (!test_skip_requester() && raw_uid != requester_uid) {
         refuse(&outcome, "selected_uid_mismatch");
@@ -1157,6 +1529,15 @@ int main(int argc, char **argv)
     /* From here on the start_time in this report is the value the kernel
      * confirmed, not merely the value the caller supplied. */
     outcome.start_time_verified = 1;
+
+    (void)read_target_memory_kib(outcome.pid, "VmRSS", &outcome.target_rss_before_kib);
+    (void)read_target_memory_kib(outcome.pid, "VmSwap", &outcome.target_swap_before_kib);
+    if (strcmp(outcome.mode, MR_XPROC_MODE_PAGEOUT_TEXT) == 0 &&
+        outcome.target_rss_before_kib < 0) {
+        refuse(&outcome, "target_rss_unavailable");
+        print_outcome(&outcome);
+        return status_exit_code(outcome.status);
+    }
 
     /* Ancestry: the helper's own chain runs helper -> pkexec -> GUI. Advising
      * any process on it would stall the very operation that asked for it. */
@@ -1232,9 +1613,89 @@ int main(int argc, char **argv)
         return status_exit_code(outcome.status);
     }
 
+    int scope_fd = -1;
+    char scope_path[MR_CGROUP_PATH_BYTES] = {0};
+    struct mr_scope_snapshot scope_before;
+    scope_before.current_bytes = -1;
+    scope_before.anon_bytes = -1;
+    scope_before.file_bytes = -1;
+    scope_before.swap_bytes = -1;
+    uint64_t effective_budget = raw_max_bytes;
+    if (strcmp(outcome.mode, MR_XPROC_MODE_APP_SCOPE_TEXT) == 0) {
+        if (open_scope_directory(outcome.pid, requester_uid, &scope_fd,
+                                 scope_path, sizeof(scope_path)) != 0) {
+            outcome.error_code = errno;
+            close(pidfd);
+            outcome.status = MR_XPROC_STATUS_SCOPE_UNAVAILABLE;
+            outcome.reason = "app_scope_directory_unavailable";
+            print_outcome(&outcome);
+            return status_exit_code(outcome.status);
+        }
+        if (scope_has_no_child_cgroups(scope_fd) != 0) {
+            outcome.error_code = errno;
+            (void)close(scope_fd);
+            (void)close(pidfd);
+            outcome.status = MR_XPROC_STATUS_SCOPE_UNAVAILABLE;
+            outcome.reason = "app_scope_has_child_cgroup_or_is_unreadable";
+            print_outcome(&outcome);
+            return status_exit_code(outcome.status);
+        }
+        if (validate_scope_members(scope_fd, outcome.pid, (uint32_t)requester_uid,
+                                   raw_scope_token) != 0) {
+            outcome.error_code = errno;
+            (void)close(scope_fd);
+            (void)close(pidfd);
+            outcome.status = MR_XPROC_STATUS_SCOPE_UNAVAILABLE;
+            outcome.reason = "app_scope_membership_unverifiable";
+            print_outcome(&outcome);
+            return status_exit_code(outcome.status);
+        }
+        read_scope_snapshot(scope_fd, &scope_before);
+        if (scope_before.current_bytes < 0 || scope_before.anon_bytes < 0 ||
+            scope_before.file_bytes < 0) {
+            (void)close(scope_fd);
+            (void)close(pidfd);
+            outcome.status = MR_XPROC_STATUS_SCOPE_UNAVAILABLE;
+            outcome.reason = "app_scope_memory_stats_unavailable";
+            print_outcome(&outcome);
+            return status_exit_code(outcome.status);
+        }
+        outcome.scope_current_before_bytes = scope_before.current_bytes;
+        outcome.scope_anon_before_bytes = scope_before.anon_bytes;
+        outcome.scope_file_before_bytes = scope_before.file_bytes;
+        outcome.scope_swap_before_bytes = scope_before.swap_bytes;
+        uint64_t resident_scope_bytes = (uint64_t)scope_before.anon_bytes +
+                                        (uint64_t)scope_before.file_bytes;
+        if (resident_scope_bytes < (uint64_t)scope_before.anon_bytes) {
+            (void)close(scope_fd);
+            (void)close(pidfd);
+            refuse(&outcome, "app_scope_memory_stats_overflow");
+            print_outcome(&outcome);
+            return status_exit_code(outcome.status);
+        }
+        if (effective_budget > resident_scope_bytes) effective_budget = resident_scope_bytes;
+        if (effective_budget < page_size()) {
+            (void)close(scope_fd);
+            (void)close(pidfd);
+            outcome.status = MR_XPROC_STATUS_NO_REGIONS;
+            outcome.reason = "app_scope_has_no_page_sized_anon_or_file_charge";
+            print_outcome(&outcome);
+            return status_exit_code(outcome.status);
+        }
+    } else {
+        uint64_t rss_bytes = (uint64_t)outcome.target_rss_before_kib * 1024u;
+        if (rss_bytes / 1024u != (uint64_t)outcome.target_rss_before_kib) {
+            (void)close(pidfd);
+            refuse(&outcome, "target_rss_overflow");
+            print_outcome(&outcome);
+            return status_exit_code(outcome.status);
+        }
+        if (effective_budget > rss_bytes) effective_budget = rss_bytes;
+    }
+
     /* ---- 4. Choose ranges here, from the kernel's own maps. ---- */
     struct mr_region_plan plan;
-    int planned = plan_regions(outcome.pid, raw_max_bytes, &plan);
+    int planned = plan_regions(outcome.pid, effective_budget, &plan);
     outcome.skipped_shared = plan.skipped_shared;
     outcome.skipped_unreadable = plan.skipped_unreadable;
     outcome.skipped_writable_file = plan.skipped_writable_file;
@@ -1244,6 +1705,7 @@ int main(int argc, char **argv)
     outcome.skipped_malformed = plan.skipped_malformed;
 
     if (planned < 0) {
+        if (scope_fd >= 0) (void)close(scope_fd);
         (void)close(pidfd);
         refuse(&outcome, "target_maps_unreadable");
         print_outcome(&outcome);
@@ -1254,12 +1716,14 @@ int main(int argc, char **argv)
     if (plan.candidate_bytes != raw_reviewed_bytes ||
         plan.candidate_regions != raw_reviewed_regions ||
         !outcome.region_digest_verified) {
+        if (scope_fd >= 0) (void)close(scope_fd);
         (void)close(pidfd);
         refuse(&outcome, "target_mappings_changed");
         print_outcome(&outcome);
         return status_exit_code(outcome.status);
     }
-    if (planned == 0) {
+    if (planned == 0 && strcmp(outcome.mode, MR_XPROC_MODE_PAGEOUT_TEXT) == 0) {
+        if (scope_fd >= 0) (void)close(scope_fd);
         (void)close(pidfd);
         outcome.status = MR_XPROC_STATUS_NO_REGIONS;
         outcome.reason = "no_reclaimable_private_region";
@@ -1267,24 +1731,100 @@ int main(int argc, char **argv)
         return status_exit_code(outcome.status);
     }
 
-    outcome.regions = (uint32_t)plan.count;
-    outcome.requested_bytes = plan.bytes;
+    outcome.regions = strcmp(outcome.mode, MR_XPROC_MODE_PAGEOUT_TEXT) == 0
+                          ? (uint32_t)plan.count : 0u;
+    outcome.requested_bytes = strcmp(outcome.mode, MR_XPROC_MODE_PAGEOUT_TEXT) == 0
+                                  ? plan.bytes : effective_budget;
 
-    /* ---- 5. One syscall. Not a loop, not a retry, not a batch sequence. ---- */
-    mr_xproc_audit_emit("helper_pre_syscall", raw_request_id, outcome.pid,
-                        outcome.start_time, raw_uid, raw_scope_token,
-                        raw_identity_token, raw_region_digest);
-    errno = 0;
-    long advised = call_process_madvise(pidfd, plan.vectors, plan.count);
-    int call_errno = errno;
-    outcome.call_count = 1;
+    long advised = 0;
+    int call_errno = 0;
+    if (strcmp(outcome.mode, MR_XPROC_MODE_PAGEOUT_TEXT) == 0) {
+        /* One bounded process_madvise call, at most 1 GiB and 1024 vectors.
+         * A partial return is reported and is never retried. */
+        mr_xproc_audit_emit("helper_pre_syscall", raw_request_id, outcome.pid,
+                            outcome.start_time, raw_uid, raw_scope_token,
+                            raw_identity_token, raw_region_digest);
+        errno = 0;
+        advised = call_process_madvise(pidfd, plan.vectors, plan.count);
+        call_errno = errno;
+        outcome.call_count = 1;
+    } else {
+        char current_scope_path[MR_CGROUP_PATH_BYTES];
+        uint64_t current_uid = 0;
+        uint64_t current_identity = 0;
+        uint64_t current_scope_hash = 0;
+        struct mr_proc_stat current_stat;
+        int still_same = read_stat(outcome.pid, &current_stat) == 0 &&
+                         current_stat.start_time == outcome.start_time &&
+                         current_stat.state != 'Z' && current_stat.state != 'X' &&
+                         current_stat.state != 'x' &&
+                         inspect_target(outcome.pid, requester_uid, 1, &current_uid,
+                                        &current_identity, &current_scope_hash) == NULL &&
+                         current_uid == requester_uid &&
+                         current_identity == raw_identity_token &&
+                         current_scope_hash == raw_scope_token &&
+                         read_cgroup_path(outcome.pid, (uint32_t)requester_uid,
+                                          current_scope_path, sizeof(current_scope_path)) == 0 &&
+                         strcmp(current_scope_path, scope_path) == 0 &&
+                         validate_scope_members(scope_fd, outcome.pid,
+                                                (uint32_t)requester_uid,
+                                                raw_scope_token) == 0;
+        if (!still_same) {
+            (void)close(scope_fd);
+            (void)close(pidfd);
+            outcome.status = MR_XPROC_STATUS_REFUSED;
+            outcome.reason = "app_scope_changed_before_reclaim";
+            print_outcome(&outcome);
+            return status_exit_code(outcome.status);
+        }
+        mr_xproc_audit_emit("helper_pre_scope_write", raw_request_id, outcome.pid,
+                            outcome.start_time, raw_uid, raw_scope_token,
+                            raw_identity_token, raw_region_digest);
+        const char *scope_reason = scope_reclaim_once(scope_fd, effective_budget,
+                                                     &call_errno);
+        outcome.call_count = strcmp(scope_reason, "scope_memory_reclaim_unavailable") == 0
+                                 ? 0 : 1;
+        outcome.reason = scope_reason;
+        if (strcmp(scope_reason, "scope_reclaim_request_accepted") == 0) {
+            outcome.status = MR_XPROC_STATUS_ACCEPTED;
+        } else if (strcmp(scope_reason, "scope_reclaim_shortfall") == 0) {
+            outcome.status = MR_XPROC_STATUS_PARTIAL;
+        } else if (strcmp(scope_reason, "scope_reclaim_outcome_uncertain") == 0) {
+            outcome.status = MR_XPROC_STATUS_UNKNOWN;
+        } else {
+            outcome.status = MR_XPROC_STATUS_SCOPE_UNAVAILABLE;
+        }
+        outcome.error_code = call_errno;
+    }
 
     /* Whatever happened, the pinned target must still be the same process. */
     struct mr_proc_stat stat_after;
     int identity_stable = read_stat(outcome.pid, &stat_after) == 0 &&
                           stat_after.start_time == outcome.start_time;
+    (void)read_target_memory_kib(outcome.pid, "VmRSS", &outcome.target_rss_after_kib);
+    (void)read_target_memory_kib(outcome.pid, "VmSwap", &outcome.target_swap_after_kib);
+    if (scope_fd >= 0) {
+        struct mr_scope_snapshot scope_after;
+        read_scope_snapshot(scope_fd, &scope_after);
+        outcome.scope_current_after_bytes = scope_after.current_bytes;
+        outcome.scope_anon_after_bytes = scope_after.anon_bytes;
+        outcome.scope_file_after_bytes = scope_after.file_bytes;
+        outcome.scope_swap_after_bytes = scope_after.swap_bytes;
+        (void)close(scope_fd);
+    }
     int close_result = close(pidfd);
     (void)close_result; /* nothing downstream depends on it */
+
+    if (strcmp(outcome.mode, MR_XPROC_MODE_APP_SCOPE_TEXT) == 0) {
+        if (!identity_stable) {
+            outcome.reason = "target_identity_changed_after_scope_reclaim";
+            if (outcome.status == MR_XPROC_STATUS_ACCEPTED) {
+                outcome.status = MR_XPROC_STATUS_PARTIAL;
+            }
+        }
+        print_outcome(&outcome);
+        return status_exit_code(outcome.status);
+    }
 
     if (advised < 0) {
         outcome.error_code = call_errno;

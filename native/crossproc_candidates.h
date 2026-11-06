@@ -51,6 +51,11 @@ struct mr_cand_entry {
     uint64_t start_time;
     uint64_t uid;
     uint64_t reclaimable_bytes;
+    /* Latest read-only cgroup anon+file charge. This is an estimate/budget
+     * ceiling, not a promise that those pages can be reclaimed. -1 at the
+     * bridge means the dedicated cgroup reclaim file or accounting is absent. */
+    int64_t scope_anon_file_bytes;
+    int64_t rss_bytes;
     uint64_t identity_token;
     uint64_t scope_token;
     uint64_t region_digest;
@@ -109,6 +114,8 @@ int64_t mr_cand_start_time(int64_t index);
 int64_t mr_cand_uid(int64_t index);
 int64_t mr_cand_state(int64_t index);
 int64_t mr_cand_reclaimable_bytes(int64_t index);
+int64_t mr_cand_scope_anon_file_bytes(int64_t index);
+int64_t mr_cand_rss_bytes(int64_t index);
 int64_t mr_cand_regions(int64_t index);
 int64_t mr_cand_identity_token(int64_t index);
 int64_t mr_cand_scope_token(int64_t index);
