@@ -1,11 +1,12 @@
 # 短期记忆 / Latest Handoff
 
-## 2026-11-06 — R5 live RSS 解析修复；256 MiB 实测未执行
+## 2026-11-06 — R5 GUI 单文件修复包已准备；未找到安全的大额度目标
 
 - **根因与修复：**生产候选扫描器比较 `VmRSS` 单位时，把整份 `/proc/<pid>/status` 缓冲区中该行的换行后内容也带进字符串比较；当 `VmSwap` 等字段紧随其后，RSS 就保持为 `-1`，GUI 因而把 PAGEOUT 预算算成 0。扫描器现在逐行终止并解析，回归夹具特意在 `VmRSS` 后追加 `VmSwap`。
-- **复现与修复后证据：**23 项候选扫描回归通过；只读扫描当前隔离 Pinta 时，修复后的候选器正确返回约 11.5 MiB RSS 和约 1.64 GiB 映射长度。映射长度不是驻留量或回收量；同一时段 `/proc` RSS 约 11–14 MiB，scope `anon + file` 不足 1 MiB，约 1.06 GiB 进程页处于 Swap。目标不足 256 MiB 驻留，故本轮没有 Polkit/helper 请求，也没有 `process_madvise` 或 `memory.reclaim` 调用。
-- **验证：**治理 34 项通过；Python/C 233 项通过、1 项因文件系统超长路径限制跳过；Zamak 0.2.0 `check`、`test`（82 项）、`build` 和 `scripts/build-arch.sh` 均通过；新生产候选 GUI SHA-256 为 `262055157c8620a436683d05e36960bca99cc8412e95f9dfdb659eb4f160f4b8`。已安装 R5 GUI 与 helper 的 SHA 保持不变；未安装本地修复、未操作 Hyprland 窗口、未清理缓存或 Swap/ZRAM。
-- **剩余阻塞：**当前隔离目标没有足够驻留页，真实 256 MiB 回收尚不可执行；当前会话没有可用的原生桌面输入 API，不能替用户触发重载/重绘来人为恢复目标驻留页。需在同一已批准实例自然回到足够 RSS 后，经正常 GUI 重新确认身份和额度，才可进行一次真实请求。整页 UI 1:1 仍 NOT PASS。
+- **复现与修复后证据：**23 项候选扫描回归通过；只读扫描当前隔离 Pinta 时，修复扫描器返回真实 RSS（观察值在 9.6–11.5 MiB 间变化），映射长度约 1.64 GiB。末次 `smaps_rollup` 显示 RSS 9,836 kB、PSS 1,984 kB、Shared_Clean 8,908 kB、Anonymous/Pss_Anon 704 kB；scope `memory.stat` anon 720,896 bytes、file 3,543,040 bytes，与进程 RSS 不是同一口径，匿名计费与进程 Anonymous 接近，剩余差异与共享/文件页按 memcg 归属计数相符，但不能逐页完全归因。该 scope 计费远低于 256 MiB；进程 Swap 约 1.09 GiB，故不选 cgroup 模式。
+- **目标安全检查：**末次系统 MemAvailable 为 867,036 kB，zram 已用 15,513,940/15,728,636 kB（约 98.6%）；memory PSI full avg10 为 0.06。现有 Pinta RSS 约 9.6 MiB，不合格；在该余量与 zram 状态下不创建 320–512 MiB 冷页负载，避免把日常主机推入额外换页压力。因此没有新 PID，也没有 Polkit/helper、`process_madvise` 或 `memory.reclaim` 调用。
+- **仅 GUI 更新包：**生产 profile 用 `scripts/ci/build-production-crossproc-gui.sh m0+m1-candidate` 构建，安装预检 PASS：M0/M1 gate enabled、helper protocol 3、无 test hooks；`ldd` 无缺失依赖。安装 GUI SHA-256 `efc1d69942349fc37af72658c6d82e41856dd937e85c2f86e13b5459e6fcbbee`；当前 GUI `a23cbb24ca0037fed4232a2db6eada1ec58844304a7fb5e01027c10abe12dacf` 的回退副本已备好。正常 `scripts/build-arch.sh` 产生的 `262055...` 是默认关闭门的构建，**不是安装候选**。单文件安装/回退说明与清单位于 AI 输出目录 `编程脚本/其他脚本/MemReduct-R5-2026-11-06/gui-rss-fix-2026-11-06-r1/`。
+- **边界与下一步：**GUI 包未安装，Hyprland GUI 未启动，M0 helper、Crossproc helper、Polkit policy、Swap/ZRAM 均未修改。真实 256 MiB 操作未执行。当前没有符合要求且足够驻留的隔离目标，故尚不能提交同时涵盖安装与真实回收的单次授权申请；待系统有安全余量后准备独立可丢弃目标，再按精确 PID/starttime/UID/scope/VMA 和一次 256 MiB PAGEOUT 请求申请。Windows 整页 UI 1:1 仍 NOT PASS。
 
 ## 2026-11-06 — R5 经授权完成两文件安装
 
