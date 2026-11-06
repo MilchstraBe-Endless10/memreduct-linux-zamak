@@ -1,5 +1,16 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-06 — R5 大额度回收候选与生产关闭检查
+
+- **本地代码提交：**分支 `codex/r5-large-reclaim`，实现提交 `d6f74897fdd30f2a218512176f8ab81af6460e89`，Tree `ade839414e0f2ffc5f1cea7cbd82981ff7c9223c`，父提交 `8b251faa81efe613f34d91ce433a52e0878a3bff`。改动覆盖 GUI、异步协议、Crossproc helper、候选扫描、回归和产品文档；随后记忆单独提交。仓库内既有未跟踪 `artifacts/` 未暂存或改写。
+- **已实现：**生产 M0+M1 候选提供 256 MiB 默认、512 MiB 和 1 GiB 单次请求上限。PAGEOUT 受 helper 实时 RSS、私有可读映射和 1024 iovec 限制；whole-app 模式针对重新推导的精确 cgroup v2 app scope，按 `anon + file` charge 限幅，拒绝子 cgroup和身份/成员不匹配，只写一次 `memory.reclaim`。GUI 显示操作范围、swap/I/O/延迟风险和前后观测值；观测变化不称为实际释放字节。helper 协议升级到 v3。
+- **针对性修正：**补齐生产 runtime 的 `mr_runtime_xproc_result_mode` stub，修正 link failure；`CAP_SYS_NICE` 只门禁 PAGEOUT，不错误阻断 cgroup 写入；修正 mock scope regions、poll 字段断言及过时 helper 参数说明。无放宽安全断言。
+- **回归结果：**治理 34 PASS；Python/C 233 PASS、1 SKIP（文件系统超长路径限制）；Shell syntax PASS；Zamak 0.2.0 check/test/build PASS（82 个 Zamak 测试）；Arch native build PASS；隔离 Xvfb 模拟交互覆盖 256/512 MiB、1 GiB、app-scope、取消和结果，真实 helper/syscall 均 0；生产候选 no-test-hook build PASS。只读安装预检输出 `profile=m0+m1-candidate ... helper_protocol=3 ... install=not_run`。
+- **生产启动/关闭复核：**首个 smoke 用 `xdotool windowclose` 直接销毁 X 窗口，造成 `GdkWindow unexpectedly destroyed`；这是错误的测试方式，不是已证实的应用关闭故障。重跑使用 GTK 标题栏 Close，在私有 Xvfb、`MEMREDUCT_CI`/`MEMREDUCT_TEST` unset 下窗口大小 337×415，正常退出 0、GTK/GDK 警告 0。此证据不是 Hyprland 验收。截图与日志分别在 AI 输出目录 `报告与研究/MemReduct-R5-2026-11-06/production-smoke-r2/`。
+- **生产候选校验：**候选 GUI SHA-256 `a23cbb24ca0037fed4232a2db6eada1ec58844304a7fb5e01027c10abe12dacf`；Crossproc helper `6762ab9c7c5a6d5a648485a60d465caaa93fa0c65363aa30c8d76c78fe94ab83`；M0 helper 保持 `b0652c8ac3ae70576e39b71fbdcd047a7c57f23873fec2e45b1b691b34c45a5e`。文件位于 AI 输出目录 `编程脚本/其他脚本/MemReduct-R5-2026-11-06/production-candidate-r2/candidate-bundle/`。
+- **当前系统只读对账：**已安装 GUI SHA 为 r4.1 的 `0e14a022beaaf9facf36918cce81368377320be379e471c437caecd62c53472d`，helper SHA 为协议 v2 的 `cc39ae9a8faaf7ff8b0421a565f6eebc9ac317f88a233716fbeea16ea2f12557`；两者 owner/mode 分别为 root:root 0755。M0 helper 与候选一致；两份 pagecache/Crossproc policy 的 SHA 也都与候选一致，专属 Crossproc action 已被 `pkaction` 识别。因此升级差异只有 GUI 和 Crossproc helper 两个文件，M0 组件未变。
+- **未完成与边界：**r5 未安装；此前系统中的 Crossproc helper 是协议 v2，与本候选协议 v3 不匹配，GUI 会拒绝连接。真实 Hyprland 大额度回收、真实 cgroup `memory.reclaim`、实际回收量和日常应用响应均 NOT RUN；模拟/fixture 通过不代表已回收 256 MiB–1 GiB。无系统写入、Polkit 请求、真实 helper 调用、内核回收、Swap/ZRAM 改动或远端 push；Windows 3.5.2 整页 1:1 仍 NOT PASS。
+
 ## 2026-11-05 — r4.1 身份绑定复核与 Crossproc helper 协议门禁
 
 - **本地基线：**工作树 `codex/m13-fault-repair`，起始 HEAD `a7c4020d47e80a3944ad17bde23194c43a6c8b7b`（Tree `1cb0326697a4d865f07b6f4449b4a743304f80c6`，父 `90f51449a1bf9ada3a5283acf16a849d5b2088c8`）。保留该树原有未提交身份审计改动；新增 helper 协议版本门禁及测试。PR #6 审计树、其它 worktree 未修改；未 fetch、未改远端。

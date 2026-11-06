@@ -1,5 +1,13 @@
 # 中期记忆 / Roadmap State
-更新时间：2026-11-05；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+更新时间：2026-11-06；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+
+## 2026-11-06 当前补充：R5 大额度回收实现候选（尚未安装/实机回收）
+
+- 本地实现提交 `d6f74897fdd30f2a218512176f8ab81af6460e89`，Tree `ade839414e0f2ffc5f1cea7cbd82981ff7c9223c`，基于 `8b251faa81efe613f34d91ce433a52e0878a3bff`。UI 可选 256 MiB、512 MiB 或 1 GiB 每次请求上限；PAGEOUT 按实时 RSS 与 helper 可选映射重新限幅，exact app-scope 模式按 cgroup v2 `anon + file` charge 限幅并向唯一 scope 的 `memory.reclaim` 写入一次。额度是请求上限，不是释放量承诺。
+- 安全边界：helper 固定协议 v3、固定操作枚举和目标身份；cgroup 路径由目标重新导出并以目录 FD/`O_NOFOLLOW` 遍历；子 cgroup、成员不一致、超出 scope、身份或快照改变均失败关闭；没有拆分请求或自动重试。PAGEOUT 与 app-scope 权限检查分开。GUI 保留操作影响警告和非因果归属的前后测量。
+- 本地证据：治理 34 PASS；Python/C 233 PASS + 1 路径限制 SKIP；Shell syntax PASS；Zamak 0.2.0 check/test/build PASS（82 tests）；Arch helper/native build、生产 no-test-hook GUI build、Xvfb 模拟预算和 app-scope 状态 PASS。生产 GUI 正常模式在私有 Xvfb 启动并经 GTK Close 正常退出 0，GTK/GDK warnings 0。候选只读 preflight 通过且明确 `install=not_run`。
+- 候选包和 SHA-256 见 `SHORT_TERM.md` 的 R5 当前条目；测试日志/截图位于用户 AI 输出目录对应的 `MemReduct-R5-2026-11-06/` 子目录。原 worktree `artifacts/` 保留。
+- **当前状态仍是工程候选：**系统仍装协议 v2 GUI/helper；r5 candidate 尚未安装。M0 helper 与两份现存 Polkit policy 的 hash 均与候选相同，本轮未写系统文件。没有执行 Polkit、真实 Hyprland 候选操作、PAGEOUT、`memory.reclaim`、M0 页缓存清理或 Swap/ZRAM 写入。真实应用是否能实际达到几百 MiB/1 GiB 的内核回收，以及 RSS/scope 和 MemAvailable 的实际变化尚未验证。不能宣称 R5 已可日常使用；需要对新的 GUI 与 Crossproc helper 更新取得安装授权，并单独安排具体目标的真实回收验收。Windows 整页 1:1 仍 NOT PASS。
 
 ## 2026-11-05 当前补充：生产桥接隔离与 M0+M1 本机候选包
 
