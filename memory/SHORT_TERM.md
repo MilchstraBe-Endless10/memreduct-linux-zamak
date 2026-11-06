@@ -1,5 +1,11 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-06 — R5 RSS 修复 GUI 单文件安装完成
+
+- **授权与安装：**Issue #12 comment `6682403490` 明确批准仅替换 `/usr/bin/memreduct-zamak`。安装前旧 GUI SHA `a23cbb24ca0037fed4232a2db6eada1ec58844304a7fb5e01027c10abe12dacf`、修复版候选 SHA `efc1d69942349fc37af72658c6d82e41856dd937e85c2f86e13b5459e6fcbbee`、以及私有回退副本 SHA 均精确匹配；回退目录权限 0700、文件 0600。单条 `pkexec install` 返回 0。
+- **安装后复核：**磁盘上 GUI SHA 为修复版完整值，`root:root 0755`；候选预检 PASS：profile `m0+m1-candidate`，M0/M1 门控启用，helper protocol v3，无 test hooks。已安装 Crossproc helper、M0 helper、两份 Polkit policy 的 SHA 与安装前一致；专属 action 仍绑定固定 Crossproc helper。
+- **边界：**本轮未启动 GUI（当前会话缺少原生窗口输入控制，按授权要求不盲目操作），未调用任何 helper、Polkit action、`process_madvise`、`memory.reclaim`、`drop_caches`，未改 Swap/ZRAM。真实 256 MiB 回收仍 NOT RUN；原 Pinta 的低驻留量与主机余量限制仍有效。候选包/备份/哈希清单位于 AI 输出目录 `编程脚本/其他脚本/MemReduct-R5-2026-11-06/gui-rss-fix-2026-11-06-r1/`。未推送。
+
 ## 2026-11-06 — R5 GUI 单文件修复包已准备；未找到安全的大额度目标
 
 - **根因与修复：**生产候选扫描器比较 `VmRSS` 单位时，把整份 `/proc/<pid>/status` 缓冲区中该行的换行后内容也带进字符串比较；当 `VmSwap` 等字段紧随其后，RSS 就保持为 `-1`，GUI 因而把 PAGEOUT 预算算成 0。扫描器现在逐行终止并解析，回归夹具特意在 `VmRSS` 后追加 `VmSwap`。
