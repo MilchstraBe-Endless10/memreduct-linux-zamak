@@ -144,6 +144,11 @@ extern void *gdk_display_get_default(void);
 extern unsigned int g_timeout_add(unsigned int interval, int (*callback)(void *data), void *data);
 
 static int settings_close_requested;
+static int main_close_requested;
+static int main_close_handler_connected;
+static unsigned long main_close_handler_id;
+static unsigned long main_preexisting_close_handler_id;
+static unsigned int main_delete_signal_id;
 static GtkWindow *settings_window;
 static int settings_close_handler_connected;
 static unsigned long settings_close_handler_id;
@@ -910,12 +915,94 @@ static int on_settings_delete(GtkWidget *widget, void *event, void *data)
     return 1; /* Keep the reusable secondary window alive; Zamak returns to main. */
 }
 
+static int on_main_delete(GtkWidget *widget, void *event, void *data)
+{
+    (void)widget;
+    (void)event;
+    (void)data;
+    if (getenv("MEMREDUCT_CI") != NULL) {
+        fputs("CI_NATIVE_MAIN_DELETE_EVENT\n", stderr);
+        fflush(stderr);
+    }
+    main_close_requested = 1;
+    return 1; /* Let the app cancel an in-flight helper before quitting. */
+}
+
+static int install_main_delete_handler(GtkWindow *window, unsigned int signal_id)
+{
+    if (gtk_get_major_version() != 3 || gtk_get_minor_version() < 24) {
+        return 0;
+    }
+
+    const unsigned int match_unblocked_id = (1u << 0) | (1u << 5);
+    const unsigned long existing_close_handler = g_signal_handler_find(
+        window, match_unblocked_id, signal_id, 0, NULL, NULL, NULL);
+    if (existing_close_handler == 0) {
+        return 0;
+    }
+
+    g_signal_handler_block(window, existing_close_handler);
+    const unsigned long additional_handler = g_signal_handler_find(
+        window, match_unblocked_id, signal_id, 0, NULL, NULL, NULL);
+    if (additional_handler != 0) {
+        g_signal_handler_unblock(window, existing_close_handler);
+        return 0;
+    }
+
+    const unsigned long handler_id = g_signal_connect_data(
+        (GtkWidget *)window, "delete-event", on_main_delete, NULL, NULL, 0);
+    if (handler_id == 0) {
+        g_signal_handler_unblock(window, existing_close_handler);
+        return 0;
+    }
+
+    main_preexisting_close_handler_id = existing_close_handler;
+    main_delete_signal_id = signal_id;
+    main_close_handler_id = handler_id;
+    main_close_handler_connected = 1;
+    return 1;
+}
+
+int64_t mr_gui_prepare_main_close(void)
+{
+    if (main_close_handler_connected) {
+        return 1;
+    }
+    if (main_window_ref == NULL) {
+        return 0;
+    }
+
+    const unsigned int signal_id = g_signal_lookup("delete-event", gtk_widget_get_type());
+    if (signal_id == 0 || !install_main_delete_handler(main_window_ref, signal_id)) {
+        if (getenv("MEMREDUCT_CI") != NULL) {
+            fprintf(stderr, "CI_MAIN_CLOSE_HANDLER ready=false signal_id=%u\n", signal_id);
+            fflush(stderr);
+        }
+        return 0;
+    }
+    if (getenv("MEMREDUCT_CI") != NULL) {
+        fprintf(stderr,
+                "CI_MAIN_CLOSE_HANDLER ready=true signal_id=%u existing_handler=%lu connected=%d\n",
+                main_delete_signal_id, main_preexisting_close_handler_id,
+                main_close_handler_id != 0);
+        fflush(stderr);
+    }
+    return 1;
+}
+
+int64_t mr_gui_take_main_close_request(void)
+{
+    const int requested = main_close_requested;
+    main_close_requested = 0;
+    return requested;
+}
+
 /*
  * Zamak 0.2.0's GTK std/ui creates one delete-event callback with each window.
  * Its callback destroys that window and returns TRUE, stopping later handlers.
  * Verify the GTK 3.24 runtime and the single pre-existing unblocked handler,
  * then block only that handler on the reusable settings window. The main
- * window and every other signal keep the UI library's lifecycle untouched.
+ * window has a separate close handler so an active helper can be cancelled.
  */
 static int install_settings_delete_handler(GtkWindow *window, unsigned int signal_id)
 {

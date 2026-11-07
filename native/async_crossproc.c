@@ -16,6 +16,7 @@
 #include <limits.h>
 #include <spawn.h>
 #include <stdint.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,6 +60,7 @@ static int child_stdout = -1;
 static char output_buffer[MR_XPROC_OUTPUT_BYTES];
 static size_t output_used;
 static int output_overflowed;
+static int cancel_requested;
 
 /* The last classified result. */
 static int64_t last_status;
@@ -1104,6 +1106,7 @@ int64_t mr_xproc_start(int64_t request_id, int64_t mode, int64_t pid, int64_t st
     if (child_pid > 0) {
         return MR_XPROC_START_BUSY;
     }
+    cancel_requested = 0;
     expected_pid = 0;
     expected_start_time = 0;
     expected_uid = 0;
@@ -1250,6 +1253,22 @@ int64_t mr_xproc_start(int64_t request_id, int64_t mode, int64_t pid, int64_t st
     return MR_XPROC_START_OK;
 }
 
+int64_t mr_xproc_cancel(void)
+{
+    if (child_pid <= 0) {
+        return 1;
+    }
+
+    /* child_pid is our unreaped direct child, so its PID cannot be reused.
+     * pkexec may already have changed to root; in that case kill() can fail
+     * with EPERM and the caller must keep waiting rather than claim cancellation. */
+    if (kill(child_pid, SIGTERM) != 0 && errno != ESRCH) {
+        return 1;
+    }
+    cancel_requested = 1;
+    return 0;
+}
+
 static int result_matches_expected_target(int64_t verdict)
 {
     if (expected_request_id == 0u || last_reason[0] == '\0') {
@@ -1299,18 +1318,26 @@ int64_t mr_xproc_poll(void)
 
     if (result < 0) {
         reset_last_result();
+        cancel_requested = 0;
         return MR_XPROC_POLL_OUTCOME_UNKNOWN;
     }
     if (WIFSIGNALED(status)) {
         /* Killed by a signal: we cannot know how far it got. */
         reset_last_result();
         last_signal = WTERMSIG(status);
+        int cancelled = cancel_requested;
+        cancel_requested = 0;
+        if (cancelled) {
+            return MR_XPROC_POLL_CANCELLED_UNKNOWN;
+        }
         return MR_XPROC_POLL_OUTCOME_UNKNOWN;
     }
     if (!WIFEXITED(status)) {
         reset_last_result();
+        cancel_requested = 0;
         return MR_XPROC_POLL_OUTCOME_UNKNOWN;
     }
+    cancel_requested = 0;
     last_exit_code = WEXITSTATUS(status);
     last_signal = 0;
     if (output_overflowed) {
@@ -1383,5 +1410,23 @@ int64_t mr_xproc_test_classify_expected(const char *stdout_text, int64_t exit_co
     return result_matches_expected_target(verdict)
                ? verdict
                : MR_XPROC_POLL_OUTCOME_UNKNOWN;
+}
+
+int mr_xproc_test_attach_child(pid_t child)
+{
+    if (child < 2 || child_pid > 0) {
+        return 0;
+    }
+    int status = 0;
+    if (waitpid(child, &status, WNOHANG) != 0) {
+        return 0;
+    }
+    child_pid = child;
+    child_stdout = -1;
+    output_used = 0u;
+    output_overflowed = 0;
+    cancel_requested = 0;
+    expected_request_id = 0u;
+    return 1;
 }
 #endif

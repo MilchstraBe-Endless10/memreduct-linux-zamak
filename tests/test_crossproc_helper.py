@@ -1502,6 +1502,78 @@ int main(void)
         self.assertEqual(self.rows()["idle"][0], "-2")
 
 
+class BridgeCancelTest(unittest.TestCase):
+    """Cancellation may signal only the bridge's owned child, never a target PID."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="memreduct-xproc-cancel-")
+        source = os.path.join(cls.tmp, "cancel.c")
+        with open(source, "w", encoding="utf-8") as handle:
+            handle.write(textwrap.dedent("""\
+                #define _POSIX_C_SOURCE 200809L
+                #include <signal.h>
+                #include <stdio.h>
+                #include <stdint.h>
+                #include <sys/types.h>
+                #include <sys/wait.h>
+                #include <time.h>
+                #include <unistd.h>
+                #include "async_crossproc.h"
+
+                int main(void) {
+                    pid_t child = fork();
+                    if (child < 0) return 2;
+                    if (child == 0) {
+                        signal(SIGTERM, SIG_DFL);
+                        for (;;) pause();
+                    }
+                    if (!mr_xproc_test_attach_child(child)) {
+                        kill(child, SIGKILL);
+                        waitpid(child, NULL, 0);
+                        return 3;
+                    }
+                    int64_t cancel = mr_xproc_cancel();
+                    int64_t result = MR_XPROC_POLL_RUNNING;
+                    for (int attempt = 0; attempt < 100; attempt++) {
+                        result = mr_xproc_poll();
+                        if (result != MR_XPROC_POLL_RUNNING) break;
+                        struct timespec delay = { .tv_sec = 0, .tv_nsec = 10000000 };
+                        nanosleep(&delay, NULL);
+                    }
+                    if (result == MR_XPROC_POLL_RUNNING) {
+                        kill(child, SIGKILL);
+                        waitpid(child, NULL, 0);
+                    }
+                    printf("cancel=%lld result=%lld signal=%lld idle_cancel=%lld\\n",
+                           (long long)cancel, (long long)result,
+                           (long long)mr_xproc_result_signal(),
+                           (long long)mr_xproc_cancel());
+                    return 0;
+                }
+            """))
+        cls.driver = os.path.join(cls.tmp, "cancel")
+        subprocess.run(
+            BASE_FLAGS + ["-DMEMREDUCT_TESTING", "-I", NATIVE, source,
+                          os.path.join(NATIVE, "async_crossproc.c"),
+                          os.path.join(NATIVE, "production_crossproc_gate_default.c"),
+                          "-o", cls.driver],
+            check=True, capture_output=True, text=True,
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_escape_cancel_signals_only_the_owned_child_and_reports_unknown(self):
+        result = subprocess.run([self.driver], capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("cancel=0", result.stdout)
+        self.assertIn("result=13", result.stdout)  # stopped, helper outcome unknown
+        self.assertIn("signal=15", result.stdout)
+        self.assertIn("idle_cancel=1", result.stdout)
+
+
 class PolicyTest(unittest.TestCase):
     """The cross-process action must be its own object, fully separated."""
 

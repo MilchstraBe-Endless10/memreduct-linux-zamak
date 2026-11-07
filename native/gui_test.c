@@ -90,6 +90,7 @@ extern void g_free(void *memory);
 static int sample_failure_trigger_consumed;
 static int xproc_mock_in_flight;
 static int xproc_mock_progress;
+static int xproc_mock_cancel_requested;
 static int64_t xproc_mock_advised;
 static int64_t xproc_mock_requested;
 static int64_t xproc_mock_regions;
@@ -272,6 +273,7 @@ long long mr_runtime_xproc_start(long long request_id, long long mode, long long
     }
     xproc_mock_in_flight = 1;
     xproc_mock_progress = 0;
+    xproc_mock_cancel_requested = 0;
     xproc_mock_advised = 0;
     xproc_mock_requested = max_bytes;
     xproc_mock_mode = mode;
@@ -282,6 +284,10 @@ long long mr_runtime_xproc_start(long long request_id, long long mode, long long
 long long mr_runtime_xproc_poll(void)
 {
     if (mr_runtime_xproc_simulation_enabled() == 0 || xproc_mock_in_flight == 0) return -2;
+    if (xproc_mock_cancel_requested != 0) {
+        xproc_mock_in_flight = 0;
+        return 13; /* outcome unknown: simulation has no privileged child */
+    }
     if (xproc_mock_progress < 2) {
         xproc_mock_progress++;
         return -1;
@@ -290,6 +296,13 @@ long long mr_runtime_xproc_poll(void)
     xproc_mock_advised = xproc_mock_mode == 0 ? xproc_mock_requested / 2 : 0;
     xproc_mock_in_flight = 0;
     return 1; /* partial advice is explicit; no syscall has been made */
+}
+
+long long mr_runtime_xproc_cancel(void)
+{
+    if (mr_runtime_xproc_simulation_enabled() == 0 || xproc_mock_in_flight == 0) return 1;
+    xproc_mock_cancel_requested = 1;
+    return 0;
 }
 
 long long mr_runtime_xproc_stage(void)

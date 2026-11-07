@@ -66,6 +66,7 @@ long long mr_runtime_xproc_start(long long request_id, long long mode, long long
     return 3; /* fail closed; production never enables the simulated path */
 }
 long long mr_runtime_xproc_poll(void) { return -2; }
+long long mr_runtime_xproc_cancel(void) { return 1; }
 long long mr_runtime_xproc_stage(void) { return 0; }
 long long mr_runtime_xproc_result_mode(void) { return 0; }
 long long mr_runtime_xproc_result_advised_bytes(void) { return 0; }

@@ -59,7 +59,8 @@ enum mr_xproc_poll {
     MR_XPROC_POLL_OUTCOME_UNKNOWN = 9,   /* the child died or could not be read */
     MR_XPROC_POLL_REFUSED_LOCAL = 10,    /* our own pre-checks said no */
     MR_XPROC_POLL_AUTH_CANCELLED = 11,   /* pkexec returned its cancellation code */
-    MR_XPROC_POLL_AUTH_FAILED = 12       /* pkexec could not authorize or start helper */
+    MR_XPROC_POLL_AUTH_FAILED = 12,      /* pkexec could not authorize or start helper */
+    MR_XPROC_POLL_CANCELLED_UNKNOWN = 13 /* stopped child; helper may have started */
 };
 
 /* Why our own pre-checks refused, readable through mr_xproc_local_refusal(). */
@@ -110,6 +111,9 @@ int64_t mr_xproc_start(int64_t request_id, int64_t mode, int64_t pid, int64_t st
 /* Poll the running child. Returns an mr_xproc_poll value. Safe to call when
  * idle, which answers MR_XPROC_POLL_IDLE. */
 int64_t mr_xproc_poll(void);
+/* Ask only the spawned pkexec child to stop. A successful signal request is
+ * not proof that authorization or helper execution had not already completed. */
+int64_t mr_xproc_cancel(void);
 
 /* Fields of the most recent finished run. All valid only after poll returned a
  * terminal value; before that they read 0 and must not be shown. */
@@ -158,6 +162,7 @@ const char *mr_xproc_local_refusal_name(void);
 #ifdef MEMREDUCT_TESTING
 int64_t mr_xproc_test_classify(const char *stdout_text, int64_t exit_code);
 int mr_xproc_test_helper_protocol_matches(const char *path, uid_t owner, gid_t group);
+int mr_xproc_test_attach_child(pid_t child);
 #endif
 
 #endif /* MEMREDUCT_ASYNC_CROSSPROC_H */

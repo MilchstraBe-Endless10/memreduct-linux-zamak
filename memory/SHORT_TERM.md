@@ -1,3 +1,11 @@
+## 2026-11-07 — 主窗口关闭/取消链修复回归，Protocol v4 生产候选重建
+
+- **根因与修复：**主窗口原生 `delete-event` 被 Zamak GTK 回调提前吞掉，操作进行中不能把关闭事件交给应用处理；现在只在确认 GTK3.24 的唯一既有 handler 后替换该窗口的 delete-event 路由。窗口关闭会请求取消 bridge 自己启动的直接子进程，并继续等待其退出；一旦无法确认 helper 是否已运行，结果明确标为 uncertain，禁止自动重试。生产 M0/M1 菜单在安全关闭 handler 无法建立时保持不可用。
+- **回归：**本地隔离 Xvfb 交互回归覆盖空闲时正常关闭、运行中的模拟请求通过 Escape/Cancel/标题栏关闭、结果不确定提示；模拟 `call_count=0`，没有 helper 或内核写入。`python3 -m unittest discover -s tests -v`：245 项通过，1 项因文件系统拒绝超长路径而跳过；Zamak 0.2.0 `check` 通过、`test` 84/84 通过；项目检查 34 项通过，全部脚本 `bash -n` 通过，`git diff --check` 通过。
+- **生产构建：**在隔离源码副本生成 `m0+m1-candidate`，profile 显示 pagecache 与跨进程 capability gates enabled、production-no-test-hooks；Zamak/GUI ABI 为 Crossproc protocol 4。构建产物 SHA-256 `e4e77e0bf6133cb64a0e9580d3fcc60122924fb1e5b29151a3af223ae51538b3`，`ldd` 未见缺失依赖；二进制包含 main-close guard/cancel 接口，未见 CI/test 环境钩子。
+- **安装态只读对账：**当前 `/usr/bin/memreduct-zamak` SHA `3c54dcb17e55de0628ea0fb83741fcc29039e0cee890cf83b664403e8f7919dc`，`/usr/libexec/memreduct-zamak-crossproc-helper` SHA `6d0f6d6c75961d64f9bfdf09c349161294b9ee80833ac632e24a4d961951b9be`；两者 `root:root 0755` 且都带 protocol 4。新 GUI 候选与当前 helper 协议兼容；本轮没有替换系统 GUI、启动桌面窗口或发起 Polkit/内核回收。真实大额度效果仍未验收。
+- **交付物：**生产 GUI 与完整构建日志在 AI 输出目录 `编程脚本/其他脚本/MemReduct-R5-2026-11-07/r5-close-guard-cancel-production-r1/`。工作树原有未跟踪 `artifacts/` 未读写/暂存/提交。
+
 # 短期记忆 / Latest Handoff
 
 ## 2026-11-07 — 大额度限幅结果文案已修正，M0+M1 协议 v4 候选已构建

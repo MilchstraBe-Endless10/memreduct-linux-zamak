@@ -1,3 +1,3 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* The default test/CI manifest keeps the environment-controlled GTK probes. */
+/* CI wrapper for shared GTK lifecycle code, including main-window close routing. */
 #include "gui_window.c"

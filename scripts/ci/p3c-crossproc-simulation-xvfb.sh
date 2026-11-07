@@ -157,6 +157,7 @@ done
 require 'CI_MEMORY source=/proc/meminfo'
 require 'CI_CLEAN_SIM enabled=true mock_bridge_connected=true production_bridge_connected=false'
 require 'CI_XPROC_SIM enabled=true mock_bridge_connected=true production_bridge_connected=false'
+require 'CI_MAIN_CLOSE_GUARD ready=true'
 
 # The button body is an action selector too. Page cache is reached only after
 # choosing its own row; it cannot appear as the default when the user wants a
@@ -185,6 +186,75 @@ start_count_before_cancel="$(grep -c 'CI_XPROC_START started=true' "$app_log" ||
 xdotool key --clearmodifiers Escape
 require 'CI_XPROC_RESULT state=confirmation-cancelled authorization_started=false call_count=0 mock=true'
 [[ "$(grep -c 'CI_XPROC_START started=true' "$app_log" || true)" == "$start_count_before_cancel" ]]
+xdotool key --clearmodifiers Escape
+require 'CI_XPROC_RESULT closed=true'
+
+# A running request can be cancelled from its progress page. The mock result
+# stays explicitly uncertain because a production helper might have started.
+open_picker
+select_candidate 0 173
+xdotool mousemove --window "$window_id" 165 340
+xdotool click 1
+require 'CI_XPROC_CONFIRM open=true'
+xdotool key --clearmodifiers Return
+require 'CI_XPROC_START started=true backend=mock'
+xdotool key --clearmodifiers Escape
+require 'CI_XPROC_CANCEL requested=true signal_sent=true helper_may_have_started=true'
+for _ in {1..100}; do
+  grep -q 'CI_XPROC_RESULT state=cancelled-outcome-uncertain' "$app_log" && break
+  sleep 0.1
+done
+require 'CI_XPROC_RESULT state=cancelled-outcome-uncertain'
+require 'call_count=0'
+require 'mock=true no_system_write=true'
+xdotool key --clearmodifiers Escape
+require 'CI_XPROC_RESULT closed=true'
+
+# The in-app Cancel button is the mouse equivalent of Escape.
+open_picker
+select_candidate 0 173
+xdotool mousemove --window "$window_id" 165 340
+xdotool click 1
+require 'CI_XPROC_CONFIRM open=true'
+xdotool key --clearmodifiers Return
+require 'CI_XPROC_START started=true backend=mock'
+xdotool mousemove --window "$window_id" 267 340
+xdotool click 1
+require 'CI_XPROC_CANCEL requested=true signal_sent=true helper_may_have_started=true'
+for _ in {1..100}; do
+  grep -q 'CI_XPROC_RESULT state=cancelled-outcome-uncertain' "$app_log" && break
+  sleep 0.1
+done
+require 'CI_XPROC_RESULT state=cancelled-outcome-uncertain'
+require 'call_count=0'
+require 'mock=true no_system_write=true'
+xdotool key --clearmodifiers Escape
+require 'CI_XPROC_RESULT closed=true'
+
+# The title-bar close request must use the same cancellation path and keep the
+# window alive until the child has stopped and the outcome is classified.
+open_picker
+select_candidate 0 173
+xdotool mousemove --window "$window_id" 165 340
+xdotool click 1
+require 'CI_XPROC_CONFIRM open=true'
+xdotool key --clearmodifiers Return
+require 'CI_XPROC_START started=true backend=mock'
+xdotool mousemove --window "$window_id" 309 28
+xdotool click 1
+for _ in {1..30}; do
+  grep -q 'CI_WINDOW_CLOSE requested_cancel=true' "$app_log" && break
+  sleep 0.1
+done
+require 'CI_WINDOW_CLOSE requested_cancel=true'
+require 'CI_XPROC_CANCEL requested=true signal_sent=true helper_may_have_started=true'
+for _ in {1..100}; do
+  grep -q 'CI_XPROC_RESULT state=cancelled-outcome-uncertain' "$app_log" && break
+  sleep 0.1
+done
+require 'CI_XPROC_RESULT state=cancelled-outcome-uncertain'
+require 'call_count=0'
+require 'mock=true no_system_write=true'
 xdotool key --clearmodifiers Escape
 require 'CI_XPROC_RESULT closed=true'
 
