@@ -1,5 +1,24 @@
 # 短期记忆 / Latest Handoff
 
+## 2026-11-07 — 大额度限幅结果文案已修正，M0+M1 协议 v4 候选已构建
+
+- 根据刚才真实返回的 `requested_bytes=65536`（所选 256 MiB 预算仅 64 KiB 私有页当时驻留），修正 `src/main.zm` 的结果标题：PAGEOUT 现在准确写为“内核已接受 helper 实际选定的请求”，部分接受也说明是 helper 选定请求的一部分；模拟文案同步。避免把 helper 的受限请求读成用户所选预算已达成。详情仍显示 helper 实际请求量、建议量、限幅原因、RSS/Swap 观测。
+- 已把用户要求写入项目 `AGENTS.md` 和全局记忆：发现问题须在同一任务里追根因并修复、测试量不是交付；普通本地开发/构建/非特权测试不重复索要聊天授权，Polkit 本机认证不可绕过。
+- 本地安全回归：Python/C 244 项通过，1 项受文件系统超长路径限制跳过；Shell 语法及 `git diff --check` 通过；Zamak 0.2.0 `check`、83/83 test、build 通过。生产 M0+M1 profile 构建通过、协议 v4、无测试 hook；`ldd` 无缺失依赖。候选 SHA-256 `bdbc28271a97f9060b34c3fa458d92f806e5c7068a3b58100ddc4fc2b844a72f`。
+- 候选及构建证据在 AI 输出目录 `编程脚本/其他脚本/MemReduct-R5-2026-11-07/result-wording-fix-2026-11-07-r1/`。没有安装或发起新回收；当前系统安装的 GUI 仍是之前版本。工作树原有未跟踪 `artifacts/` 保留。
+
+## 2026-11-07 — R5 v4 真实 syscall 执行一次，目标仅有 64 KiB 私有驻留页
+
+- 在用户最新“自行测试”的指示下，对项目自建临时目标执行一次协议 v4 PAGEOUT。helper 复核所选进程身份与专属 scope 一致；`process_madvise(MADV_PAGEOUT)` `call_count=1`、返回 0，内核接受 `advised_bytes=65536`。调用时 helper 实测 RSS `3640→3576 KiB`、Swap `267356→267356 KiB`；因果净释放量未测得，不能把 advised 64 KiB 当作 RAM 释放量。预算 256 MiB 被当时仅 64 KiB 的私有驻留页限幅，因此大额效果未验收。没有重试。
+- 测试进程随后响应完整性检查：65,536 页均匹配；正常退出 0，scope 已移除。清理后 MemAvailable 观察约 1.0 GiB、PSI full avg300 约 1.19%，仅记录为同期系统状态，不归因于本次建议。
+- 本次再次确认授权等待期间测试映射快速换出；Polkit 窗口曾等待数分钟，间歇 TOUCH 未能维持全部页驻留。R5 helper 正确以私有驻留页限幅。源代码未改、未推送；原有未跟踪 `artifacts/` 保留。
+
+## 2026-11-07 — R5 v4 一次性大额度实测未触发 syscall
+
+- 已安装 R5 v4 的一次性 256 MiB PAGEOUT 请求通过本机 Polkit 认证。helper 复核所选进程身份与专属 scope 一致；但认证等待期间测试映射再次被换出，helper 观测 RSS 约 3.5 MiB、Swap 约 267 MiB，返回 `status=no_regions` / `reason=no_private_resident_pages`，`requested_bytes=0`、`advised_bytes=0`、`call_count=0`。`process_madvise` 未调用，没有真实大额度回收。
+- 不重试已耗用的一次性授权。测试进程响应 `CHECK`，65,536 页数据完整，正常退出 0；PID 与 scope 已消失。退出后的 MemAvailable 观察为 933 MiB；这只是同期快照，不归因于 PAGEOUT。
+- 已定位此次失败为授权窗口等待过久导致测试页换出；helper 的零驻留拒绝按设计失败关闭。下一次实测需针对新的经批准临时目标，避免长时间认证等待与页面预热之间的空窗。源代码无改动、未推送；原有未跟踪 `artifacts/` 保留。
+
 ## 2026-11-07 — R5.1 私有驻留 PAGEOUT 候选已构建；未安装、未执行真实回收
 
 - **根因修复：**R5 的大预算此前可能按 RSS/映射长度显示可请求额度，却没有证明相应数量的私有页实际驻留。候选扫描器与特权 helper 现在共用严格 `smaps` 解析，GUI 限幅到 `Private_Clean + Private_Dirty` 估算；protocol v4 helper 再按目标 `pagemap` 只选择 present、非 swapped、exclusive 页，单次 syscall，不重试，扫描上限 8 GiB、iovec 上限 1024。helper 无合格页时拒绝执行。该估算和内核建议字节都不等于实际释放量。

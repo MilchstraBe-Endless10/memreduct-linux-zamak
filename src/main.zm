@@ -452,13 +452,13 @@ fn xproc_result_name(state: i64) -> string:
 
 fn xproc_result_text(zh: bool, state: i64, simulated: bool, mode: i64) -> string:
     if state == 10:
-        if simulated: return label(zh, "Simulation: test helper reported the full request.", "模拟：测试 helper 报告完整建议请求。")
+        if simulated: return label(zh, "Simulation: helper accepted its selected request.", "模拟：helper 已接受实际选定的请求。")
         if mode == 1: return label(zh, "memory.reclaim request write completed.", "memory.reclaim 请求写入已完成。")
-        return label(zh, "Kernel accepted the full advice request.", "内核已接受完整回收建议请求。")
+        return label(zh, "Kernel accepted the helper-selected request.", "内核已接受 helper 实际选定的请求。")
     if state == 11:
-        if simulated: return label(zh, "Simulation: test helper reported a partial request.", "模拟：测试 helper 报告部分建议请求。")
+        if simulated: return label(zh, "Simulation: helper accepted only part of its request.", "模拟：helper 只接受了部分请求。")
         if mode == 1: return label(zh, "Kernel reported a scope reclaim shortfall.", "内核报告作用域回收未达请求量。")
-        return label(zh, "Kernel accepted only part of the advice request.", "内核只接受了部分回收建议请求。")
+        return label(zh, "Kernel accepted only part of the helper-selected request.", "内核只接受了 helper 实际选定请求的一部分。")
     if state == 12:
         if mode == 1: return label(zh, "The helper refused this app scope before writing.", "helper 在写入前拒绝了此应用作用域。")
         return label(zh, "The helper refused this target before advising it.", "helper 在发出回收建议前拒绝了此目标。")
@@ -1606,11 +1606,12 @@ fn test_xproc_candidate_process_state_text_is_explicit():
     assert(xproc_candidate_state_text(true, 83) == "休眠中")
 
 fn test_xproc_simulation_never_claims_a_kernel_result():
-    assert(xproc_result_text(false, 10, false, 0) == "Kernel accepted the full advice request.")
-    assert(xproc_result_text(false, 11, false, 0) == "Kernel accepted only part of the advice request.")
-    assert(xproc_result_text(false, 10, true, 0) == "Simulation: test helper reported the full request.")
-    assert(xproc_result_text(false, 11, true, 0) == "Simulation: test helper reported a partial request.")
-    assert(xproc_result_text(true, 11, true, 0) == "模拟：测试 helper 报告部分建议请求。")
+    assert(xproc_result_text(false, 10, false, 0) == "Kernel accepted the helper-selected request.")
+    assert(xproc_result_text(false, 11, false, 0) == "Kernel accepted only part of the helper-selected request.")
+    assert(xproc_result_text(false, 10, true, 0) == "Simulation: helper accepted its selected request.")
+    assert(xproc_result_text(false, 11, true, 0) == "Simulation: helper accepted only part of its request.")
+    assert(xproc_result_text(true, 11, true, 0) == "模拟：helper 只接受了部分请求。")
+    assert(xproc_result_text(true, 10, false, 0) == "内核已接受 helper 实际选定的请求。")
     assert(xproc_result_text(false, 13, true, 0) == "Simulation: the mock helper reported a permission denial.")
     assert(xproc_advised_bytes_label(false, true) == "Mock bytes advised:")
     assert(xproc_advised_bytes_label(false, false) == "Bytes advised:")

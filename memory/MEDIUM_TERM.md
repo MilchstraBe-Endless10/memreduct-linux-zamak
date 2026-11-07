@@ -1,5 +1,11 @@
 # 中期记忆 / Roadmap State
-更新时间：2026-11-06；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+更新时间：2026-11-07；当前真实状态以本节为准，后续各节均为有日期的历史快照。
+
+## 2026-11-07 当前补充：R5 v4 syscall 实际发生但被驻留量限幅；结果界面修正
+
+- 用户授权的自建临时目标操作通过 Polkit，身份/启动时间/UID/scope/token 全部核验一致；唯一一次 `process_madvise(MADV_PAGEOUT)` 返回 0，`call_count=1`，但 helper 当时只观测到 64 KiB 私有驻留页，将 256 MiB 预算限幅为 65,536 bytes。进程 RSS 观察 `3640→3576 KiB`、Swap 不变；advised 字节不等于实际释放量。65,536 页数据检查通过，临时进程和 scope 正常清理。大额度效果仍未验证。
+- 再次观察到用户等待 Polkit 时目标页快速换出；helper 依据 live pagemap 正确限幅。未重试，也未操作日常进程、Swap/ZRAM 或 M0。
+- `src/main.zm` 的 PAGEOUT 结果标题已改为“内核已接受 helper 实际选定的请求”，避免让人误读为用户预算全额执行。Python/C、Shell、Zamak 0.2.0 与生产 M0+M1 profile 构建通过。更新后的协议 v4 GUI 候选仍仅在本地 AI 输出目录，尚未安装。
 
 ## 2026-11-06 当前补充：R5 已安装；真实大额度回收尚未实机验收
 

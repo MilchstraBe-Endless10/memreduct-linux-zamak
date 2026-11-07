@@ -36,7 +36,14 @@
 - The protocol-v4 helper clamps PAGEOUT to the selected budget, live RSS, eligible VMA lengths, and the helper's fresh private-resident estimate. It reads the target's fixed `/proc/<pid>/pagemap` and only forms vectors from pages marked present (bit 63), not swapped (bit 62), and exclusively mapped (bit 56). Shared, absent, swapped, and inaccessible pages are skipped or cause a fail-closed refusal. The scan is capped at 8 GiB of virtual address space and 1024 iovecs.
 - The GUI shows the private-resident estimate and limiting measure before authorization. PAGEOUT confirmation says it selects only present, exclusive private pages; app-scope mode instead says `memory.reclaim` is bounded to that exact scope. The helper's requested/advised bytes and before/after observations remain separate and are not labelled as RAM freed.
 - Regression fixtures cover present/exclusive, present/nonexclusive, swapped, absent, missing pagemap, and private-resident changes. They use a stubbed syscall and do not invoke Polkit or a live kernel reclaim interface.
-- Protocol v4 is a local build only; the installed system still has the previously authorized protocol-v3 GUI/helper pair. No installation, desktop session, Polkit request, `process_madvise`, `memory.reclaim`, or page-cache operation occurred in this checkpoint. Real Hyprland and large-request effects remain NOT RUN.
+- At the time of this initial candidate checkpoint, protocol v4 was local-only and no live operation had occurred. It was later installed under separate authorization; the live observation below confirms the installed helper reported protocol v4. The initial checkpoint itself did not verify any real reclaim effect.
+
+## R5 v4 controlled live PAGEOUT observation (2026-11-07)
+
+- One Polkit-authorized call targeted only a project-owned temporary process. The installed protocol-v4 helper revalidated the exact PID, start time, UID, user app scope, identity token, and mapping digest successfully.
+- At syscall time only 65,536 bytes of present exclusive private pages remained. The 256 MiB user budget was therefore capped to 65,536 bytes; `process_madvise(MADV_PAGEOUT)` was called once and returned 0. RSS was observed at 3640→3576 KiB and Swap stayed 267356 KiB. These observations do not prove 65,536 bytes of net RAM release.
+- All 65,536 test pages passed integrity checking; the temporary process exited normally and its scope disappeared. This confirms one real helper/syscall path on a small target, **not** a 256 MiB reclaim result. No retry, daily-app operation, M0 action, or Swap/ZRAM change occurred.
+- During the Polkit wait the idle test mapping was largely swapped out. This is a timing/host-residency limitation, not evidence that the helper should accept swapped pages; the helper correctly capped the request.
 
 ## Helper write result contract
 
