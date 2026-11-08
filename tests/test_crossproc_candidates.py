@@ -329,6 +329,16 @@ class CandidateScannerTest(unittest.TestCase):
         values = self.select_snapshot(0, request_id=900009)
         self.assertEqual(self.library.mr_cand_snapshot_verify(*values), 0)
 
+    def test_private_resident_change_after_selection_keeps_identity_valid(self):
+        directory = self.add_process()
+        self.assertEqual(self.scan(), 1)
+        values = self.select_snapshot(0, request_id=900010)
+        self.assertEqual(self.library.mr_cand_private_resident_bytes(0), 4096)
+        self.write_mapping_files(directory, "00400000-00401000 r--p 00000000 00:00 0\n", 0)
+        # Residency may change while the user confirms the operation. The
+        # helper must re-read it and cap the request without losing identity.
+        self.assertEqual(self.library.mr_cand_snapshot_verify(*values), 0)
+
     def test_malformed_smaps_is_reported_as_unreadable_not_kernel_thread(self):
         directory = self.add_process()
         with open(os.path.join(directory, "smaps"), "w", encoding="utf-8") as handle:

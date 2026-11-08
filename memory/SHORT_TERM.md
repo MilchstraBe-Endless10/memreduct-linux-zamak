@@ -14,6 +14,14 @@
 
 # 短期记忆 / Latest Handoff
 
+## 2026-11-08 — R5 驻留量时序修复已安装；正常会话已启动
+
+- **根因闭环：**候选选择期间 `smaps` 私有驻留量会变化；它是预算估算而非进程身份。身份快照继续校验 PID、启动时间、UID、exe、scope、命令行和 VMA 摘要；helper 在执行时重新读取驻留量并限幅。新增回归覆盖点选后到授权等待期间驻留变化，候选测试及完整生产构建流程通过。
+- **安装态：**只替换 `/usr/bin/memreduct-zamak`，新 SHA-256 `83392128fc957ce949ce517c94007fe3fcba7bdac0ddebbd2a0095eee4d72b75`，`root:root 0755`；协议 v4 与现有 Crossproc helper 匹配。M0 helper 与两份 Polkit policy 的哈希未变。旧 GUI SHA `3c54dcb17e55de0628ea0fb83741fcc29039e0cee890cf83b664403e8f7919dc` 的回退副本保存在 AI 输出目录。
+- **正常会话：**以 `/usr/bin/memreduct-zamak` 启动 PID `270532`，未设置 `MEMREDUCT_CI` / `MEMREDUCT_TEST`；进程仍运行，没有启动 helper，未调用任何回收接口。当前 Codex CUA inventory 没有原生应用窗口，因此此轮只能核对真实进程启动，不能冒称已完成窗口输入验收。
+- **当前 Chrome 目标事实：**PID `2313894` 仍为 UID 1000、启动 ticks `30339460`，RSS 约 58 MiB、私有脏驻留约 26 MiB；它所属 scope 有 36 个进程，`anon + file` 约 518 MiB。单 PID PAGEOUT 与整 scope `memory.reclaim` 是不同作用范围；既有一次性授权只覆盖该 PID 的 PAGEOUT，故没有把操作扩大到整 scope，也没有执行 PAGEOUT。
+- **产物：**完整构建日志、生产 GUI 和旧版回退副本位于 `编程脚本/其他脚本/MemReduct-R5-2026-11-08/volatile-snapshot-fix-9323a6e-verification-2026-11-08/`；候选 SHA 与安装后 SHA 匹配。
+
 ## 2026-11-07 — 大额度限幅结果文案已修正，M0+M1 协议 v4 候选已构建
 
 - 根据刚才真实返回的 `requested_bytes=65536`（所选 256 MiB 预算仅 64 KiB 私有页当时驻留），修正 `src/main.zm` 的结果标题：PAGEOUT 现在准确写为“内核已接受 helper 实际选定的请求”，部分接受也说明是 helper 选定请求的一部分；模拟文案同步。避免把 helper 的受限请求读成用户所选预算已达成。详情仍显示 helper 实际请求量、建议量、限幅原因、RSS/Swap 观测。
