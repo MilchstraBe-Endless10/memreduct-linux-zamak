@@ -40,7 +40,17 @@ static inline int mr_xproc_smaps_eligibility(const struct mr_xproc_smaps_region 
     if (region->inode != 0u && region->permissions[1] == 'w') {
         return MR_XPROC_SMAPS_WRITABLE_FILE;
     }
-    if (region->name[0] == '[') return MR_XPROC_SMAPS_SPECIAL;
+    /* ADR-0007 names only [vdso], [vvar] and [stack] as skipped special
+     * mappings. Kernel *named anonymous* mappings ("[anon:<label>]", e.g.
+     * Chrome's [anon:v8-sandbox] / [anon:partition_alloc]) are real private
+     * anonymous memory the process owns, and MADV_PAGEOUT applies to them, so
+     * they must not be classified as special. Page-level exclusivity (pagemap
+     * bit 56) is still enforced later for PAGEOUT selection, so a shared page
+     * can never be advised merely because the VMA passed this filter. */
+    if (region->name[0] == '[' &&
+        strncmp(region->name, "[anon:", 6u) != 0) {
+        return MR_XPROC_SMAPS_SPECIAL;
+    }
     return MR_XPROC_SMAPS_ELIGIBLE;
 }
 
