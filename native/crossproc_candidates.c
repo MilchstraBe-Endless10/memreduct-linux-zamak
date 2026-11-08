@@ -1081,8 +1081,10 @@ static int live_snapshot_matches(const struct mr_cand_entry *expected)
                         &regions, &region_digest) != 0) {
         return -1;
     }
+    /* smaps residency changes during normal execution. Keep identity and map
+     * layout immutable here; the privileged helper re-reads residency and
+     * caps the actual request before building its page vectors. */
     if (bytes != expected->reclaimable_bytes ||
-        private_resident != expected->private_resident_bytes ||
         regions != expected->regions ||
         region_digest != expected->region_digest ||
         mr_xproc_scope_token(cgroup) != expected->scope_token) {

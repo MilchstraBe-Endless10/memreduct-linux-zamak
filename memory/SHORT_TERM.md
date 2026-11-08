@@ -1,3 +1,9 @@
+## 2026-11-08 — R5 候选选择驻留量竞态修复
+
+- **根因与修复：**候选扫描到用户点选之间，smaps 私有驻留页可能自然变化；mr_cand_snapshot_select() 和之后的快照校验却要求它与旧值逐字节相等，导致同一进程被报为“状态已变化”。现在身份校验继续固定 PID、启动时间、UID、exe、scope、命令行和映射摘要，但不再把易变驻留量当成身份字段。helper 在特权执行前重新读取 smaps/pagemap，并按当前独占驻留页限幅。
+- **验证：**候选扫描回归 25/25；完整 Python/C 回归 245 项通过、1 项因文件系统拒绝超长路径跳过；Zamak 0.2.0 check、84/84 tests、M0+M1 production build 通过。生产候选无 CI/test hooks、Crossproc protocol 4，SHA-256 83392128fc957ce949ce517c94007fe3fcba7bdac0ddebbd2a0095eee4d72b75。仅本地构建，未安装、未推送。
+- **真实目标边界：**用户选定的单一 Chrome 进程身份仍匹配；本轮末次只读 smaps_rollup 观察为 RSS 约 100 MiB、Private_Dirty 约 71 MiB、Swap 约 347 MiB。该进程当前驻留上限低于已批准的 256 MiB 请求，且实际合格页只会更少；没有发起 Polkit、helper 或 PAGEOUT，也未换选目标。
+
 ## 2026-11-07 — 主窗口关闭/取消链修复回归，Protocol v4 生产候选重建
 
 - **根因与修复：**主窗口原生 `delete-event` 被 Zamak GTK 回调提前吞掉，操作进行中不能把关闭事件交给应用处理；现在只在确认 GTK3.24 的唯一既有 handler 后替换该窗口的 delete-event 路由。窗口关闭会请求取消 bridge 自己启动的直接子进程，并继续等待其退出；一旦无法确认 helper 是否已运行，结果明确标为 uncertain，禁止自动重试。生产 M0/M1 菜单在安全关闭 handler 无法建立时保持不可用。
