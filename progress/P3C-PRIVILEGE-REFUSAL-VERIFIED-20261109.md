@@ -75,3 +75,63 @@ exit=1
 - 本轮已完成：无密码时**确实拒绝**。
 
 两者合起来才算"权限路径完整"。现在缺的只是成功侧的样本。
+
+---
+
+## 补充：凭据校验链的完整顺序（源码，crossproc_helper.c:935-960）
+
+```c
+static const char *validate_helper_credentials(uint64_t real_uid,
+                                               uint64_t effective_uid,
+                                               const char *pkexec_uid,
+                                               uint64_t *requester_uid)
+{
+    if (effective_uid != 0)   return "not_root";                        // ← 我在这一关
+    if (real_uid != 0)        return "invalid_pkexec_root_credentials";
+    if (pkexec_uid == NULL || pkexec_uid[0] == '\0')
+                              return "not_launched_via_pkexec";
+    if (parse_u64(pkexec_uid, ...) != 0)
+                              return "malformed_requester_uid";
+    if (parsed == 0)          return "invalid_requester_uid";
+    ...
+}
+```
+
+代码注释写得很清楚：
+
+> *pkexec executes a root target after setreuid(0, 0), so the correct helper
+> credentials are ruid=0/euid=0. PKEXEC_UID is only a caller declaration;
+> the target's kernel-reported UIDs are independently checked below.*
+
+### 逐条说明
+
+| 关卡 | 条件 | 为什么必要 |
+|---|---|---|
+| 1 | `euid != 0` → 拒绝 | 未提权时直接挡在门外 |
+| 2 | `ruid != 0` → 拒绝 | 被 setuid 篡改过的进程要拦 |
+| 3 | `PKEXEC_UID` 为空 → 拒绝 | 必须真由 pkexec 拉起，非该路径不许 |
+| 4 | `PKEXEC_UID` 非数字 → 拒绝 | 防格式化/溢出 |
+| 5 | `PKEXEC_UID == 0` → 拒绝 | root 不能作为调用者 |
+
+### 关键设计：声明值与内核值分离
+
+注释点明 `PKEXEC_UID` **只是调用者的声明**（环境变量，可伪造），
+真正的 UID 取自内核报告，且"independently checked below"。
+
+这是整个安全模型的核心：**环境变量不可信，内核数据才是权威**。
+
+### 我这一轮的验证边界（必须说清）
+
+我在第 1 关就被拦下。因此：
+
+| 关卡 | 我是否实测 |
+|---|---|
+| 1 `not_root` | ✅ 实测（本轮）|
+| 2 `invalid_pkexec_root_credentials` | ❌ 需要提权后才能构造 |
+| 3-5 `PKEXEC_UID` 相关 | ❌ 同上 |
+| 目标所有权 / cgroup 校验（1737-1788）| ❌ 全在凭据校验之后 |
+
+**所以我只证明了"未提权时拒绝"，没有证明"提权后其余关卡仍会拦住伪造请求"。**
+后面的关卡需要能进入 root 上下文才能测，那正是被密码卡住的部分。
+
+这条界限必须写清，否则容易把"第一关通过"读成"整个校验链没问题"。
