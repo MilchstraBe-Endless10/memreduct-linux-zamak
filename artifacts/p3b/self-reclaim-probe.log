@@ -1,0 +1,10 @@
+== before ==
+  pre  VmRSS:	  198344 kB
+  pre  RssAnon:	  196724 kB
+  pre  VmSwap:	       0 kB
+== result ==
+  status=0 bytes_paged_out=203960320 failed_batches=0 errno=0
+  post VmRSS:	    2024 kB
+  post RssAnon:	      84 kB
+  post VmSwap:	  196640 kB
+  sentinel=5a (buf still mapped)
