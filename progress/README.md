@@ -15,7 +15,7 @@
 | 自身进程 PAGEOUT | 192 MiB 与 1 GiB 两档实测，覆盖 99.96%，数据未丢 | `P3B-SELF-RECLAIM-VERIFIED-20261109.md` |
 | PAGEOUT 代价 | 换出后再访问慢 198~497 倍（0.47 ms → 92~231 ms）| `P3B-REFAULT-COST-MEASURED-20261109.md` |
 | 客户区几何 | 337×369，标题栏 46 px 为 GTK 自绘 | `P2D-CLIENT-AREA-MEASURED-20261109.md` |
-| 窗口按钮（#11）| **关闭/最小化/恢复/最大化/还原 全部实测**（自建 X11 WM 桩）| `P2D-WINDOW-BUTTONS-CLOSED-20261109.md` |
+| 窗口按钮（#11）| **主窗口与设置窗的关闭/最小化/恢复/最大化全部实测**（自建 X11 WM 桩）| `P2D-WINDOW-BUTTONS-CLOSED-20261109.md`、`P2D-SETTINGS-WINDOW-BUTTONS-20261109.md` |
 | 跨进程 GUI 门控 | 枚举、选择、Continue 未选时禁用 | `P3C-GUI-PICKER-VERIFIED-20261109.md`、`P3C-CONTINUE-GATED-20261109.md` |
 | 跨进程目标就绪 | app-*.scope 候选可被识别，320 MiB 可回收 | `P3C-CROSSPROC-TARGET-READY-20261109.md` |
 | 中文 i18n | 跨进程面板漏译已修；设置五页中文通过 | `P3C-ZH-I18N-FIXED-20261109.md`、`P2C-SETTINGS-ALL-PAGES-ZH-20261109.md`、`P2C-SETTINGS-ZH-VERIFIED-20261109.md` |
