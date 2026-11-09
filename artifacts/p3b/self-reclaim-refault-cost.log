@@ -1,0 +1,6 @@
+A resident_walk        =     4.43 ms
+  bytes_paged_out=271069184
+B walk_after_reclaim   =    99.09 ms   (penalty x22.4)
+C walk_again           =     0.86 ms
+  bytes_paged_out(2)=271069184
+D walk_after_reclaim2  =    76.52 ms   (penalty x17.3)
