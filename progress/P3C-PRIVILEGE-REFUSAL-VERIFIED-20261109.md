@@ -135,3 +135,69 @@ static const char *validate_helper_credentials(uint64_t real_uid,
 后面的关卡需要能进入 root 上下文才能测，那正是被密码卡住的部分。
 
 这条界限必须写清，否则容易把"第一关通过"读成"整个校验链没问题"。
+
+---
+
+## 补充二：重复请求与审计覆盖
+
+### 重复请求：三次完全一致
+
+同一 `request_id=7`、同一目标、连续三次：
+
+```
+第1次: status=refused reason=not_root request_id=7 call_count=0
+第2次: status=refused reason=not_root request_id=7 call_count=0
+第3次: status=refused reason=not_root request_id=7 call_count=0
+```
+
+源码确认 `request_id` 只被解析、回显、传给审计，**不参与去重判定**
+（`grep request_id` 只有 parse / `outcome.request_id =` / `emit` / 审计四处）。
+
+含义：这个 helper 是**无状态的一次性进程**——每次 pkexec 都拉起一个新进程，
+不存在"同 id 已处理过"的记忆，所以天然幂等的是**结果**而非**状态**。
+调用方重试是安全的：最坏情况是被再拒一次，不会叠加副作用（`call_count=0` 已证）。
+
+### 审计只覆盖"即将真正执行"的时刻
+
+审计调用在源码里只有两处：
+
+```c
+mr_xproc_audit_emit("helper_pre_syscall", ...);   // 恰在 process_madvise 之前
+...
+mr_xproc_audit_emit("helper_pre_scope_write", ...);
+```
+
+两者都在**所有前置校验通过之后**。因此：
+
+| 事件 | 是否留审计 |
+|---|---|
+| 被 `not_root` 拒绝 | **否** |
+| 被参数解析拒绝 | **否** |
+| 被 cgroup/所有权校验拒绝 | **否**（若在此之前 return）|
+| 即将真正发起 `process_madvise` | **是** |
+| app_scope 即将写内存统计 | **是** |
+
+### 这个设计的选择与代价
+
+**选择**：审计记录"实际要动系统"的动作，不记录"被挡在门外"的尝试。
+
+**好处**：审计文件不会因任意用户反复调用而膨胀——
+任何一个 uid 1000 的进程都能触发 `not_root`，如果记录它，日志可被无成本刷爆。
+
+**代价**：**拒绝事件不可追溯**。想回答"是谁在反复尝试跨进程回收但没有权限"，
+从审计里查不到。这类需求需要另外的机制（如 pkexec 自身的日志）。
+
+这不是缺陷，是个明确的权衡。写清楚，免得日后有人按"审计应覆盖所有请求"的预期去查而落空。
+
+### 本轮累计验证的边界（更新）
+
+| 项 | 状态 |
+|---|---|
+| helper 无 setuid / 无 file capability | ✅ 实测 |
+| 未提权时 `not_root` 拒绝、`call_count=0` | ✅ 实测 |
+| 参数层四类拒绝（零 token / 非十进制 / 子页预算 / pid 1）| ✅ 实测 |
+| 重复请求结果一致、无叠加副作用 | ✅ 实测 |
+| 审计仅在 syscall 前触发 | ✅ 源码确认 |
+| 提权后凭据 2-5 关 | ❌ 需密码 |
+| 提权后所有权 / cgroup / 哈希重算校验 | ❌ 需密码 |
+| 提权后成功回收 | ❌ 需密码 |
