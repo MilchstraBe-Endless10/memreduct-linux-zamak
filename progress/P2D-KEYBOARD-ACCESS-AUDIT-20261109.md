@@ -60,3 +60,57 @@ fn next_focus_index(focus: f64) -> f64:
 需要处理后确认：要么装 Windows VM 跑原版，要么查原版源码的 Tab 顺序。
 
 已在 Issue 记录，等确认原版行为后再决定改不改。
+
+### 结论（上游源码判定）
+
+从上游仓库按 tag commit `2f5c55d15f69a2c88859e036b16c6f4c971e1968` 取到
+`src/resource.rc`（371 行，已存档到 `artifacts/p2d/upstream/resource.rc`）。
+
+主对话框定义：
+
+```
+IDD_MAIN DIALOGEX 0, 0, 224, 214
+STYLE WS_POPUPWINDOW | WS_MINIMIZEBOX | WS_CAPTION | DS_SHELLFONT | DS_MODALFRAME | NOT WS_VISIBLE
+MENU IDM_MAIN
+{
+	CONTROL    "", IDC_LISTVIEW, WC_LISTVIEW,
+	           NOT WS_BORDER | LVS_SHOWSELALWAYS | LVS_REPORT | LVS_NOCOLUMNHEADER,
+	           8, 8, 208, 174
+
+	PUSHBUTTON "", IDC_CLEAN, 8, 192, 208, 14,
+	           BS_SPLITBUTTON | BS_CENTER | BS_VCENTER
+}
+```
+
+**两个子控件都没有 `WS_TABSTOP`。**
+
+在 Win32 里，只有带 `WS_TABSTOP` 的控件才进入 Tab 顺序。主对话框的
+`IDC_LISTVIEW` 和 `IDC_CLEAN` 都没这个样式，所以：
+
+**原版 v3.5.2 的「清理内存」按钮本来就不在 Tab 顺序里。**
+
+### 判定：这不是缺陷，是忠实复刻
+
+上一轮我把它记为"关键功能对键盘用户完全不可用"，并因为不确定原版行为而搁置。
+现在证据明确：
+
+| 侧 | Tab 顺序 | 清理按钮可达？ |
+|---|---|---|
+| 上游 v3.5.2 | 对话框内无 WS_TABSTOP 控件 | **否** |
+| 本项目 | 焦点 0..4 仅菜单栏 | **否** |
+
+两侧一致。**按产品硬约束（高保真复刻、不得自主重新设计），不应添加这个能力。**
+
+如果要做，那是一个**产品改进决策**，不是 bug 修复，必须由用户批准，
+并且应当同时意识到：这会偏离"高保真复刻"这条硬约束。
+
+### 撤回头条措辞
+
+上一轮文档标题写的是"主操作按钮不可达"，读起来像缺陷。
+准确说法应是：**"主操作按钮不可达 —— 与上游 v3.5.2 行为一致，属复刻范围内。"**
+
+### 附带确认
+
+上游 `IDD_SETTINGS_GENERAL` 里 `IDC_LANGUAGE` 带 `WS_TABSTOP`，
+其余 AUTOCHECKBOX 不带——说明原版设置页也只有语言下拉可 Tab 到。
+本项目设置页的键盘行为与此一致（`P2C-4_FONT_THEME_MENU_REPORT.md` 记录了语言 ComboBox 的完整键盘支持）。
