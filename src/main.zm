@@ -512,8 +512,17 @@ fn xproc_kib(value: i64) -> string:
     if value < 0: return "unavailable"
     f"{value} KiB"
 
+fn xproc_kib_text(zh: bool, value: i64) -> string:
+    if value < 0: return label(zh, "unavailable", "不可用")
+    f"{value} KiB"
+
 fn xproc_mib_bytes(value: i64) -> string:
     if value < 0: return "unavailable"
+    let tenths = value * 10 // 1048576
+    f"{tenths // 10}.{tenths % 10} MiB"
+
+fn xproc_mib_bytes_text(zh: bool, value: i64) -> string:
+    if value < 0: return label(zh, "unavailable", "不可用")
     let tenths = value * 10 // 1048576
     f"{tenths // 10}.{tenths % 10} MiB"
 
@@ -1428,8 +1437,8 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
             p.text(panel.x + 9.0, panel.y + 68.0, label(s.zh, f"Helper selected: {xproc_bytes(s.xproc_requested_bytes)} of {xproc_budget_label(xproc_budget_limit(s.xproc_budget_choice))}", f"helper 选定：{xproc_bytes(s.xproc_requested_bytes)} / {xproc_budget_label(xproc_budget_limit(s.xproc_budget_choice))}"), fg, size=8.0)
             p.text(panel.x + 9.0, panel.y + 84.0, f"{xproc_advised_bytes_label(s.zh, s.xproc_simulation)} {xproc_bytes(s.xproc_advised_bytes)}", fg, size=8.0)
             p.text(panel.x + 9.0, panel.y + 100.0, label(s.zh, f"Regions: {s.xproc_regions} · helper calls: {s.xproc_call_count}", f"区域 {s.xproc_regions} 个 · helper 调用 {s.xproc_call_count} 次"), secondary, size=7.0)
-            p.text(panel.x + 9.0, panel.y + 116.0, label(s.zh, f"Target RSS: {xproc_kib(s.xproc_target_rss_before_kib)} → {xproc_kib(s.xproc_target_rss_after_kib)}", f"目标 RSS：{xproc_kib(s.xproc_target_rss_before_kib)} → {xproc_kib(s.xproc_target_rss_after_kib)}"), secondary, size=7.0)
-            p.text(panel.x + 9.0, panel.y + 132.0, label(s.zh, f"Target swap: {xproc_kib(s.xproc_target_swap_before_kib)} → {xproc_kib(s.xproc_target_swap_after_kib)}", f"目标 swap：{xproc_kib(s.xproc_target_swap_before_kib)} → {xproc_kib(s.xproc_target_swap_after_kib)}"), secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 116.0, label(s.zh, f"Target RSS: {xproc_kib_text(s.zh, s.xproc_target_rss_before_kib)} → {xproc_kib_text(s.zh, s.xproc_target_rss_after_kib)}", f"目标 RSS：{xproc_kib_text(s.zh, s.xproc_target_rss_before_kib)} → {xproc_kib_text(s.zh, s.xproc_target_rss_after_kib)}"), secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 132.0, label(s.zh, f"Target swap: {xproc_kib_text(s.zh, s.xproc_target_swap_before_kib)} → {xproc_kib_text(s.zh, s.xproc_target_swap_after_kib)}", f"目标 swap：{xproc_kib_text(s.zh, s.xproc_target_swap_before_kib)} → {xproc_kib_text(s.zh, s.xproc_target_swap_after_kib)}"), secondary, size=7.0)
             p.text(panel.x + 9.0, panel.y + 148.0, label(s.zh, f"Reason: {reason} · errno {s.xproc_error_code}", f"原因：{reason} · errno {s.xproc_error_code}"), secondary, size=7.0)
             if (s.xproc_state == 10 or s.xproc_state == 11) and s.xproc_requested_bytes < xproc_budget(s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice):
                 p.text(panel.x + 9.0, panel.y + 163.0, label(s.zh, "Helper capped the request to current eligible resident pages.", "helper 已按复核后的合格驻留页缩小请求。"), secondary, size=7.0)
@@ -1442,9 +1451,9 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
             p.text(panel.x + 9.0, panel.y + 205.0, label(s.zh, "Advised bytes and observed deltas are not bytes freed.", "内核建议量和观测变化都不等于实际释放量。"), secondary, size=7.0)
         else:
             p.text(panel.x + 9.0, panel.y + 68.0, label(s.zh, f"memory.reclaim request: {xproc_bytes(s.xproc_requested_bytes)}", f"memory.reclaim 请求：{xproc_bytes(s.xproc_requested_bytes)}"), fg, size=8.0)
-            p.text(panel.x + 9.0, panel.y + 86.0, label(s.zh, f"Scope current: {xproc_mib_bytes(s.xproc_scope_current_before_bytes)} → {xproc_mib_bytes(s.xproc_scope_current_after_bytes)}", f"作用域当前：{xproc_mib_bytes(s.xproc_scope_current_before_bytes)} → {xproc_mib_bytes(s.xproc_scope_current_after_bytes)}"), secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 86.0, label(s.zh, f"Scope current: {xproc_mib_bytes_text(s.zh, s.xproc_scope_current_before_bytes)} → {xproc_mib_bytes_text(s.zh, s.xproc_scope_current_after_bytes)}", f"作用域当前：{xproc_mib_bytes_text(s.zh, s.xproc_scope_current_before_bytes)} → {xproc_mib_bytes_text(s.zh, s.xproc_scope_current_after_bytes)}"), secondary, size=7.0)
             p.text(panel.x + 9.0, panel.y + 104.0, label(s.zh, f"Anon {xproc_mib_compact(s.xproc_scope_anon_before_bytes)}→{xproc_mib_compact(s.xproc_scope_anon_after_bytes)} · file {xproc_mib_compact(s.xproc_scope_file_before_bytes)}→{xproc_mib_compact(s.xproc_scope_file_after_bytes)} MiB", f"匿名 {xproc_mib_compact(s.xproc_scope_anon_before_bytes)}→{xproc_mib_compact(s.xproc_scope_anon_after_bytes)} · 文件 {xproc_mib_compact(s.xproc_scope_file_before_bytes)}→{xproc_mib_compact(s.xproc_scope_file_after_bytes)} MiB"), secondary, size=7.0)
-            p.text(panel.x + 9.0, panel.y + 122.0, label(s.zh, f"Scope swap: {xproc_mib_bytes(s.xproc_scope_swap_before_bytes)} → {xproc_mib_bytes(s.xproc_scope_swap_after_bytes)}", f"作用域 swap：{xproc_mib_bytes(s.xproc_scope_swap_before_bytes)} → {xproc_mib_bytes(s.xproc_scope_swap_after_bytes)}"), secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 122.0, label(s.zh, f"Scope swap: {xproc_mib_bytes_text(s.zh, s.xproc_scope_swap_before_bytes)} → {xproc_mib_bytes_text(s.zh, s.xproc_scope_swap_after_bytes)}", f"作用域 swap：{xproc_mib_bytes_text(s.zh, s.xproc_scope_swap_before_bytes)} → {xproc_mib_bytes_text(s.zh, s.xproc_scope_swap_after_bytes)}"), secondary, size=7.0)
             p.text(panel.x + 9.0, panel.y + 140.0, label(s.zh, f"Regions: {s.xproc_regions} · calls: {s.xproc_call_count}", f"区域 {s.xproc_regions} 个 · 调用 {s.xproc_call_count} 次"), secondary, size=7.0)
             p.text(panel.x + 9.0, panel.y + 158.0, label(s.zh, f"Reason: {reason} · errno {s.xproc_error_code}", f"原因：{reason} · errno {s.xproc_error_code}"), secondary, size=7.0)
             let child_exit = if s.xproc_simulation: -1 else: mr_xproc_result_exit_code()
