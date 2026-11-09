@@ -1358,7 +1358,7 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
                     let private_resident = xproc_candidate_private_resident_bytes(s, index)
                     p.text(rect.x + 4.0, rect.y + 1.0, f"{name}  PID {pid}", fg, size=8.0)
                     p.text(rect.x + 4.0, rect.y + 12.0, f"UID {uid} · app {app_name}", secondary, size=8.0)
-                    p.text(rect.x + 4.0, rect.y + 23.0, f"{process_state} · {regions} private regions · {xproc_bytes(private_resident)} resident estimate", secondary, size=7.0)
+                    p.text(rect.x + 4.0, rect.y + 23.0, label(s.zh, f"{process_state} · {regions} private regions · {xproc_bytes(private_resident)} resident estimate", f"{process_state} · 私有区域 {regions} 个 · 常驻估计 {xproc_bytes(private_resident)}"), secondary, size=7.0)
                     visible += 1
             if count == 0:
                 p.text(panel.x + 9.0, panel.y + 82.0, label(s.zh, "No eligible user application found.", "未找到符合条件的用户应用。"), secondary, size=8.0)
@@ -1374,12 +1374,12 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
         p.text(panel.x + 9.0, panel.y + 27.0, label(s.zh, "Confirm one process and one bounded request.", "请确认单个进程和有限范围请求。"), fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 45.0, f"{name}  PID {s.xproc_target_pid}  UID {s.xproc_target_uid}", fg, size=8.0)
         p.text(panel.x + 9.0, panel.y + 60.0, xproc_confirmation_start_time(s.zh, s.xproc_target_start_time), secondary, size=8.0)
-        p.text(panel.x + 9.0, panel.y + 73.0, f"Application: {s.xproc_target_app_name}", secondary, size=8.0)
+        p.text(panel.x + 9.0, panel.y + 73.0, label(s.zh, f"Application: {s.xproc_target_app_name}", f"应用：{s.xproc_target_app_name}"), secondary, size=8.0)
         if s.xproc_mode_choice == 0:
-            p.text(panel.x + 9.0, panel.y + 86.0, f"Request {xproc_budget_label(budget)} · RSS {xproc_bytes(s.xproc_target_rss_bytes)}", secondary, size=8.0)
-            p.text(panel.x + 9.0, panel.y + 99.0, f"Private resident: {xproc_bytes(s.xproc_target_private_resident_bytes)} · {xproc_budget_limit_text(s.zh, s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 86.0, label(s.zh, f"Request {xproc_budget_label(budget)} · RSS {xproc_bytes(s.xproc_target_rss_bytes)}", f"请求 {xproc_budget_label(budget)} · RSS {xproc_bytes(s.xproc_target_rss_bytes)}"), secondary, size=8.0)
+            p.text(panel.x + 9.0, panel.y + 99.0, label(s.zh, f"Private resident: {xproc_bytes(s.xproc_target_private_resident_bytes)}" , f"私有常驻：{xproc_bytes(s.xproc_target_private_resident_bytes)}") + f" · {xproc_budget_limit_text(s.zh, s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice)}", secondary, size=7.0)
         else:
-            p.text(panel.x + 9.0, panel.y + 86.0, f"Request {xproc_budget_label(budget)} · scope anon+file {xproc_bytes(s.xproc_target_scope_bytes)}", secondary, size=7.0)
+            p.text(panel.x + 9.0, panel.y + 86.0, label(s.zh, f"Request {xproc_budget_label(budget)} · scope anon+file {xproc_bytes(s.xproc_target_scope_bytes)}", f"请求 {xproc_budget_label(budget)} · 作用域 匿名+文件 {xproc_bytes(s.xproc_target_scope_bytes)}"), secondary, size=7.0)
             p.text(panel.x + 9.0, panel.y + 99.0, xproc_budget_limit_text(s.zh, s.xproc_target_bytes, s.xproc_target_rss_bytes, s.xproc_target_private_resident_bytes, s.xproc_target_scope_bytes, s.xproc_budget_choice, s.xproc_mode_choice), secondary, size=7.0)
         for choice in 0..3:
             let rect = xproc_budget_rect(choice, &panel)
