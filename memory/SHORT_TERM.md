@@ -1,3 +1,16 @@
+## 2026-11-09 — R5 快照修复、生产清理版安装、跨进程 GUI 候选验证
+
+- **GitHub 同步：**分支 `codex/r5-volatile-snapshot-fix`，远端 HEAD 已到 `188b169`（`git ls-remote` 核验）。提交序列 `ecc408d`（P0A 安装证据）→ `e8b9e52`（P3A 偏好端到端）→ `e18f3f0`（P2D 按钮实测）→ `188b169`（P3C GUI 候选验证）。
+- **安装态真相（关键）：**已装 `/usr/bin/memreduct-zamak` sha256 `5a4e62bfaf2d5a4ff8fca35f99be633441a901d1971afda174aeaf83fd561daf` 是 **pagecache gate=1、crossproc gate=0**（反汇编 `mr_xproc_capability_enabled: xor eax,eax; ret`）。两个 gate 刻意独立。上一轮"安装版能清理"只覆盖页缓存，不覆盖跨进程。
+- **M0-A 真实回收（已验）：**同一 helper 经 pkexec，`MemAvailable 1359352 → 1568696 kB`（+209344）、`Cached 1664764 → 623248 kB`（−1041516）。按术语纪律记为内核接受后的观测变化，不是承诺释放量。
+- **#8 偏好持久化（已验）：**26 项单测通过；Xvfb 真实点击 View→Language→简体中文后 `preferences.conf` 写出 `schema=1 / language=zh-CN / theme=light`，重启读回一致。
+- **#11 按钮（部分验）：**启动 337×415 未回退；resize 1200×700 实际生效（`min==max` 只约束 GTK 侧、不锁窗口管理器路径，光读源码会误判）；关闭按钮进程正常退出。**最小化/恢复/最大化 NOT RUN**——本机无任何 WM（openbox/fluxbox/i3/xfwm4/metacity/mutter/twm/icewm/jwm 全缺），Xvfb 下无人响应 iconify。
+- **跨进程 GUI 侧（已验）：**`build-production-crossproc-gui.sh m0+m1-candidate` 产出 sha256 `83392128fc957ce949ce517c94007fe3fcba7bdac0ddebbd2a0095eee4d72b75`，两 gate 均为 1、无 CI 钩子。GUI picker 列出真实进程（omarchy-hyprland 1474 / udiskie 1475 / socat 2517 / karing 4190，下滚至 qq、chrome），面板 `for row in 0..4` + `xproc_scroll` 可滚动全表。独立 `mr_cand_scan`：`scanned=578 offered=80 skipped_other_uid=354 protected=139 limit=0`；自建 320 MiB 目标 `pid=1338319`（`app-xtarget2.scope`）被收录 `private_resident=295981056`。
+- **准入陷阱（值得记住）：**把测试进程作为 DSH 会话子进程启动时 cgroup 是 `dsh-subprocess-*.scope`，被 `mr_xproc_cgroup_path_is_user_app` 正确拒绝（要求尾段为 `app-*.scope` 形式）。这是保护设计而非缺陷；用 `systemd-run --user --scope --unit=app-xtarget2` 放入标准 scope 后即被收录。
+- **反证观测：**目标进程静置后 `VmRSS 329796 → 2096 kB`，**在完全没有 MADV_PAGEOUT 的情况下**内核自行换出。故 MemAvailable 差值不可整体记在软件头上。
+- **仍未做：**真实 `process_madvise(MADV_PAGEOUT)`。同 UID 直呼复验 `EPERM`；两个 Polkit policy 均 `allow_active=auth_admin` 且本机无 rules 放行，必须用户输密码，无法代劳。等用户批准。
+- **清理：**删除 worktree 根下误生成的 131 字节垃圾文件（文件名是一段 Python 代码）。
+
 ## 2026-11-08 — R5 候选选择驻留量竞态修复
 
 - **根因与修复：**候选扫描到用户点选之间，smaps 私有驻留页可能自然变化；mr_cand_snapshot_select() 和之后的快照校验却要求它与旧值逐字节相等，导致同一进程被报为“状态已变化”。现在身份校验继续固定 PID、启动时间、UID、exe、scope、命令行和映射摘要，但不再把易变驻留量当成身份字段。helper 在特权执行前重新读取 smaps/pagemap，并按当前独占驻留页限幅。
