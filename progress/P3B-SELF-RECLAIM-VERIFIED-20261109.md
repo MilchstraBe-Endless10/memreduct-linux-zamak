@@ -37,3 +37,34 @@
 
 这是**匿名页换出（page-out）**，不是「释放」。页还在 swap 里，回访时仍会缺页读回。
 对系统的意义是：这些冷页让出了物理内存，代价是 swap 占用与后续回读延迟。
+
+### 追加：1 GiB 规模下的覆盖率（`MR_SELF_BATCH` 上限不是总量瓶颈）
+
+有人会怀疑 `MR_SELF_BATCH = 32` 意味着"只处理 32 个映射"。读源码可以确认不是：
+`batch` 只是单次 `process_madvise` 调用最多带 32 个 iovec，**装满就立刻调用并清空，
+然后继续读 `/proc/self/maps` 到文件末尾**。
+
+1 GiB 实测：
+
+```
+eligible_regions=25  eligible_bytes=1076801536  (batches_of_32=1)
+bytes_paged_out=1076375552   failed_batches=0   errno=0
+sentinel=5a
+```
+
+覆盖率 = 1076375552 / 1076801536 = **99.96%**。
+差额约 430 kB 来自内核不愿换出的少量页（例如被锁定的栈页），属正常。
+
+同时注意：25 个映射只占 1 个 batch，说明 32 这个上限在实际进程里极少被触到；
+即使触到也只是多调一次，不影响覆盖范围。
+
+### 过滤条件（决定"能不能碰"的边界）
+
+源码只挑 `perms[0]=='r'`（可读）且 `perms[3]=='p'`（私有）的映射：
+
+- 私有匿名 / 私有文件背衬 → 是候选
+- **共享映射被显式排除**：注释写明"shared mappings belong to other processes
+  and must not be pushed out from under them"
+
+这是一条很要紧的安全约束：共享库和共享内存属于别的进程语义，
+对自己做 PAGEOUT 时把它们一起推出会连带影响他人。代码选择了不碰。

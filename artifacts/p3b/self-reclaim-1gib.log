@@ -1,0 +1,4 @@
+== 1 GiB private region resident ==
+  eligible_regions=25 eligible_bytes=1076801536 (batches_of_32=1)
+  status=0 bytes_paged_out=1076375552 failed_batches=0 errno=0
+  sentinel=5a
