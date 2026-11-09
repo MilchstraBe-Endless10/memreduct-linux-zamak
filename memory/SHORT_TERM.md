@@ -1,3 +1,31 @@
+## 2026-11-09（第 29 轮）— 真实回收证据、i18n 全量修复、上游保真交叉验证
+
+> 本节取代同日早先的 R5 快照记录；早前内容仍在下方"历史快照"，因为它是当时的真实状态。
+
+- **分支**：`codex/r5-volatile-snapshot-fix`，HEAD `26dee14`（本轮结束后另有提交）。工作树只有未跟踪的
+  `artifacts/`、`progress/` 产物。
+- **索引**：新建 `progress/README.md`，20 个证据文档按"已完成验证 / 发现的缺口 / 阻塞中 /
+  已撤回的判断"分类，每条一行结论 + 指向原文。
+- **已完成且有实测**：M0-A 生产版 drop_caches（+204 MiB / Cached −1017 MiB）；
+  偏好持久化 #8（schema=1/language/theme 重启后重载）；自身进程 PAGEOUT（192 MiB 与 1 GiB 两档，
+  覆盖 99.96%，sentinel 数据未丢）；PAGEOUT 代价（换出后再访问 0.47 ms → 92~231 ms，慢 198~497 倍）；
+  客户区 337×369（标题栏 46 px 为 GTK 自绘）；跨进程 GUI 门控（未选中时 Continue 禁用）；
+  中英文各五页设置窗实测；双语对照审计（60 对里 4 处中文多括号）。
+- **上游保真交叉验证**：从 tag commit `2f5c55d1` 取到 `src/resource.rc`（371 行，存
+  `artifacts/p2d/upstream/resource.rc`）。224×214 DLU → 313×321 client → 337×369 窗口，
+  与实测完全一致；四个弹出菜单项数/顺序/分隔全对应。
+- **发现并披露的缺口**：① 托盘功能运行时完全不存在（`grep -c tray src/main.zm` = 0，
+  无 GtkStatusIcon/appindicator），但设置页仍展示其配置项；② 清理按钮不可 Tab 到，
+  已确认上游 `IDC_CLEAN` 同样无 `WS_TABSTOP`，属忠实复刻非缺陷；③ 帮助三项点击仅提示未实现。
+- **阻塞中**：跨进程真实 `process_madvise(MADV_PAGEOUT)` 需管理员密码（两个 Polkit 均 `auth_admin`，
+  会话 `NoNewPrivs=1` 使 pkexec 不可直呼）；#11 最小化/恢复需窗口管理器，本机无。
+- **待用户裁决**（Issue #13）：气泡提示文案 A'/B'/C'；清理按钮键盘可达性；托盘缺口披露方式 A/B/C。
+- **撤回的判断三条**（记入索引以免重犯）：zram 满导致变慢（第16轮，读错指标，实占 6.73 GiB）；
+  原样不动即保真（第22轮，中文侧已有手写标注）；清理按钮不可达是缺陷（第25轮，上游同样如此）。
+- **验证命令**：`zam check .` PASS；`python3 -m unittest discover -s tests` 246 通过 / 1 跳过；
+  所有 Xvfb 实测均在 `GDK_SCALE=1` 下进行（漏设会得到 2 倍几何）。
+- **未执行**：任何特权操作（未安装 M0+M1 候选、未调用 pkexec、未写 drop_caches、未动 Swap/ZRAM）。
+
 ## 2026-11-09 — R5 快照修复、生产清理版安装、跨进程 GUI 候选验证
 
 - **GitHub 同步：**分支 `codex/r5-volatile-snapshot-fix`，远端 HEAD 已到 `188b169`（`git ls-remote` 核验）。提交序列 `ecc408d`（P0A 安装证据）→ `e8b9e52`（P3A 偏好端到端）→ `e18f3f0`（P2D 按钮实测）→ `188b169`（P3C GUI 候选验证）。
