@@ -38,6 +38,47 @@ int main(void) {
             wc.stack_mode = c->detail;
             XConfigureWindow(d, c->window, c->value_mask, &wc);
         } else if (e.type == ClientMessage) {
+            /* EWMH 最大化：应用发 _NET_WM_STATE 到 root */
+            Atom net_wm_state = XInternAtom(d, "_NET_WM_STATE", False);
+            Atom max_h = XInternAtom(d, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+            Atom max_v = XInternAtom(d, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+            if (e.xclient.message_type == net_wm_state &&
+                e.xclient.message_type != wm_protocols) {
+                /* l[0]=0 remove, 1 add, 2 toggle; l[1],l[2] 是两个 property atom */
+                long action = e.xclient.data.l[0];
+                Atom p1 = (Atom)e.xclient.data.l[1];
+                Atom p2 = (Atom)e.xclient.data.l[2];
+                Window w = e.xclient.window;
+                int want_max = 0;
+                if (action == 1) want_max = 1;
+                else if (action == 0) want_max = 0;
+                else if (action == 2) want_max = -1; /* toggle: 简化，直接最大化 */
+                int is_max = 0;
+                if (p1 == max_h || p1 == max_v || p2 == max_h || p2 == max_v) {
+                    printf("miniwm: _NET_WM_STATE action=%ld max_h=%d max_v=%d\n",
+                           action, p1 == max_h || p2 == max_h,
+                           p1 == max_v || p2 == max_v);
+                    fflush(stdout);
+                    is_max = (want_max >= 0) ? want_max : 1;
+                    if (is_max) {
+                        XMoveResizeWindow(d, w, 0, 0,
+                                          DisplayWidth(d, 0), DisplayHeight(d, 0));
+                        /* 关键：把 _NET_WM_STATE 写成最大化，GTK 才能读到真实状态，
+                         * 下次点击 toggle 才会发 action=0 而不是又一次 action=1 */
+                        Atom states[2] = { max_h, max_v };
+                        XChangeProperty(d, w, net_wm_state, XA_ATOM, 32,
+                                        PropModeReplace, (unsigned char *)states, 2);
+                        printf("miniwm:   -> maximized to %dx%d, _NET_WM_STATE set\n",
+                               DisplayWidth(d, 0), DisplayHeight(d, 0));
+                    } else {
+                        XMoveResizeWindow(d, w, 60, 40, 337, 415);
+                        XChangeProperty(d, w, net_wm_state, XA_ATOM, 32,
+                                        PropModeReplace, NULL, 0);
+                        printf("miniwm:   -> restored to 337x415, _NET_WM_STATE cleared\n");
+                    }
+                    fflush(stdout);
+                }
+            }
             /* WM_CHANGE_STATE: 图标化/取消图标化请求（gtk_window_iconify 走这条） */
             Atom wm_change_state = XInternAtom(d, "WM_CHANGE_STATE", False);
             if (e.xclient.message_type == wm_protocols) {

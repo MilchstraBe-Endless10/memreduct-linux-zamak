@@ -86,3 +86,69 @@ win=2097164 geom=337x415 visible=1 name='Mem Reduct'
 真实桌面还有别的变量（合成器、动画、聚焦策略），但**协议层面已经确认无误**。
 
 也就是：#11 从"无法测试"变成"协议层已验证，真机行为待用户确认"。
+
+---
+
+## 补充：最大化 / 还原也测通了（同一桩，第二轮补强）
+
+上一轮把最大化记为"未测"。本轮把它补上了，过程中撞到一个关键点。
+
+### 第一次尝试：两次点击都发 maximize，没有还原
+
+```
+miniwm: _NET_WM_STATE action=1 ... -> maximized to 1024x768
+miniwm: _NET_WM_STATE action=1 ... -> maximized to 1024x768     ← 又是 1，不是 0
+```
+
+我一度怀疑是程序的 toggle 逻辑坏了。查源码注释（`gui_window.c:625-628`）：
+
+> GtkHeaderBar's minimize/maximize buttons only emit **gtk-window-toggle-maximized**
+
+**toggle 语义是对的。** 问题在我的桩：GTK 判断"当前是否已最大化"靠读窗口的
+`_NET_WM_STATE` 属性，而我的桩改完窗口尺寸却**没写这个属性**。
+GTK 每次都读到"没最大化"，所以每次都往"最大化"方向 toggle。
+
+补上属性维护后才正确：
+
+```c
+/* 最大化时 */
+Atom states[2] = { max_h, max_v };
+XChangeProperty(d, w, net_wm_state, XA_ATOM, 32, PropModeReplace,
+                (unsigned char *)states, 2);
+/* 还原时 */
+XChangeProperty(d, w, net_wm_state, XA_ATOM, 32, PropModeReplace, NULL, 0);
+```
+
+### 结果
+
+```
+miniwm: _NET_WM_STATE action=1 ... -> maximized to 1024x768, _NET_WM_STATE set
+miniwm: _NET_WM_STATE action=0 ... -> restored to 337x415,  _NET_WM_STATE cleared
+```
+
+| 步骤 | 几何 | 事件 |
+|---|---|---|
+| 初始 | 337×415 | — |
+| 点最大化 | **1024×768** | `action=1` |
+| 再点（还原）| **337×415** | `action=0` |
+
+### 这次误判的性质与上一次不同
+
+- 第一次（未处理 `WM_CHANGE_STATE`）：**桩缺能力**，请求变成无操作。
+- 这一次（未维护 `_NET_WM_STATE`）：**桩撒了谎**——窗口实际变了，
+  但状态属性说没变，导致程序基于错误信息做决策。
+
+第二种更隐蔽：程序的行为看起来像有 bug（toggle 失效），
+实际是环境提供了假信息。**这跟"设备没反应"和"设备说成功了但没做"的区别一样。**
+
+### #11 完成情况（更新）
+
+| 项目 | 状态 |
+|---|---|
+| 关闭 | 已实测 |
+| 最小化 | 已实测 |
+| 恢复 | 已实测 |
+| **最大化** | **已实测**（1024×768）|
+| **还原** | **已实测**（回 337×415）|
+
+#11 四项全部走通。
