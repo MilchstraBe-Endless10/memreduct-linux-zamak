@@ -73,6 +73,18 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(self.lib.mr_bal_bridge_run(-1, 1024, 1024, 1, 0), 0)
         self.assertEqual(self.lib.mr_bal_bridge_run(10_000, 1024, 1024, 1, 0), 0)
 
+    def test_scope_file_bytes_is_readable_or_minus_one(self):
+        """The scope's own file counter is the only honest budget ceiling."""
+        count = self.lib.mr_bal_bridge_scan_scopes()
+        if count == 0:
+            self.skipTest("no app scopes on this host")
+        self.lib.mr_bal_bridge_scope_file_bytes.argtypes = [ctypes.c_int64]
+        self.lib.mr_bal_bridge_scope_file_bytes.restype = ctypes.c_int64
+        value = self.lib.mr_bal_bridge_scope_file_bytes(0)
+        self.assertGreaterEqual(value, -1)
+        self.assertEqual(self.lib.mr_bal_bridge_scope_file_bytes(-1), -1)
+        self.assertEqual(self.lib.mr_bal_bridge_scope_file_bytes(10_000), -1)
+
     def test_run_with_zero_budget_refuses(self):
         count = self.lib.mr_bal_bridge_scan_scopes()
         if count == 0:

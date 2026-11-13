@@ -282,6 +282,20 @@ int64_t mr_bal_bridge_scope_file_bytes(int64_t index)
     return -1;
 }
 
+/* Cap the machine-wide budget by what the chosen scope can actually give.
+ *
+ * The planner reasons about the whole machine, which is right for deciding
+ * whether to act at all. But the request is written into ONE scope, so a
+ * machine-wide budget can ask a small scope for more than it holds: measured
+ * on this host, a plan of 425 MiB against a scope holding 73 KiB of file pages.
+ * The scope's own file counter is the only honest ceiling. */
+static uint64_t scope_bounded_budget(int64_t index, uint64_t budget_bytes)
+{
+    int64_t scope_file = mr_bal_bridge_scope_file_bytes(index);
+    if (scope_file <= 0) return 0;
+    return (uint64_t)scope_file < budget_bytes ? (uint64_t)scope_file : budget_bytes;
+}
+
 int64_t mr_bal_bridge_run(int64_t index, uint64_t budget_bytes,
                           uint64_t batch_bytes, uint32_t max_batches,
                           uint32_t psi_stop_centi)
@@ -300,6 +314,13 @@ int64_t mr_bal_bridge_run(int64_t index, uint64_t budget_bytes,
     if (root[0] == '\0') return 0;
     const char *name = mr_bal_exec_scope_name(index);
     if (name == NULL || name[0] == '\0') return 0;
+
+    budget_bytes = scope_bounded_budget(index, budget_bytes);
+    if (budget_bytes == 0) {
+        (void)mr_bal_bridge_result_set(MR_BAL_EXEC_STOPPED, MR_BAL_EXEC_STOP_NO_COLD_PAGES,
+                                       0, 0, 0, 0, 0);
+        return 1;
+    }
 
     int scope_fd = mr_bal_exec_open_scope(root, name);
     if (scope_fd < 0) return 0;
