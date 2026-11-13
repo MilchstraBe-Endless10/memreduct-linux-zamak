@@ -61,7 +61,8 @@ class ExecTest(unittest.TestCase):
         subprocess.run(
             ["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic",
              "-shared", "-fPIC", "-I", NATIVE,
-             os.path.join(NATIVE, "balance_exec.c"), "-o", cls.lib_path],
+             os.path.join(NATIVE, "balance_exec.c"),
+             os.path.join(NATIVE, "balance_reclaim.c"), "-o", cls.lib_path],
             check=True, capture_output=True, text=True,
         )
         cls.lib = ctypes.CDLL(cls.lib_path)
@@ -244,7 +245,8 @@ class RealScopeTest(unittest.TestCase):
         subprocess.run(
             ["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-pedantic",
              "-shared", "-fPIC", "-I", NATIVE,
-             os.path.join(NATIVE, "balance_exec.c"), "-o", cls.lib_path],
+             os.path.join(NATIVE, "balance_exec.c"),
+             os.path.join(NATIVE, "balance_reclaim.c"), "-o", cls.lib_path],
             check=True, capture_output=True, text=True,
         )
         cls.lib = ctypes.CDLL(cls.lib_path)

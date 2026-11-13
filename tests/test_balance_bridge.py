@@ -26,6 +26,7 @@ class BridgeTest(unittest.TestCase):
              os.path.join(NATIVE, "balance_exec.c"),
              os.path.join(NATIVE, "balance_snapshot.c"),
              os.path.join(NATIVE, "balance_plan.c"),
+             os.path.join(NATIVE, "balance_reclaim.c"),
              "-o", cls.lib_path],
             check=True, capture_output=True, text=True,
         )
