@@ -9,6 +9,22 @@ use memory
 use ui_geometry
 use settings_ui
 
+# Balanced clean (Issue #12): every string the entry point shows comes from a
+# pure helper, so the wording is testable without a window and no two paths can
+# describe the same run differently. Zamak's FFI is scalar-only, hence the
+# set-then-read bridge instead of passing the plan struct.
+extern fn mr_bal_bridge_entry(built_in: i64, gate: i64, helper: i64, busy: i64, no_target: i64) -> i64
+extern fn mr_bal_bridge_plan_set(state: i64, action: i64, request_bytes: i64, evidence: i64) -> i64
+extern fn mr_bal_bridge_plan_action(zh: i64) -> string
+extern fn mr_bal_bridge_plan_why(zh: i64) -> string
+extern fn mr_bal_bridge_plan_budget(zh: i64) -> string
+extern fn mr_bal_bridge_plan_skips(zh: i64) -> string
+extern fn mr_bal_bridge_result_set(status: i64, stop_reason: i64, requested: i64, accepted: i64, batches_ok: i64, batches_rejected: i64, available_delta: i64) -> i64
+extern fn mr_bal_bridge_result_headline(zh: i64) -> string
+extern fn mr_bal_bridge_result_counters(zh: i64) -> string
+extern fn mr_bal_bridge_result_stop(zh: i64) -> string
+extern fn mr_bal_bridge_result_observed(zh: i64) -> string
+extern fn mr_bal_bridge_result_meaningful() -> i64
 extern fn mr_runtime_mode() -> i64
 extern fn mr_runtime_timeout_ms() -> i64
 extern fn mr_runtime_sample_failure_requested() -> i64
@@ -180,6 +196,21 @@ struct MainWindow:
     clean_state: i64
     clean_confirm_focus: i64
     clean_before_available: i64
+    # Balanced clean (Issue #12). The plan is built before the menu is drawn so
+    # the entry row can say whether there is anything worth doing, and the
+    # result is kept separately so a second redraw cannot re-describe the run.
+    bal_state: i64
+    bal_action: i64
+    bal_request_bytes: i64
+    bal_evidence: i64
+    bal_result_status: i64
+    bal_result_stop: i64
+    bal_result_requested: i64
+    bal_result_accepted: i64
+    bal_result_batches_ok: i64
+    bal_result_batches_rejected: i64
+    bal_result_available_delta: i64
+    bal_view: i64
     xproc_simulation: bool
     main_close_guard_ready: bool
     xproc_view: i64
@@ -364,6 +395,44 @@ fn clean_confirm_panel(s: &MainWindow) -> ui.Rect:
 fn clean_confirm_button(confirm: bool) -> ui.Rect:
     if confirm: return ui.rect(112.0, 200.0, 78.0, 24.0)
     ui.rect(197.0, 200.0, 70.0, 24.0)
+
+# The balanced entry is offered only when the backend is in this binary AND the
+# production gate is open AND the privileged helper answered preflight AND no
+# other run is in flight AND at least one eligible scope was found. The last
+# condition is the one that stops a "nothing to do" click from looking like a
+# successful clean: when there is no target the row is drawn disabled and says
+# why, rather than running and reporting zero.
+fn bal_entry_state(s: &MainWindow) -> i64:
+    let busy = if clean_operation_busy(s.clean_state) or xproc_operation_busy(s): 1 else: 0
+    let built_in = if s.clean_production or s.clean_simulation: 1 else: 0
+    let gate = if s.clean_production or s.clean_simulation: 1 else: 0
+    let helper = if s.main_close_guard_ready: 1 else: 0
+    let no_target = if s.bal_action == 0: 1 else: 0
+    mr_bal_bridge_entry(built_in, gate, helper, busy, no_target)
+
+fn bal_plan_publish(s: &MainWindow) -> bool:
+    let evidence = if s.bal_evidence != 0: 1 else: 0
+    mr_bal_bridge_plan_set(s.bal_state, s.bal_action, s.bal_request_bytes, evidence) != 0
+
+fn bal_plan_action_text(s: &MainWindow) -> string:
+    let zh: i64 = if s.zh: 1 else: 0
+    if not bal_plan_publish(s): return label(s.zh, "Balanced clean unavailable.", "均衡清理不可用。")
+    mr_bal_bridge_plan_action(zh)
+
+fn bal_plan_why_text(s: &MainWindow) -> string:
+    let zh: i64 = if s.zh: 1 else: 0
+    if not bal_plan_publish(s): return label(s.zh, "No plan was produced.", "未生成计划。")
+    mr_bal_bridge_plan_why(zh)
+
+fn bal_plan_budget_text(s: &MainWindow) -> string:
+    let zh: i64 = if s.zh: 1 else: 0
+    if not bal_plan_publish(s): return ""
+    mr_bal_bridge_plan_budget(zh)
+
+fn bal_plan_skips_text(s: &MainWindow) -> string:
+    let zh: i64 = if s.zh: 1 else: 0
+    if not bal_plan_publish(s): return ""
+    mr_bal_bridge_plan_skips(zh)
 
 fn clean_operation_busy(state: i64) -> bool:
     state == 2 or state == 3 or state == 9 or state == 11
@@ -1077,7 +1146,10 @@ fn log_popup(s: &MainWindow, kind: string, r: &ui.Rect):
 fn menu_item_at(s: &MainWindow, x: f64, y: f64) -> f64:
     if s.popup == 2:
         let r = clean_popup_rect(s)
-        for row in 0..9:
+        # The bound comes from the geometry constant, not a literal: adding a
+        # menu row without widening this loop makes the new row unclickable
+        # while it still draws, which is the worst of both.
+        for row in 0..ui_geometry.CLEAN_MENU_ROWS:
             if ui_geometry.clean_menu_item_rect(&r, row).contains(x, y): return 500.0 + f64(row)
         return 0.0
     if s.popup == 3:
@@ -1264,14 +1336,19 @@ fn draw_clean_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, disabled: &ui.
     # The rest stay disabled because they name Windows objects that Linux has no
     # equivalent for; leaving them listed keeps the divergence visible instead of
     # silently dropping rows the original has.
-    let names_en = ["Trim this app's memory (no privilege)", "Clean page cache (needs authorization)", "Modified page list", "Standby list", "Standby list (without priority)", "Modified file cache", "Registry cache (Windows)", "Combine memory lists (Windows)", "Select user app to reclaim (experimental)"]
-    let names_zh = ["释放本程序内存（无需授权）", "清理页缓存（需系统授权）", "已修改页列表", "备用列表", "无优先级备用列表", "已修改文件缓存", "注册表缓存（Windows）", "合并内存列表（Windows）", "选择用户应用回收（实验）"]
-    for i in 0..9:
+    let names_en = ["Trim this app's memory (no privilege)", "Clean page cache (needs authorization)", "Modified page list", "Standby list", "Standby list (without priority)", "Modified file cache", "Registry cache (Windows)", "Combine memory lists (Windows)", "Select user app to reclaim (experimental)", "Balanced clean"]
+    let names_zh = ["释放本程序内存（无需授权）", "清理页缓存（需系统授权）", "已修改页列表", "备用列表", "无优先级备用列表", "已修改文件缓存", "注册表缓存（Windows）", "合并内存列表（Windows）", "选择用户应用回收（实验）", "均衡清理"]
+    for i in 0..ui_geometry.CLEAN_MENU_ROWS:
         let row = ui_geometry.clean_menu_item_rect(&r, i)
         let target = 500.0 + f64(i)
         let mut name = names_en[i]
         if s.zh: name = names_zh[i]
-        let enabled = i == 0 or (i == 1 and (s.clean_simulation or (s.clean_production and s.main_close_guard_ready))) or (i == 8 and xproc_available(s) and not xproc_operation_busy(s))
+        let mut enabled = i == 0 or (i == 1 and (s.clean_simulation or (s.clean_production and s.main_close_guard_ready))) or (i == 8 and xproc_available(s) and not xproc_operation_busy(s))
+        if i == 9:
+            # The balanced row carries its own availability answer, so a machine
+            # with no eligible scope shows a disabled row instead of running and
+            # then reporting zero.
+            enabled = bal_entry_state(s) == 2
         draw_menu_item(s, p, &row, target, name, enabled, fg, disabled, hot)
 
 fn draw_clean_confirmation(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Color, border: &ui.Color, surface: &ui.Color, hot: &ui.Color):
@@ -1473,6 +1550,11 @@ fn draw(s: &mut MainWindow, p: &ui.Painter):
     if s.test_mode and (not s.draw_logged or old_w != s.width or old_h != s.height):
         s.draw_logged = true
         mr_runtime_emit(f"CI_DRAW width={s.width} height={s.height}")
+        # Publish the two rects an external harness must click. The canvas
+        # origin is the window origin (the header bar is outside the canvas),
+        # so a harness only needs the window position plus these.
+        let b = button_rect(s)
+        mr_runtime_emit(f"CI_CLEAN_BUTTON x={b.x} y={b.y} w={b.w} h={b.h}")
 
     let mut surface = ui.rgb(0xffffff)
     let mut fg = ui.rgb(0x000000)
@@ -1899,7 +1981,15 @@ fn open_clean_menu(s: &mut MainWindow, source: string):
     s.focus = 4.0
     s.menu_focus = 500.0
     s.status = label(s.zh, "Choose a memory action", "请选择内存操作")
-    if s.test_mode: mr_runtime_emit(f"CI_CLEAN_MENU open=true source={source} default_action=none")
+    if s.test_mode:
+        mr_runtime_emit(f"CI_CLEAN_MENU open=true source={source} default_action=none")
+        # Publish the button and one row rect so an external harness can click
+        # them with real pointer events instead of recomputing the layout and
+        # silently missing. The rows come from the same geometry function the
+        # drawing code uses.
+        let popup = clean_popup_rect(s)
+        let row9 = ui_geometry.clean_menu_item_rect(&popup, 9)
+        mr_runtime_emit(f"CI_BALANCED_ROW x={row9.x} y={row9.y} w={row9.w} h={row9.h}")
     log_popup(s, "clean", &clean_popup_rect(s))
 
 fn activate(s: &mut MainWindow, target: f64):
@@ -2042,7 +2132,7 @@ fn activate(s: &mut MainWindow, target: f64):
         s.menu = 0
         persist_language(s, 1)
         if s.test_mode: mr_runtime_emit("CI_LOCALE locale=zh-CN")
-    elif target >= 500.0 and target < 509.0:
+    elif target >= 500.0 and target < 500.0 + f64(ui_geometry.CLEAN_MENU_ROWS):
         let index = i64(target - 500.0)
         s.popup = 0
         if index == 0:
@@ -2063,6 +2153,24 @@ fn activate(s: &mut MainWindow, target: f64):
             else:
                 s.status = label(s.zh, "Memory cleaning is disabled because safe window-close handling or an approved action is unavailable.", "安全窗口关闭保护或已批准的清理功能不可用，内存清理已禁用。")
                 if s.test_mode: mr_runtime_emit(f"CI_CLEAN_DISABLED action=none main_close_guard_ready={s.main_close_guard_ready}")
+        elif index == 9:
+            # The plan is shown before anything runs. There is no execute path in
+            # this branch: the reclaim backend lands separately and the
+            # integrator joins them. What this row must never do is claim a
+            # result it did not produce.
+            let entry = bal_entry_state(s)
+            s.bal_view = 1
+            if entry != 2:
+                s.bal_view = 0
+                s.status = label(s.zh, "Balanced clean is unavailable; see the reason above the button.", "均衡清理不可用；原因见按钮上方的说明。")
+                if s.test_mode: mr_runtime_emit(f"CI_BALANCED_DISABLED entry={entry} state={s.bal_state} action={s.bal_action}")
+            elif s.bal_evidence == 0:
+                s.bal_view = 0
+                s.status = label(s.zh, "No pressure evidence yet; nothing will run.", "尚无压力证据，本次不执行。")
+                if s.test_mode: mr_runtime_emit("CI_BALANCED_DISABLED entry=2 reason=no_evidence")
+            else:
+                if s.test_mode:
+                    mr_runtime_emit(f"CI_BALANCED_PLAN state={s.bal_state} action={s.bal_action} request_bytes={s.bal_request_bytes} executed=false")
         elif index == 8:
             if clean_operation_busy(s.clean_state):
                 s.status = label(s.zh, "Wait for the current memory operation to finish.", "请等待当前内存操作完成。")
@@ -2087,7 +2195,7 @@ fn move_menu_focus(s: &mut MainWindow, direction: i64):
     let mut last = 0.0
     if s.popup == 2:
         first = 500.0
-        last = 508.0
+        last = 500.0 + f64(ui_geometry.CLEAN_MENU_ROWS) - 1.0
     elif s.popup == 3:
         first = 601.0
         last = 602.0
@@ -2452,6 +2560,10 @@ fn main():
         xproc_scope_swap_before_bytes: -1, xproc_scope_swap_after_bytes: -1,
         clean_self: true,
         clean_state: 0, clean_confirm_focus: 0, clean_before_available: 0,
+        bal_state: 0, bal_action: 0, bal_request_bytes: 0, bal_evidence: 0,
+        bal_result_status: 0, bal_result_stop: 0, bal_result_requested: 0,
+        bal_result_accepted: 0, bal_result_batches_ok: 0,
+        bal_result_batches_rejected: 0, bal_result_available_delta: 0, bal_view: 0,
         preferences_load_status: preferences_status,
         settings_open: false, settings: settings_ui.initial(test_mode)
     )
