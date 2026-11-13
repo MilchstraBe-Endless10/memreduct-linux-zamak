@@ -187,6 +187,11 @@ pub fn language_menu_item_rect(popup: &ui.Rect, row: i64) -> ui.Rect:
     let row_h = menu_row_height_px()
     ui.rect(popup.x + inset, popup.y + inset + f64(row) * row_h, popup.w - inset * 2.0, row_h)
 
+# Ten rows now, not nine: the balanced-clean entry is appended after the
+# existing nine so no previously documented row index moves. Every caller that
+# iterates the popup must use this constant instead of a literal.
+pub const CLEAN_MENU_ROWS: i64 = 10
+
 pub fn clean_menu_item_rect(popup: &ui.Rect, row: i64) -> ui.Rect:
     let inset = popup_inset_px()
     let row_h = clean_row_height_px()
@@ -352,7 +357,7 @@ pub fn language_popup_rect(canvas_width: f64, canvas_height: f64) -> ui.Rect:
 
 pub fn clean_popup_rect(canvas_width: f64, canvas_height: f64, button: &ui.Rect) -> ui.Rect:
     let width = 248.0
-    let height = 9.0 * clean_row_height_px() + 4.0
+    let height = f64(CLEAN_MENU_ROWS) * clean_row_height_px() + 4.0
     fit_popup_rect(canvas_width, canvas_height, canvas_width - width - 6.0, button.y - height - 6.0, width, height)
 
 pub fn fit_popup_rect(view_width: f64, view_height: f64, x: f64, y: f64, w: f64, h: f64) -> ui.Rect:
@@ -475,6 +480,19 @@ fn test_clean_menu_extension_row_is_inside_popup():
     assert(extension.y >= popup.y)
     assert(extension.right() <= popup.right())
     assert(extension.bottom() <= popup.bottom())
+
+fn test_every_clean_menu_row_fits_inside_the_popup():
+    # A hard-coded row count in the popup height is how a longer menu silently
+    # loses its last entry off the bottom edge. Check all of them, not just the
+    # one extension row the older test happened to name.
+    let button = clean_button_rect(325.0, 357.0)
+    let popup = clean_popup_rect(325.0, 357.0, &button)
+    for row in 0..CLEAN_MENU_ROWS:
+        let item = clean_menu_item_rect(&popup, row)
+        assert(item.x >= popup.x)
+        assert(item.y >= popup.y)
+        assert(item.right() <= popup.right())
+        assert(item.bottom() <= popup.bottom())
 
 fn test_main_menu_separators_have_distinct_noninteractive_rows():
     assert(root_menu_row_count(1) == 3)

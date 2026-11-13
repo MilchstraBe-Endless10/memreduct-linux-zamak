@@ -25,4 +25,4 @@ modules = "src"
 # shipped binary cannot reach the pkexec bridge. The production build script
 # swaps in production_clean_gate_enabled.c instead; see ADR-0005 and
 # scripts/ci/build-production-clean-gui.sh.
-sources = ["native/async_privileged.c", "native/async_crossproc.c", "native/production_clean_gate_default.c", "native/production_crossproc_gate_default.c", "native/crossproc_advise.c", "native/crossproc_candidates.c", "native/crossproc_plan.c", "native/gui_test.c", "native/gui_window_ci.c", "native/preferences_store.c", "native/self_reclaim.c"]
+sources = ["native/async_privileged.c", "native/async_crossproc.c", "native/production_clean_gate_default.c", "native/production_crossproc_gate_default.c", "native/crossproc_advise.c", "native/crossproc_candidates.c", "native/crossproc_plan.c", "native/gui_test.c", "native/gui_window_ci.c", "native/preferences_store.c", "native/self_reclaim.c", "native/balance_gui.c", "native/balance_bridge.c"]
