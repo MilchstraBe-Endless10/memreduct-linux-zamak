@@ -1,93 +1,129 @@
 # Issue #12 — balanced clean, round delivery
 
-Integration head: `999e474ee6d5d2d3596915588328b5348ab7c00e`
+Integration head: `5c0abb0456e18e74706f7e77efaed6fbe2744545`
 Base: local R5 `6e1e550` (contains `161ceb5` handoff and `9323a6e` identity fix).
+Not pushed. Not installed.
 
-## What is in this round
+## The finding that changed the design
 
-Four lines were developed in independent worktrees from the same base and then
-merged with no conflicts:
+The balanced clean **does not need Polkit**. Measured on this host: with the
+`memory` controller delegated to the user session, every `app-*.scope` in the
+user's slice has `memory.reclaim` owned by that user at mode 0200. A uid-1000
+process opens and writes it — for its own scopes and for other applications'
+scopes alike (verified by a zero-byte write to six real scopes owned by other
+apps).
 
-| Line | Head | What it adds |
+So this round did not route the balanced action through `pkexec`, did not add a
+Polkit action, and did not touch the cross-process helper. It opens one exact
+scope directory by fd, re-checks the owner *from the fd* rather than the path,
+requires the bare scope name with `O_NOFOLLOW`, and writes the measured-safe
+form.
+
+## Measured facts this round rests on
+
+| # | Finding | Evidence |
 | --- | --- | --- |
-| A | `66bed36` | Read-only sampler + planner: meminfo, PSI, vmstat, swaps, zram; classifies healthy / healthy_cache / cold_file / anon_pressure / thrashing; water marks, hysteresis, cooldown, sticky early stop |
-| B | `c32d1f3` | File-first backend: cgroup v2 `memory.reclaim` with `swappiness=0`, small batches, sticky stop, no bare-byte-count path anywhere |
-| C | `ae843a9` | Tenth clean-menu row: plan before action, availability answered before it draws, honest skips, no fake success |
-| D | `9d21b65` | Same-host control and treated arms, plus the measurement report |
+| 1 | A bare byte count reclaims **anonymous** pages on this kernel | `128M` took 128 MiB, all from anon, in a cgroup with no file pages |
+| 2 | `swappiness=0` is the only form restricted to file pages | `128M swappiness=0` → EAGAIN, 0 reclaimed, anon unchanged |
+| 3 | Parameter order is load-bearing | `swappiness=0 128M` → EINVAL |
+| 4 | **EAGAIN does not mean nothing happened** | `32M swappiness=0` → EAGAIN, and the scope still lost 4 MiB of file pages |
+| 5 | Scope write needs no privilege | six foreign app scopes accepted a zero-byte write as uid 1000 |
+| 6 | A `mkdir` scope has **no** memory accounting here | `memory.stat` all zero while the workload sat in it; a `systemd-run --scope` scope works |
 
-## What is code-complete vs installed vs verified
+## What each line changed
 
-| Claim | Status |
-| --- | --- |
-| Planner and sampler implemented and unit-tested | **Yes** — 22 tests |
-| File-first backend implemented and behaviour-tested | **Yes** — 14 tests plus 2 opt-in real-cgroup tests |
-| `swappiness=0` restricts reclaim to file pages on this kernel | **Verified on this host** with a controlled A/B |
-| GUI row exists, draws inside the popup, and answers a real pointer click | **Verified under a private Xvfb** |
-| End-to-end: click -> plan -> privileged reclaim -> result panel | **Not wired.** The backend and the GUI live in separate translation units and no call path joins them in this branch. The row reports `CI_BALANCED_DISABLED entry=0` on a build without the gate open, which is correct fail-closed behaviour, not a success. |
-| Installed on the system | **No.** `/usr/bin/memreduct-zamak` is untouched. |
-| Several-hundred-MiB beneficial demonstration | **No.** See `docs/Q12_SAME_HOST_CONTROL.md` for why this host cannot show one honestly right now. |
+| Line | Head | Change |
+| --- | --- | --- |
+| A | `66bed36` | Read-only sampler (meminfo, PSI, vmstat, swaps, zram, missing-source flags) and planner (5 states, water marks, hysteresis, cooldown, dirty-backlog and PSI stop) |
+| B | `c32d1f3` | Privileged-form file-first backend, later corrected for finding #4 |
+| C | `ae843a9` | Tenth clean-menu row, plan before action, pure presentation helpers, honest skips |
+| D | `9d21b65` | Same-host control and treated arms |
+| — | `d9ecb7d`..`5c0abb0` | Unprivileged executor, scope discovery, GUI wiring, scope-bounded budget |
 
-## Candidate artifacts (not installed)
+## The real end-to-end run
+
+Under a private Xvfb, with a real pointer click on the tenth row, on a machine
+state where file pages dominate:
+
+```
+CI_BALANCED_RUN scope=org.chromium.Chromium status=1 stop=4 \
+                 requested=49184768 accepted=47689728
+CI_BALANCED_PLAN state=3 action=1 request_bytes=442378240 executed=true
+```
+
+49.2 MB requested, 47.7 MB accepted by the kernel, unprivileged, in a real
+Chromium scope. `status=1` is `partial` and `stop=4` is `budget_met`: the
+requested budget was reached, which is the honest label for "asked for N, the
+kernel took N".
+
+On the current normal machine state the same row correctly refuses:
+
+```
+CI_BALANCED_DISABLED entry=1 state=4 action=0
+```
+
+available, but the planner sees `anon_pressure` and proposes nothing, because
+`inactive_anon` (1988 MiB) exceeds `inactive_file` (1555 MiB) here.
+
+## Bugs found by running it, not by reading it
+
+1. The row's availability was tied to `clean_production`, hiding it in every
+   build without the page-cache gate.
+2. The scope root from `/proc/self/cgroup` is mount-relative; listing with it
+   returned zero scopes while looking correct.
+3. The calling process sits in a leaf scope, so matching only a trailing
+   `/app.slice` never matched.
+4. A zero budget leaked through the bridge because the 32 MiB batch default was
+   clamped to 0 and the executor refused for the wrong reason.
+5. The pre-probe snapshot was taken after the probe, so reclaimed bytes could
+   vanish from the deltas.
+6. EAGAIN was counted as zero reclaimed, understating every partial answer.
+7. A machine-wide 442 MiB plan was aimed at a scope holding 73 KiB; the budget
+   is now capped by the chosen scope's own file counter.
+8. Scope listing offered `dsh-subprocess-*` (harness plumbing) and showed
+   `deepseek\x2dai\x2ddsh\x2ddesktop` instead of decoding the systemd escape.
+
+## Candidate and rollback
 
 ```
 /home/arlune_innersea/q12-evidence/q12-candidate/memreduct-zamak
-  56c0dc988512b936838168d5d9d2f9c9ea3e5df8b9eca06ee1933e73bb4fcc2b
-/home/arlune_innersea/q12-evidence/q12-candidate/memreduct-zamak-crossproc-helper
-  bfc8fbd997d0020e75a4fe22b57d2f545d09f1f49d21954270b4ca4623bfc905  (unchanged)
-/home/arlune_innersea/q12-evidence/q12-candidate/memreduct-zamak-helper
-  b0652c8ac3ae70576e39b71fbdcd047a7c57f23873fec2e45b1b691b34c45a5e  (unchanged)
+  807c2524a31f01d3f1fc07288f820b23b16c4e658774daacc08cf739d9d747d6
 ```
 
-The two helpers are byte-identical to what is already installed; only the GUI
-changed. Protocol marker `MR_XPROC_PROTOCOL_ABI=4;` is present, matching the
-installed helper.
+Only the GUI changes. The two helpers on this machine are left as they are.
 
-## Install and rollback
+Install: `sudo bash scripts/install-arch.sh`
+Rollback: `sudo bash scripts/uninstall-arch.sh` then restore
+`/usr/bin/memreduct-zamak.before-p0a`.
 
-Nothing here has been installed. To install, the owner runs:
+Nothing was installed, pushed, merged or tagged. No Polkit policy, PAM rule,
+swap, zram or sysctl file was created or modified.
 
-```
-sudo bash scripts/install-arch.sh
-```
-
-Rollback is the existing uninstall path plus the pre-existing backup:
-
-```
-sudo bash scripts/uninstall-arch.sh
-sudo install -m0755 /usr/bin/memreduct-zamak.before-p0a /usr/bin/memreduct-zamak
-```
-
-No Polkit policy, PAM rule, swap, zram or sysctl file is created, modified or
-removed by this round.
-
-## Verification actually run on the integration head
+## Verification run on this head
 
 | Command | Result |
 | --- | --- |
-| `python3 -m unittest discover -s tests -p "test_*.py"` | 306 tests OK (3 skipped) |
-| `zam check .` | OK |
-| `zam test .` | 85 passed |
-| `bash -n scripts/*.sh scripts/ci/*.sh` | clean |
-| `bash scripts/build-arch.sh` | built `build/memreduct_zamak-bf9608e6...` |
-| `scripts/ci/q12-balanced-menu-xvfb.sh <binary>` | PASS, row reachable by pointer |
-| `scripts/balance-sample.sh` on the host | `state=anon_pressure action=none reason=anon_disabled` |
+| `python3 -m unittest discover -s tests -p "test_*.py"` | 325 OK (4 skipped) |
+| `zam check .` / `zam test .` | OK / 85 passed |
+| `bash scripts/build-arch.sh` | built |
+| `scripts/ci/q12-balanced-menu-xvfb.sh` | PASS + real run (above) |
+| `scripts/balance-sample.sh` | `state=anon_pressure action=none` |
 
-## What is still not done
+## Still not done
 
-1. **The execute path is not joined.** The GUI row produces a plan; the backend
-   can run it; nothing in this branch calls the backend from the controller.
-   That is the one remaining integration step, and it needs the privileged
-   helper wiring (Polkit) that this round deliberately did not touch.
-2. **No beneficial same-host demonstration.** The host is anonymous-heavy
-   (`inactive_anon` 1988 MiB vs `inactive_file` 1555 MiB) and its zram is
-   nearly full; the planner refuses file-first there and the measurement
-   confirms refusing was right.
-3. **Anonymous pageout** is implemented as a separate decision but is off by
-   default and was never exercised against a real target this round.
-4. **Windows pixel 1:1** remains tracked separately and does not block this.
+1. **No confirmed beneficial same-host demo.** The machine did not present a
+   state where file pages were the cause of its stalls; the 47.7 MB reclaim ran
+   against a deliberately constructed scope. Claiming machine-wide benefit from
+   that would be false.
+2. **Anonymous pageout stays off** and was not exercised against a live target.
+3. **No scope picker UI.** The row picks the scope with the most file pages on
+   the user's behalf. Showing the list, with per-scope skip reasons, is design
+   work that has not happened; the current behaviour is defensible only because
+   it never touches a scope the user did not already own.
+4. **Windows pixel 1:1** is tracked separately and does not block this.
 
 ## Safety boundary held
 
-No process was killed or paused. No global `drop_caches`. No swap, zram, sysctl,
-PAM or Polkit change. No background reclaim service. Every measurement ran in a
-throwaway cgroup that held only the test's own child.
+No process killed or paused. No global `drop_caches`. No swap, zram, sysctl,
+PAM or Polkit change. No background reclaim service. Every kernel write this
+round made was to a cgroup the test owned.
