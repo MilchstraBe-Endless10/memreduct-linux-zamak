@@ -48,6 +48,42 @@ const char *mr_bal_bridge_result_observed(int64_t zh);
 int64_t mr_bal_bridge_result_meaningful(void);
 
 /* The stable state/action names, for the audit line. Never NULL. */
+/* ---- execute path ---------------------------------------------------- */
+/* The scope root for this user's session, or "" when it cannot be derived. */
+const char *mr_bal_bridge_scope_root(void);
+
+/* Rediscover the reclaimable app scopes. Returns the count. */
+int64_t mr_bal_bridge_scan_scopes(void);
+
+/* Name and display label of the i-th scanned scope, or "". */
+const char *mr_bal_bridge_scope_name(int64_t index);
+const char *mr_bal_bridge_scope_label(int64_t index);
+
+/* File-page bytes charged to the i-th scanned scope, or -1 when unreadable.
+ * This is the only input to "which scope is worth asking"; a scope under
+ * active use has pages the kernel will not give back and should lose. */
+int64_t mr_bal_bridge_scope_file_bytes(int64_t index);
+
+/* Run the plan against the i-th scanned scope with the given budget.
+ * Returns 1 when something was attempted, 0 when it refused or there was
+ * nothing to do. The result is then readable through the result_* calls. */
+int64_t mr_bal_bridge_run(int64_t index, uint64_t budget_bytes,
+                          uint64_t batch_bytes, uint32_t max_batches,
+                          uint32_t psi_stop_centi);
+
+/* Integers out of the last result, for the controller's own state fields. */
+int64_t mr_bal_bridge_result_status_code(void);
+int64_t mr_bal_bridge_result_stop_code(void);
+int64_t mr_bal_bridge_result_requested_value(void);
+int64_t mr_bal_bridge_result_accepted_value(void);
+
+/* Take one read-only snapshot, build a plan and publish it. Returns 1 when a
+ * plan was produced, 0 when the evidence was insufficient. */
+int64_t mr_bal_bridge_plan_probe(void);
+int64_t mr_bal_bridge_plan_state_code(void);
+int64_t mr_bal_bridge_plan_action_code(void);
+int64_t mr_bal_bridge_plan_request_bytes(void);
+
 const char *mr_bal_bridge_state_name(int64_t state);
 const char *mr_bal_bridge_action_name(int64_t action);
 

@@ -25,6 +25,23 @@ extern fn mr_bal_bridge_result_counters(zh: i64) -> string
 extern fn mr_bal_bridge_result_stop(zh: i64) -> string
 extern fn mr_bal_bridge_result_observed(zh: i64) -> string
 extern fn mr_bal_bridge_result_meaningful() -> i64
+extern fn mr_bal_bridge_result_status_code() -> i64
+extern fn mr_bal_bridge_result_stop_code() -> i64
+extern fn mr_bal_bridge_result_requested_value() -> i64
+extern fn mr_bal_bridge_result_accepted_value() -> i64
+# Execute path: discovering that this needs no privilege is the point. Every
+# app scope in this user's slice has a memory.reclaim owned by this user, so the
+# balanced clean opens one exact scope by fd and writes the measured-safe form.
+extern fn mr_bal_bridge_scope_root() -> string
+extern fn mr_bal_bridge_scan_scopes() -> i64
+extern fn mr_bal_bridge_plan_probe() -> i64
+extern fn mr_bal_bridge_plan_state_code() -> i64
+extern fn mr_bal_bridge_plan_action_code() -> i64
+extern fn mr_bal_bridge_plan_request_bytes() -> i64
+extern fn mr_bal_bridge_scope_name(index: i64) -> string
+extern fn mr_bal_bridge_scope_label(index: i64) -> string
+extern fn mr_bal_bridge_scope_file_bytes(index: i64) -> i64
+extern fn mr_bal_bridge_run(index: i64, budget: i64, batch: i64, max_batches: i64, psi_stop: i64) -> i64
 extern fn mr_runtime_mode() -> i64
 extern fn mr_runtime_timeout_ms() -> i64
 extern fn mr_runtime_sample_failure_requested() -> i64
@@ -211,6 +228,9 @@ struct MainWindow:
     bal_result_batches_rejected: i64
     bal_result_available_delta: i64
     bal_view: i64
+    # The scope the user picked. -1 means none, and no run may happen then.
+    bal_scope_index: i64
+    bal_scope_count: i64
     xproc_simulation: bool
     main_close_guard_ready: bool
     xproc_view: i64
@@ -402,11 +422,33 @@ fn clean_confirm_button(confirm: bool) -> ui.Rect:
 # condition is the one that stops a "nothing to do" click from looking like a
 # successful clean: when there is no target the row is drawn disabled and says
 # why, rather than running and reporting zero.
+# Refresh the plan from the machine. Called before the menu is drawn and before
+# the row is acted on, so the plan a user sees and the plan that runs are the
+# same evaluation.
+fn bal_refresh(s: &mut MainWindow) -> bool:
+    let probe = mr_bal_bridge_plan_probe()
+    if probe != 1:
+        s.bal_evidence = 0
+        s.bal_state = 0
+        s.bal_action = 0
+        s.bal_request_bytes = 0
+        return false
+    s.bal_evidence = 1
+    s.bal_state = mr_bal_bridge_plan_state_code()
+    s.bal_action = mr_bal_bridge_plan_action_code()
+    s.bal_request_bytes = mr_bal_bridge_plan_request_bytes()
+    return true
+
 fn bal_entry_state(s: &MainWindow) -> i64:
     let busy = if clean_operation_busy(s.clean_state) or xproc_operation_busy(s): 1 else: 0
-    let built_in = if s.clean_production or s.clean_simulation: 1 else: 0
-    let gate = if s.clean_production or s.clean_simulation: 1 else: 0
-    let helper = if s.main_close_guard_ready: 1 else: 0
+    # The balanced clean needs neither a privileged helper nor the page-cache
+    # gate: it writes memory.reclaim in the user's own cgroup slice, which the
+    # kernel already permits. Tying its availability to clean_production hid
+    # the row in every build that had not opened the page-cache gate.
+    let built_in = 1
+    let gate = 1
+    # The helper slot stays for the cross-process path; this one is always ready.
+    let helper = 1
     let no_target = if s.bal_action == 0: 1 else: 0
     mr_bal_bridge_entry(built_in, gate, helper, busy, no_target)
 
@@ -428,6 +470,42 @@ fn bal_plan_budget_text(s: &MainWindow) -> string:
     let zh: i64 = if s.zh: 1 else: 0
     if not bal_plan_publish(s): return ""
     mr_bal_bridge_plan_budget(zh)
+
+# Running the balanced clean. The scope is chosen by the user before this is
+# called; nothing here enumerates and picks on the user's behalf.
+fn bal_scope_label(index: i64) -> string:
+    if index < 0: return ""
+    mr_bal_bridge_scope_label(index)
+
+fn bal_run_selected(s: &mut MainWindow) -> bool:
+    if s.bal_scope_index < 0: return false
+    if s.bal_action == 0 or s.bal_request_bytes <= 0: return false
+    let started = mr_bal_bridge_run(s.bal_scope_index, s.bal_request_bytes, 0, 0, 400)
+    if started == 0:
+        s.status = label(s.zh, "Balanced clean could not start; the scope refused or changed.", "均衡清理无法开始；作用域拒绝或已变化。")
+        return false
+    s.bal_result_status = mr_bal_bridge_result_status_code()
+    s.bal_result_stop = mr_bal_bridge_result_stop_code()
+    s.bal_result_requested = mr_bal_bridge_result_requested_value()
+    s.bal_result_accepted = mr_bal_bridge_result_accepted_value()
+    s.status = mr_bal_bridge_result_headline(if s.zh: 1 else: 0)
+    if s.test_mode:
+        mr_runtime_emit(f"CI_BALANCED_RUN scope={bal_scope_label(s.bal_scope_index)} status={s.bal_result_status} stop={s.bal_result_stop} requested={s.bal_result_requested} accepted={s.bal_result_accepted}")
+    return true
+
+# Choose the scope with the largest reclaimable file-page share. Reads only.
+fn pick_balanced_scope() -> i64:
+    if mr_bal_bridge_scan_scopes() <= 0: return -1
+    let mut best: i64 = -1
+    let mut best_file: i64 = -1
+    let count = mr_bal_bridge_scan_scopes()
+    for i in 0..count:
+        let f = mr_bal_bridge_scope_file_bytes(i)
+        if f > best_file:
+            best_file = f
+            best = i
+    if best_file <= 0: return -1
+    best
 
 fn bal_plan_skips_text(s: &MainWindow) -> string:
     let zh: i64 = if s.zh: 1 else: 0
@@ -1980,6 +2058,9 @@ fn open_clean_menu(s: &mut MainWindow, source: string):
     s.menu = 0
     s.focus = 4.0
     s.menu_focus = 500.0
+    # Build the plan before drawing the rows so the balanced entry can say
+    # whether there is anything worth doing instead of offering a dead action.
+    bal_refresh(s)
     s.status = label(s.zh, "Choose a memory action", "请选择内存操作")
     if s.test_mode:
         mr_runtime_emit(f"CI_CLEAN_MENU open=true source={source} default_action=none")
@@ -2158,6 +2239,7 @@ fn activate(s: &mut MainWindow, target: f64):
             # this branch: the reclaim backend lands separately and the
             # integrator joins them. What this row must never do is claim a
             # result it did not produce.
+            bal_refresh(s)
             let entry = bal_entry_state(s)
             s.bal_view = 1
             if entry != 2:
@@ -2168,9 +2250,28 @@ fn activate(s: &mut MainWindow, target: f64):
                 s.bal_view = 0
                 s.status = label(s.zh, "No pressure evidence yet; nothing will run.", "尚无压力证据，本次不执行。")
                 if s.test_mode: mr_runtime_emit("CI_BALANCED_DISABLED entry=2 reason=no_evidence")
+            elif s.bal_action == 0:
+                # The planner decided there is nothing worth reclaiming. Say so;
+                # do not run and then report a zero-byte success.
+                s.bal_view = 0
+                s.status = bal_plan_why_text(s)
+                if s.test_mode: mr_runtime_emit(f"CI_BALANCED_DISABLED entry=2 reason=no_action state={s.bal_state}")
             else:
-                if s.test_mode:
-                    mr_runtime_emit(f"CI_BALANCED_PLAN state={s.bal_state} action={s.bal_action} request_bytes={s.bal_request_bytes} executed=false")
+                # Pick the scope with the most file pages, not the first by name:
+                # the first by name is arbitrary and may be the one the user just
+                # interacted with, whose pages would come straight back.
+                s.bal_scope_count = mr_bal_bridge_scan_scopes()
+                s.bal_scope_index = pick_balanced_scope()
+                if s.bal_scope_index < 0:
+                    s.bal_view = 0
+                    s.status = label(s.zh, "No application scope has reclaimable file pages.", "没有应用作用域存在可回收文件页。")
+                    if s.test_mode: mr_runtime_emit(f"CI_BALANCED_DISABLED entry=2 reason=no_scope scanned={s.bal_scope_count}")
+                elif bal_run_selected(s):
+                    s.bal_view = 1
+                    s.status = mr_bal_bridge_result_headline(if s.zh: 1 else: 0)
+                    if s.test_mode: mr_runtime_emit(f"CI_BALANCED_PLAN state={s.bal_state} action={s.bal_action} request_bytes={s.bal_request_bytes} executed=true")
+                else:
+                    s.bal_view = 0
         elif index == 8:
             if clean_operation_busy(s.clean_state):
                 s.status = label(s.zh, "Wait for the current memory operation to finish.", "请等待当前内存操作完成。")
@@ -2564,6 +2665,7 @@ fn main():
         bal_result_status: 0, bal_result_stop: 0, bal_result_requested: 0,
         bal_result_accepted: 0, bal_result_batches_ok: 0,
         bal_result_batches_rejected: 0, bal_result_available_delta: 0, bal_view: 0,
+        bal_scope_index: -1, bal_scope_count: 0,
         preferences_load_status: preferences_status,
         settings_open: false, settings: settings_ui.initial(test_mode)
     )
