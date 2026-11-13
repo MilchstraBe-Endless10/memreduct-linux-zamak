@@ -116,10 +116,12 @@ swap, zram or sysctl file was created or modified.
    against a deliberately constructed scope. Claiming machine-wide benefit from
    that would be false.
 2. **Anonymous pageout stays off** and was not exercised against a live target.
-3. **No scope picker UI.** The row picks the scope with the most file pages on
-   the user's behalf. Showing the list, with per-scope skip reasons, is design
-   work that has not happened; the current behaviour is defensible only because
-   it never touches a scope the user did not already own.
+3. **Scope picker: done since this line was written.** The tenth row now opens
+   a panel listing every app scope with its file pages and anonymous pages side
+   by side, eligible rows selectable, the rest greyed with the reason inline,
+   and the planner's refusal (when it refuses) printed above the buttons.
+   Verified under Xvfb with real clicks: 6 scopes listed, 49 MiB budget
+   matching the selected scope, click changes the panel by 488 px.
 4. **Windows pixel 1:1** is tracked separately and does not block this.
 
 ## Safety boundary held
