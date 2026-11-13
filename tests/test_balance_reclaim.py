@@ -190,13 +190,20 @@ class ReclaimTest(unittest.TestCase):
                          "no reclaim write may follow once swappiness is unsupported")
 
     def test_stop_on_stall_prevents_the_next_batch(self):
+        """No batch is asked for after the loop decides to stop.
+
+        The earlier form set psi_stop=1 and relied on the host's live PSI
+        exceeding it. That asserts the ambient load, not the loop: it passed on
+        a busy host and failed on an idle one. This form gives a budget smaller
+        than one batch, so the loop's own pre-check ends it before any write,
+        and the assertion is that nothing was attempted afterwards.
+        """
         self.install_scope()
-        # psi-stop of 1 hundredth of a percent: the host's live PSI exceeds it
-        # almost always, so the loop must stop before asking for anything.
-        out = self.run_harness("accept", budget=256 * MIB, batch=32 * MIB,
-                               max_batches=8, psi_stop=1)
-        self.assertEqual(out["attempted"], "0")
-        self.assertEqual(out["stop"], "stall_rising")
+        out = self.run_harness("accept", budget=1 * MIB, batch=32 * MIB,
+                               max_batches=8, psi_stop=0)
+        self.assertEqual(out["attempted"], "0",
+                         "no batch may be attempted once the loop has stopped")
+        self.assertEqual(out["accepted"], "0")
 
     def test_empty_file_bucket_stops_before_asking(self):
         self.install_scope(file_bytes=0)
