@@ -572,6 +572,28 @@ long long mr_runtime_start_balanced_picker(void)
     return mr_runtime_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
 }
 
+/* Test-only: run the balanced clean once at startup on the scope named by
+ * MEMREDUCT_CI_BALANCED_RUN, through exactly the same path the Run button uses.
+ *
+ * The Run button is drawn on the canvas, so it is neither reachable by Tab (it
+ * is not a GTK widget) nor by synthetic pointer events on this compositor
+ * (verified: clicks change hover pixels and nothing else). Without this hook
+ * the execution path could only be exercised by a human clicking, which is not
+ * a test. The scope name is a bare unit name and is validated by the executor;
+ * the budget comes from the same plan the button would use. */
+long long mr_runtime_start_balanced_run(void)
+{
+    const char *value = getenv("MEMREDUCT_CI_BALANCED_RUN");
+    if (mr_runtime_mode() == 0 || value == NULL || value[0] == '\0') return 0;
+    return 1;
+}
+
+const char *mr_runtime_balanced_run_scope(void)
+{
+    const char *value = getenv("MEMREDUCT_CI_BALANCED_RUN");
+    return (mr_runtime_mode() != 0 && value != NULL) ? value : "";
+}
+
 long long mr_runtime_widget_preview_resource(void)
 {
     const char *value = getenv("MEMREDUCT_CI_WIDGET_PREVIEW");

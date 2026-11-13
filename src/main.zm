@@ -53,6 +53,8 @@ extern fn mr_runtime_consume_sample_failure_trigger() -> i64
 extern fn mr_runtime_log_canvas_font() -> i64
 extern fn mr_runtime_start_settings() -> i64
 extern fn mr_runtime_start_balanced_picker() -> i64
+extern fn mr_runtime_start_balanced_run() -> i64
+extern fn mr_runtime_balanced_run_scope() -> string
 extern fn mr_runtime_widget_preview_resource() -> i64
 extern fn mr_runtime_schedule_capture() -> i64
 extern fn mr_runtime_selected_group() -> i64
@@ -551,6 +553,14 @@ fn bal_scope_budget_text(s: &MainWindow) -> string:
     if budget <= 0 or budget > file_bytes: budget = file_bytes
     let prefix = label(s.zh, "Request budget (not an amount freed): ", "请求预算（不是释放量）：")
     prefix + bal_mib_short(budget)
+
+# Find a scanned scope by its bare unit name. Used by the CI run hook so the
+# startup run targets exactly the scope it was told to, and by nothing else.
+fn bal_scope_index_by_name(name: string) -> i64:
+    let count = mr_bal_bridge_scan_scopes()
+    for i in 0..count:
+        if mr_bal_bridge_scope_name(i) == name: return i
+    -1
 
 fn bal_scope_label(index: i64) -> string:
     if index < 0: return ""
@@ -2777,6 +2787,19 @@ fn main():
         bal_refresh(&mut state)
         bal_rescan(&mut state)
         state.bal_view = 1
+    if mr_runtime_start_balanced_run() != 0:
+        # Same path as pressing Run: plan, then select, then execute.
+        bal_refresh(&mut state)
+        bal_rescan(&mut state)
+        let wanted = mr_runtime_balanced_run_scope()
+        if wanted != "":
+            state.bal_scope_index = bal_scope_index_by_name(wanted)
+            let found = state.bal_scope_index >= 0
+            let ran = if found: bal_run_selected(&mut state) else: false
+            let outcome = if not found: "scope-not-found" elif ran: "executed" else: "not-run"
+            # Report the index rather than the borrowed name: reading the name
+            # twice would mean copying a String that the scan already moved.
+            mr_runtime_emit(f"CI_BALANCED_RUN outcome={outcome} index={state.bal_scope_index}")
     refresh(&mut state)
     app.run(window, state)
     if test_mode: mr_runtime_emit("CI_APP_RETURNED")

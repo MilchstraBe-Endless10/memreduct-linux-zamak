@@ -12,6 +12,8 @@ long long mr_runtime_consume_sample_failure_trigger(void) { return 0; }
 long long mr_runtime_log_canvas_font(void) { return 0; }
 long long mr_runtime_start_settings(void) { return 0; }
 long long mr_runtime_start_balanced_picker(void) { return 0; }
+long long mr_runtime_start_balanced_run(void) { return 0; }
+const char *mr_runtime_balanced_run_scope(void) { return ""; }
 long long mr_runtime_widget_preview_resource(void) { return 0; }
 long long mr_runtime_schedule_capture(void) { return 0; }
 long long mr_runtime_selected_group(void) { return 0; }
