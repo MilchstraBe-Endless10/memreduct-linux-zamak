@@ -120,16 +120,23 @@ class ExecTest(unittest.TestCase):
         self.assertEqual(fd, -1, "O_NOFOLLOW should reject a symlinked scope")
 
     def test_wrong_owner_is_refused_without_writing(self):
+        # CI runners run as uid 1001, so a scope created here is owned by that
+        # uid, and claiming 1001+1 must still be refused. The owner is
+        # normalized to the current uid first so the "wrong owner" claim is
+        # always exactly one off, whatever uid the runner has.
+        me = os.getuid()
         root = self.make_scope()
         scope = os.path.join(root, "app-test.App-1234.scope")
         control = os.path.join(scope, "memory.reclaim")
         open(control, "w").close()
+        os.chown(control, me, -1)
+        os.chown(scope, me, -1)
         os.chmod(control, 0o200)
         fd = self.lib.mr_bal_exec_open_scope(root.encode(), b"app-test.App-1234.scope")
         self.assertGreaterEqual(fd, 0)
         try:
-            # Claim uid+1: the probe must refuse on the owner mismatch.
-            status = self.lib.mr_bal_exec_probe(fd, 1000 + 1)
+            # Claim me+1: the probe must refuse on the owner mismatch.
+            status = self.lib.mr_bal_exec_probe(fd, me + 1)
         finally:
             os.close(fd)
         self.assertEqual(status, STATUS["wrong_owner"])

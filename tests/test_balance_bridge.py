@@ -50,7 +50,13 @@ class BridgeTest(unittest.TestCase):
         root = self.lib.mr_bal_bridge_scope_root().decode()
         # /proc/self/cgroup reports a mount-relative path; the filesystem calls
         # need it rooted, and returning the relative form silently listed zero
-        # scopes while looking correct.
+        # scopes while looking correct. On a host with no delegated session
+        # cgroup (a bare CI container), the only honest answer is empty: the
+        # picker will show zero scopes, which is true there. Every non-empty
+        # answer must still be an existing directory under the cgroup mount
+        # ending in app.slice.
+        if root == "":
+            self.skipTest("no delegated session cgroup on this host")
         self.assertTrue(root.startswith("/sys/fs/cgroup/"), root)
         self.assertTrue(root.endswith("/app.slice"), root)
         self.assertTrue(os.path.isdir(root), root)
