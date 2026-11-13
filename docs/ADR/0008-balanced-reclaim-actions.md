@@ -50,6 +50,26 @@ Two conclusions follow, and both are load-bearing:
    and when no file page qualifies the kernel answers `EAGAIN` instead of
    taking anonymous memory.
 
+### EAGAIN is not "nothing happened"
+
+Measured afterwards on the target host, inside a scope holding file pages:
+
+```
+write "0 swappiness=0"     -> accepted, 0 bytes reclaimed  (probe is a no-op)
+write "32M swappiness=0"   -> EAGAIN, and the scope still lost 4 MiB of file pages
+```
+
+`EAGAIN` reports that the request was **not fully satisfied**, not that the
+call was rejected outright. A caller that counts `accepted_bytes += size` only
+on a zero return understates every partial reclaim to zero; a caller that
+counts `+= size` on EAGAIN would overstate it. Neither is acceptable, so both
+backends now measure the scope counters before and after each batch and report:
+
+- `accepted_bytes` — bytes the kernel took during a call it returned success for;
+- `observed_on_reject_bytes` — bytes that left the scope during a call it did not.
+
+Both are still observations of the scope, not promises about the machine.
+
 The parameter order matters: `swappiness=0 128M` is `EINVAL`, because the
 kernel parses `<bytes> <knobs...>`.
 

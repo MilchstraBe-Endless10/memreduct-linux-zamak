@@ -291,9 +291,13 @@ int mr_bal_reclaim_run(int scope_fd, const struct mr_bal_run_config *config,
         /* Record the first errno only; later ones are consequences. */
         if (out->error_code == 0) out->error_code = (int32_t)batch_errno;
         if (batch_errno == (uint32_t)EAGAIN) {
-            /* Measured meaning: no file page in this scope qualified. That is
-             * a complete, successful "nothing to do", not a failure and not a
-             * reason to retry without the parameter. */
+            /* Measured meaning: the request was not satisfied in full. It does
+             * NOT mean nothing was reclaimed: a 32 MiB swappiness=0 request on
+             * this host returned EAGAIN while the scope still lost 4 MiB of
+             * file pages (see docs/ADR/0008 and the live run in
+             * docs/Q12_SAME_HOST_CONTROL.md). The honest report is "ask was
+             * not met", with the observed delta measured by the caller, which
+             * is why this backend stops rather than retries. */
             stopped = 1;
             stop_reason = MR_BAL_STOP_NO_COLD_PAGES;
             break;
