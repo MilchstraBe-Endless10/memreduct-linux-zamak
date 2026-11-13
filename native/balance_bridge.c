@@ -677,3 +677,9 @@ int64_t mr_mem_available_bytes(void)
     (void)fclose(fh);
     return value;
 }
+
+int64_t mr_ci_deep_requested(void)
+{
+    const char *v = getenv("MEMREDUCT_CI_DEEP");
+    return (v != NULL && v[0] == '1') ? 1 : 0;
+}

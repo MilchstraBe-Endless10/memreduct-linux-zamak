@@ -815,3 +815,10 @@
 - GUI 验证进行中：菜单点击时序不稳（popup 开/关 toggle），hover 确认 target=104 存在（yd(430,252)），尚未捕获 CI_DEEP 输出。下次继续：fresh 启动后先点 File(405,201)→hover 验证 104→立即点击，或直接跑 /tmp/deepclick.sh 并把日志换 deep5.log。
 - pkexec 已免密（empower 组，见热记忆），后续 root 验证零弹窗。
 - 未提交：main.zm/balance_bridge.c 改动在 q12/integration 工作树未 commit。
+
+## 2026-11-14 深度清理 GUI 验证收口
+- 菜单渲染 bug 已修：root_menu_row_count(menu=1) 3→5 + separator row1→row3（此前只画 3 行，Deep 行加映射但没画出来）。测试断言同步，85 passed。
+- 真机验证：菜单里 Deep clean 行已可见（截图确认），hover target=104 已确认（yd(428,252) 当 popup 开时）。鼠标点击路径在自动化下时序不稳（popup 开/关 toggle + CI_MOUSE_ACTION=none）。
+- 最终验证走 CI 钩子：MEMREDUCT_CI_DEEP=1 → tick 2s 时 activate(s,104.0) 同一代码路径 → CI_DEEP_HARNESS trigger=true + CI_DEEP_CLEAN ok=2 ran=1 delta_mib=55.3（真实执行+汇总报告）。stages_ran 计数 bug 已修（S2/S3 补计数）。
+- 新 native：mr_ci_deep_requested()（getenv MEMREDUCT_CI_DEEP）。build c032b954…→新 hash。85 tests OK。
+- GiB 诚实数据（本 16GB 机）：命令行三路连招净 +474MiB；CI 深度清理单轮 +55~1168MiB（取决于缓存状态）；历史单轮最高 1116MiB 会话回收 + ~1GiB 系统缓存。活跃大应用 anon 被 mappings 保护正确拒绝。

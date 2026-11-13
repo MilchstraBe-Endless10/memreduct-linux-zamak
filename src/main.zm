@@ -92,6 +92,7 @@ extern fn mr_runtime_xproc_result_mode() -> i64
 extern fn mr_runtime_emit(line: &string)
 extern fn mr_production_clean_enabled() -> i64
 extern fn mr_mem_available_bytes() -> i64
+extern fn mr_ci_deep_requested() -> i64
 # Read-only check of the fixed privileged chain (helper / polkit action /
 # pkexec). Lets the window name the missing component instead of showing the
 # unattributable "outcome unconfirmed" that a bare pkexec 126/127 produces.
@@ -2141,6 +2142,11 @@ fn tick(s: &mut MainWindow):
         refresh(s)
     elif s.elapsed_ms % 3000 == 0:
         refresh(s)
+    # CI harness: MEMREDUCT_CI_DEEP=1 fires the deep-clean pipeline once at the
+    # two-second tick, on the same code path as the menu target 104.
+    if s.test_mode and mr_ci_deep_requested() == 1 and s.elapsed_ms >= 2000 and s.elapsed_ms < 2600:
+        mr_runtime_emit("CI_DEEP_HARNESS trigger=true")
+        activate(s, 104.0)
     if not s.test_mode or s.test_timeout_ms <= 0: return
     if s.elapsed_ms >= s.test_timeout_ms:
         mr_runtime_emit("CI_QUIT source=bounded_test_timer")
@@ -2334,6 +2340,7 @@ fn activate(s: &mut MainWindow, target: f64):
             if r2 == 1: stages_ok += 1
         # S3: second sweep pass after a short settle (cache backfill creates
         # new reclaimable pages; one repeat is measured, not a loop)
+        stages_ran += 1
         if mr_bal_bridge_session_available() == 1:
             let r3 = mr_bal_bridge_session_run(0)
             if r3 == 1: stages_ok += 1
