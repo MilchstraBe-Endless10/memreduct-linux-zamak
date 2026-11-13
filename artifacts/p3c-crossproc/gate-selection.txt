@@ -1,0 +1,4 @@
+profile=m0+m1-candidate
+crossproc_gate=enabled
+pagecache_gate=enabled
+runtime=production-no-test-hooks

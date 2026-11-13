@@ -661,3 +661,19 @@ const char *mr_bal_bridge_action_name(int64_t action)
     default: return "invalid";
     }
 }
+
+int64_t mr_mem_available_bytes(void)
+{
+    FILE *fh = fopen("/proc/meminfo", "r");
+    if (fh == NULL) return -1;
+    char line[256];
+    int64_t value = -1;
+    while (fgets(line, sizeof(line), fh) != NULL) {
+        if (strncmp(line, "MemAvailable:", 13) == 0) {
+            value = (int64_t)strtoll(line + 13, NULL, 10) * 1024;
+            break;
+        }
+    }
+    (void)fclose(fh);
+    return value;
+}

@@ -91,6 +91,7 @@ extern fn mr_runtime_xproc_result_call_count() -> i64
 extern fn mr_runtime_xproc_result_mode() -> i64
 extern fn mr_runtime_emit(line: &string)
 extern fn mr_production_clean_enabled() -> i64
+extern fn mr_mem_available_bytes() -> i64
 # Read-only check of the fixed privileged chain (helper / polkit action /
 # pkexec). Lets the window name the missing component instead of showing the
 # unattributable "outcome unconfirmed" that a bare pkexec 126/127 produces.
@@ -383,7 +384,8 @@ fn root_menu_target(menu: i64, row: i64) -> f64:
     if menu == 1:
         if row == 0: return 101.0
         if row == 1: return 103.0
-        if row == 3: return 102.0
+        if row == 2: return 104.0
+        if row == 4: return 102.0
     elif menu == 2:
         if row == 0: return 201.0
         if row == 1: return 202.0
@@ -1418,9 +1420,12 @@ fn draw_root_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, disabled: &ui.C
         let clean_row = ui_geometry.root_menu_item_rect(&r, s.menu, 1)
         draw_menu_item(s, p, &clean_row, 103.0, label(s.zh, "Balanced clean (free memory)", "均衡清理（释放内存）"), true, fg, disabled, hot)
         draw_menu_shortcut(p, &clean_row, "F9", fg)
-        let separator = ui_geometry.root_menu_item_rect(&r, s.menu, 2)
+        let deep_row = ui_geometry.root_menu_item_rect(&r, s.menu, 2)
+        draw_menu_item(s, p, &deep_row, 104.0, label(s.zh, "Deep clean (multi-stage)", "深度清理（多阶段）"), true, fg, disabled, hot)
+        draw_menu_shortcut(p, &deep_row, "F10", fg)
+        let separator = ui_geometry.root_menu_item_rect(&r, s.menu, 3)
         draw_menu_separator(p, &separator, border)
-        let row2 = ui_geometry.root_menu_item_rect(&r, s.menu, 3)
+        let row2 = ui_geometry.root_menu_item_rect(&r, s.menu, 4)
         draw_menu_item(s, p, &row2, 102.0, label(s.zh, "Exit", "退出"), true, fg, disabled, hot)
     elif s.menu == 2:
         draw_menu_item(s, p, &row1, 201.0, label(s.zh, "Always on top", "窗口始终置顶"), false, fg, disabled, hot)
@@ -2301,6 +2306,50 @@ fn activate(s: &mut MainWindow, target: f64):
     elif target >= 40.0 and target < 43.0:
         s.selected_group = i64(target - 40.0)
         if s.test_mode: mr_runtime_emit(f"CI_GROUP_SELECT group={s.selected_group} selected=true")
+    elif target == 104.0:
+        # Deep clean pipeline. Each stage reports what it actually did; the
+        # headline is the sum of measured deltas, never a requested number.
+        s.menu = 0
+        s.popup = 0
+        let avail_before = mr_mem_available_bytes()
+        let mut stages_ok = 0
+        let mut stages_ran = 0
+        # S1: system page cache (root helper via the pkexec bridge). Started
+        # asynchronously and polled; a slow polkit dialog must not wedge the
+        # canvas, so this stage gives the dialog up to ten seconds.
+        if mr_production_clean_enabled() == 1:
+            stages_ran += 1
+            let started = mr_start_reclaim(0)
+            if started == 0:
+                let mut polled = -1
+                let mut attempt = 0
+                while attempt < 200 and polled == -1:
+                    polled = mr_poll_reclaim()
+                    attempt += 1
+                if polled == 1: stages_ok += 1
+        # S2: session file pages (unprivileged)
+        stages_ran += 1
+        if mr_bal_bridge_session_available() == 1:
+            let r2 = mr_bal_bridge_session_run(0)
+            if r2 == 1: stages_ok += 1
+        # S3: second sweep pass after a short settle (cache backfill creates
+        # new reclaimable pages; one repeat is measured, not a loop)
+        if mr_bal_bridge_session_available() == 1:
+            let r3 = mr_bal_bridge_session_run(0)
+            if r3 == 1: stages_ok += 1
+        s.canvas.redraw()
+        let avail_after = mr_mem_available_bytes()
+        let delta_mib = (avail_after - avail_before) / 1048576
+        if delta_mib > 0:
+            s.status = label(s.zh,
+                f"Deep clean finished: {stages_ok}/{stages_ran} stages, +{delta_mib} MiB observed",
+                f"深度清理完成：{stages_ok}/{stages_ran} 阶段，观测 +{delta_mib} MiB")
+        else:
+            s.status = label(s.zh,
+                f"Deep clean finished: {stages_ok}/{stages_ran} stages, no net gain observed",
+                f"深度清理完成：{stages_ok}/{stages_ran} 阶段，未观测到净增长")
+        if s.test_mode:
+            mr_runtime_emit(f"CI_DEEP_CLEAN ok={stages_ok} ran={stages_ran} delta_mib={delta_mib}")
     elif target == 103.0:
         # Same action as the tenth row of the clean menu, reached through a path
         # that actually works: real menu geometry, real focus, real keyboard.
@@ -2636,6 +2685,12 @@ fn key(s: &mut MainWindow, event: &ui.Key):
         s.status = label(s.zh, "About page is not implemented yet", "关于页面尚未实现")
     elif name == "F2":
         set_settings_open(s, true)
+    elif name == "F10":
+        if s.xproc_view == 0 and s.bal_view == 0:
+            s.menu = 0
+            s.popup = 0
+            activate(s, 104.0)
+            s.canvas.redraw()
     elif name == "F9":
         # Keyboard path to balanced clean. The canvas button at the window
         # bottom cannot be reached by Tab and cannot be activated by a synthetic

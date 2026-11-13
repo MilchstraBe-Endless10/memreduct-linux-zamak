@@ -807,3 +807,11 @@
 - 当前 exact baseline PR #7 checks 7/7：P2C `40465893251`、P2B `40465893241`、build PR `40465893268`；P2B push build `40465886984` 也通过。证据检查 artifact `12717146938` digest `sha256:d9c99dcaa330aa76c25be8ef60332ad61cb082e5a951fd3ca153369ff9f8bfd5`，client.log SHA-256 `39ef3d24f255df6cd3ccbdd90fd7cf280105933ea130a8351aeccc84c06d08c2`。该 Xvfb 日志含失败注入、立即 redraw 请求和 em-dash 状态标记。
 - PR #4 workflow 触发器已从远端文件核实：push `test/issue-3-isolated-gui`，pull_request base filter `fix/issue-1-zamak-build`，权限 `contents: read`。若改 base 到 main，须先更新 PR 过滤条件。独立的 12 项 probe tests 不得被生产 GUI 测试替代。
 - 本地验证 PASS：`python3 scripts/verify_project.py` 33 项；`python3 -m unittest discover -s tests -v` 3/3；`bash -n scripts/*.sh scripts/ci/*.sh`；Zamak 0.2.0 `check`、`test` 30/30、`build`；`git diff --check`。本轮仅文档/记忆改动，未运行图形或桌面操作。
+
+## 2026-11-14 深度清理模式（Deep Clean）开发中（Q12 收口第 4 项）
+- 需求：用户明确要 GiB 级清理，单次几百 MB 不达标；要求深度清理模式覆盖物理+虚拟内存。
+- 已完成：src/main.zm 菜单加 104.0「Deep clean (multi-stage)」（F10 快捷键）+ handler（S1 root helper drop_caches via mr_start_reclaim(0)/mr_poll_reclaim() 轮询 + S2/S3 两次 mr_bal_bridge_session_run(0)）；native/balance_bridge.c 新增 mr_mem_available_bytes()（读 MemAvailable）；测试 OK，zam check OK，build-arch.sh 成功（hash 7b8cf392…）。
+- 实测（命令行三路连招，同一会话）：drop_caches +307MiB；session reclaim 第二轮 −270MiB（缓存已清）；多目标 pageout advised 17MiB（活跃进程被 mappings_changed 正确拒绝）；总净 +474MiB。GiB 上限诚实结论：16GB 机，会话 file 页单轮最高 1116MiB，系统缓存 ~1-2GiB 但会回填；活跃大应用 anon 因映射变化被保护拒绝（设计正确）。GiB 稳定来源=多路径连发+时机，不是单发数字。
+- GUI 验证进行中：菜单点击时序不稳（popup 开/关 toggle），hover 确认 target=104 存在（yd(430,252)），尚未捕获 CI_DEEP 输出。下次继续：fresh 启动后先点 File(405,201)→hover 验证 104→立即点击，或直接跑 /tmp/deepclick.sh 并把日志换 deep5.log。
+- pkexec 已免密（empower 组，见热记忆），后续 root 验证零弹窗。
+- 未提交：main.zm/balance_bridge.c 改动在 q12/integration 工作树未 commit。

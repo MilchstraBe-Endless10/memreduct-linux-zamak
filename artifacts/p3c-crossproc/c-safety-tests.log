@@ -1,0 +1,422 @@
+test_out_of_range_index_is_empty (test_balance_bridge.BridgeTest.test_out_of_range_index_is_empty) ... ok
+test_run_refuses_out_of_range_index_without_touching_anything (test_balance_bridge.BridgeTest.test_run_refuses_out_of_range_index_without_touching_anything) ... ok
+test_run_with_zero_budget_refuses (test_balance_bridge.BridgeTest.test_run_with_zero_budget_refuses) ... ok
+test_scan_reports_only_app_scopes (test_balance_bridge.BridgeTest.test_scan_reports_only_app_scopes) ... ok
+test_scope_file_bytes_is_readable_or_minus_one (test_balance_bridge.BridgeTest.test_scope_file_bytes_is_readable_or_minus_one)
+The scope's own file counter is the only honest budget ceiling. ... ok
+test_scope_root_is_absolute_and_under_the_cgroup_mount (test_balance_bridge.BridgeTest.test_scope_root_is_absolute_and_under_the_cgroup_mount) ... ok
+test_scope_view_reports_the_three_counters (test_balance_bridge.BridgeTest.test_scope_view_reports_the_three_counters)
+The picker shows file, anon and current; summing file+anon would ... ok
+test_app_label_decodes_systemd_escapes (test_balance_exec.ExecTest.test_app_label_decodes_systemd_escapes)
+'deepseek\x2dai' is a dash; showing the escape would be unreadable. ... ok
+test_app_label_of_unknown_shape_is_honest (test_balance_exec.ExecTest.test_app_label_of_unknown_shape_is_honest) ... ok
+test_app_label_strips_prefix_suffix_and_pid (test_balance_exec.ExecTest.test_app_label_strips_prefix_suffix_and_pid) ... ok
+test_bad_request_is_rejected_before_any_io (test_balance_exec.ExecTest.test_bad_request_is_rejected_before_any_io) ... /home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:96: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-igina62k/app-test.App-1234.scope/memory.stat' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.stat"), "w").write("anon 0\nfile 0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:97: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-igina62k/app-test.App-1234.scope/memory.current' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.current"), "w").write("0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_bare_scope_name_is_required (test_balance_exec.ExecTest.test_bare_scope_name_is_required) ... /home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:96: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-ohjfnypg/app-test.App-1234.scope/memory.stat' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.stat"), "w").write("anon 0\nfile 0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:97: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-ohjfnypg/app-test.App-1234.scope/memory.current' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.current"), "w").write("0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_listing_only_returns_app_scopes_with_a_control_file (test_balance_exec.ExecTest.test_listing_only_returns_app_scopes_with_a_control_file) ... ok
+test_missing_control_file_means_not_delegated (test_balance_exec.ExecTest.test_missing_control_file_means_not_delegated) ... /home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:96: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-3ig12_08/app-test.App-1234.scope/memory.stat' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.stat"), "w").write("anon 0\nfile 0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:97: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-3ig12_08/app-test.App-1234.scope/memory.current' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.current"), "w").write("0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_missing_scope_is_reported (test_balance_exec.ExecTest.test_missing_scope_is_reported) ... /home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:96: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-qf0r_zet/app-test.App-1234.scope/memory.stat' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.stat"), "w").write("anon 0\nfile 0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:97: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-qf0r_zet/app-test.App-1234.scope/memory.current' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.current"), "w").write("0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_names_are_stable (test_balance_exec.ExecTest.test_names_are_stable) ... ok
+test_run_refuses_when_probe_fails (test_balance_exec.ExecTest.test_run_refuses_when_probe_fails) ... /home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:96: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-w1ra1eu6/app-test.App-1234.scope/memory.stat' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.stat"), "w").write("anon 0\nfile 0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:97: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-w1ra1eu6/app-test.App-1234.scope/memory.current' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.current"), "w").write("0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_symlinked_scope_is_refused (test_balance_exec.ExecTest.test_symlinked_scope_is_refused)
+A symlink in the root must not let the caller escape its slice. ... /home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:96: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-ighc5yp4/app-test.App-1234.scope/memory.stat' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.stat"), "w").write("anon 0\nfile 0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:97: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-ighc5yp4/app-test.App-1234.scope/memory.current' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.current"), "w").write("0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_wrong_owner_is_refused_without_writing (test_balance_exec.ExecTest.test_wrong_owner_is_refused_without_writing) ... /home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:96: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-0eomb6nw/app-test.App-1234.scope/memory.stat' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.stat"), "w").write("anon 0\nfile 0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_balance_exec.py:97: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/memreduct-exec-louxnh90/scoperoot-0eomb6nw/app-test.App-1234.scope/memory.current' mode='w' encoding='UTF-8'>
+  open(os.path.join(scope, "memory.current"), "w").write("0\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_owner_uid_is_the_caller_on_a_real_scope (test_balance_exec.RealScopeTest.test_owner_uid_is_the_caller_on_a_real_scope) ... skipped 'set MEMREDUCT_REAL_CGROUP_TEST=1 to run real reclaim'
+test_accepted_bytes_make_it_meaningful (test_balance_gui.GuiTextTest.test_accepted_bytes_make_it_meaningful) ... ok
+test_action_line_differs_per_action (test_balance_gui.GuiTextTest.test_action_line_differs_per_action) ... ok
+test_budget_line_is_zero_when_nothing_will_run (test_balance_gui.GuiTextTest.test_budget_line_is_zero_when_nothing_will_run) ... ok
+test_budget_line_never_claims_an_amount_was_freed (test_balance_gui.GuiTextTest.test_budget_line_never_claims_an_amount_was_freed)
+The word "freed" may appear only inside an explicit negation. ... ok
+test_counters_line_counts_batches (test_balance_gui.GuiTextTest.test_counters_line_counts_batches) ... ok
+test_counters_line_reports_both_numbers_separately (test_balance_gui.GuiTextTest.test_counters_line_reports_both_numbers_separately)
+A single rotating buffer used to make both sizes print the same. ... ok
+test_entry_disabled_while_busy (test_balance_gui.GuiTextTest.test_entry_disabled_while_busy) ... ok
+test_entry_disabled_without_a_target (test_balance_gui.GuiTextTest.test_entry_disabled_without_a_target)
+No eligible scope must not be papered over with a fake success. ... ok
+test_entry_disabled_without_helper (test_balance_gui.GuiTextTest.test_entry_disabled_without_helper) ... ok
+test_entry_hidden_when_gate_closed (test_balance_gui.GuiTextTest.test_entry_hidden_when_gate_closed) ... ok
+test_entry_hidden_when_not_built_in (test_balance_gui.GuiTextTest.test_entry_hidden_when_not_built_in) ... ok
+test_entry_ready_when_everything_holds (test_balance_gui.GuiTextTest.test_entry_ready_when_everything_holds) ... ok
+test_headline_distinguishes_partial_from_complete (test_balance_gui.GuiTextTest.test_headline_distinguishes_partial_from_complete) ... ok
+test_observed_line_handles_a_decrease (test_balance_gui.GuiTextTest.test_observed_line_handles_a_decrease) ... ok
+test_observed_line_handles_no_change (test_balance_gui.GuiTextTest.test_observed_line_handles_no_change) ... ok
+test_observed_line_labels_the_delta_as_an_observation (test_balance_gui.GuiTextTest.test_observed_line_labels_the_delta_as_an_observation) ... ok
+test_skips_line_promises_no_silent_omission (test_balance_gui.GuiTextTest.test_skips_line_promises_no_silent_omission) ... ok
+test_stop_line_names_the_reason (test_balance_gui.GuiTextTest.test_stop_line_names_the_reason) ... ok
+test_thrashing_is_described_as_making_it_worse (test_balance_gui.GuiTextTest.test_thrashing_is_described_as_making_it_worse) ... ok
+test_unsupported_is_never_meaningful (test_balance_gui.GuiTextTest.test_unsupported_is_never_meaningful) ... ok
+test_why_line_names_the_dominant_side (test_balance_gui.GuiTextTest.test_why_line_names_the_dominant_side) ... ok
+test_why_line_refuses_to_guess_without_evidence (test_balance_gui.GuiTextTest.test_why_line_refuses_to_guess_without_evidence) ... ok
+test_zero_accepted_is_not_a_meaningful_result (test_balance_gui.GuiTextTest.test_zero_accepted_is_not_a_meaningful_result) ... ok
+test_after_a_run_the_planner_needs_recovery_to_rearm (test_balance_plan.PlannerTest.test_after_a_run_the_planner_needs_recovery_to_rearm) ... ok
+test_anon_pageout_needs_free_swap_even_when_enabled (test_balance_plan.PlannerTest.test_anon_pageout_needs_free_swap_even_when_enabled) ... ok
+test_anon_pressure_is_disabled_by_default (test_balance_plan.PlannerTest.test_anon_pressure_is_disabled_by_default) ... ok
+test_cold_file_dominant_still_produces_file_first (test_balance_plan.PlannerTest.test_cold_file_dominant_still_produces_file_first) ... ok
+test_cold_file_pressure_produces_file_first_budget (test_balance_plan.PlannerTest.test_cold_file_pressure_produces_file_first_budget) ... ok
+test_cooldown_blocks_a_second_run (test_balance_plan.PlannerTest.test_cooldown_blocks_a_second_run) ... ok
+test_ctypes_layout_matches_the_c_struct (test_balance_plan.PlannerTest.test_ctypes_layout_matches_the_c_struct)
+A wrong ctypes layout reads garbage and can segfault the test run. ... ok
+test_delta_rates_are_integer_and_sane (test_balance_plan.PlannerTest.test_delta_rates_are_integer_and_sane) ... ok
+test_dirty_backlog_blocks_reclaim (test_balance_plan.PlannerTest.test_dirty_backlog_blocks_reclaim) ... ok
+test_healthy_machine_is_left_alone (test_balance_plan.PlannerTest.test_healthy_machine_is_left_alone) ... ok
+test_low_available_but_all_reclaimable_cache_is_not_reclaimed (test_balance_plan.PlannerTest.test_low_available_but_all_reclaimable_cache_is_not_reclaimed) ... ok
+test_meminfo_values_are_bytes (test_balance_plan.PlannerTest.test_meminfo_values_are_bytes) ... ok
+test_missing_evidence_refuses_to_act (test_balance_plan.PlannerTest.test_missing_evidence_refuses_to_act) ... ok
+test_missing_meminfo_is_reported_not_zeroed (test_balance_plan.PlannerTest.test_missing_meminfo_is_reported_not_zeroed) ... ok
+test_names_are_stable (test_balance_plan.PlannerTest.test_names_are_stable) ... ok
+test_psi_average_is_parsed_as_hundredths (test_balance_plan.PlannerTest.test_psi_average_is_parsed_as_hundredths) ... ok
+test_stall_above_trigger_with_cold_file_does_act (test_balance_plan.PlannerTest.test_stall_above_trigger_with_cold_file_does_act) ... ok
+test_stall_below_trigger_does_not_act (test_balance_plan.PlannerTest.test_stall_below_trigger_does_not_act) ... ok
+test_state_and_action_never_contradict_each_other (test_balance_plan.PlannerTest.test_state_and_action_never_contradict_each_other)
+The host this was written on is anonymous-heavy with a nearly full ... ok
+test_swaps_parsed_with_zram_detection (test_balance_plan.PlannerTest.test_swaps_parsed_with_zram_detection) ... ok
+test_thrashing_never_acts (test_balance_plan.PlannerTest.test_thrashing_never_acts) ... ok
+test_zram_full_is_reported_separately_from_disk_swap (test_balance_plan.PlannerTest.test_zram_full_is_reported_separately_from_disk_swap) ... ok
+test_caps_reports_file_only_on_this_host (test_balance_reclaim.RealCgroupTest.test_caps_reports_file_only_on_this_host) ... skipped 'set MEMREDUCT_REAL_CGROUP_TEST=1 to run real reclaim'
+test_swappiness_zero_takes_no_anonymous_page (test_balance_reclaim.RealCgroupTest.test_swappiness_zero_takes_no_anonymous_page)
+The measured invariant: with anon pages present and no file cache, ... skipped 'set MEMREDUCT_REAL_CGROUP_TEST=1 to run real reclaim'
+test_budget_is_never_exceeded (test_balance_reclaim.ReclaimTest.test_budget_is_never_exceeded) ... ok
+test_eagain_is_no_cold_pages_and_stops_the_loop (test_balance_reclaim.ReclaimTest.test_eagain_is_no_cold_pages_and_stops_the_loop) ... ok
+test_eagain_never_falls_back_to_a_bare_byte_count (test_balance_reclaim.ReclaimTest.test_eagain_never_falls_back_to_a_bare_byte_count) ... ok
+test_empty_file_bucket_stops_before_asking (test_balance_reclaim.ReclaimTest.test_empty_file_bucket_stops_before_asking) ... ok
+test_every_write_carries_swappiness_zero (test_balance_reclaim.ReclaimTest.test_every_write_carries_swappiness_zero)
+The bare byte count was measured to reclaim anonymous pages on this ... ok
+test_hard_error_stops_immediately (test_balance_reclaim.ReclaimTest.test_hard_error_stops_immediately) ... ok
+test_max_batches_bounds_the_loop (test_balance_reclaim.ReclaimTest.test_max_batches_bounds_the_loop) ... ok
+test_names_are_stable (test_balance_reclaim.ReclaimTest.test_names_are_stable) ... ok
+test_no_swappiness_support_refuses_instead_of_degrading (test_balance_reclaim.ReclaimTest.test_no_swappiness_support_refuses_instead_of_degrading) ... ok
+test_parameter_order_is_bytes_first (test_balance_reclaim.ReclaimTest.test_parameter_order_is_bytes_first)
+'swappiness=0 128M' is EINVAL on this kernel; the order is load-bearing. ... ok
+test_partial_run_reports_exactly_what_the_kernel_took (test_balance_reclaim.ReclaimTest.test_partial_run_reports_exactly_what_the_kernel_took) ... ok
+test_short_write_is_uncertain_not_success (test_balance_reclaim.ReclaimTest.test_short_write_is_uncertain_not_success) ... ok
+test_stop_on_stall_prevents_the_next_batch (test_balance_reclaim.ReclaimTest.test_stop_on_stall_prevents_the_next_batch)
+No batch is asked for after the loop decides to stop. ... ok
+test_a_write_capable_build_is_a_compile_time_decision (test_crossproc.TestAdviceIsDoubleGated.test_a_write_capable_build_is_a_compile_time_decision) ... ok
+test_approval_is_consumed_and_never_covers_a_second_run (test_crossproc.TestAdviceIsDoubleGated.test_approval_is_consumed_and_never_covers_a_second_run) ... ok
+test_default_build_has_no_writable_path (test_crossproc.TestAdviceIsDoubleGated.test_default_build_has_no_writable_path) ... ok
+test_opt_in_build_still_refuses_without_run_time_approval (test_crossproc.TestAdviceIsDoubleGated.test_opt_in_build_still_refuses_without_run_time_approval) ... ok
+test_approved_run_uses_the_planned_ranges_and_advice (test_crossproc.TestBackendInjection.test_approved_run_uses_the_planned_ranges_and_advice) ... ok
+test_second_run_without_rearming_is_refused (test_crossproc.TestBackendInjection.test_second_run_without_rearming_is_refused) ... ok
+test_unapproved_run_records_no_syscall (test_crossproc.TestBackendInjection.test_unapproved_run_records_no_syscall) ... ok
+test_a_short_return_is_partial_not_ok (test_crossproc.TestErrnoClassification.test_a_short_return_is_partial_not_ok) ... ok
+test_each_errno_maps_to_its_own_status (test_crossproc.TestErrnoClassification.test_each_errno_maps_to_its_own_status)
+One isolated process per errno: no state can leak between cases. ... ok
+test_zero_return_is_not_reported_as_success (test_crossproc.TestErrnoClassification.test_zero_return_is_not_reported_as_success) ... ok
+test_building_a_plan_does_not_change_the_working_directory (test_crossproc.TestFixtureIsolation.test_building_a_plan_does_not_change_the_working_directory) ... ok
+test_class_work_root_is_one_source_of_truth (test_crossproc.TestFixtureIsolation.test_class_work_root_is_one_source_of_truth) ... ok
+test_fixture_root_lives_inside_the_temporary_directory (test_crossproc.TestFixtureIsolation.test_fixture_root_lives_inside_the_temporary_directory) ... ok
+test_a_path_too_long_for_the_buffer_fails_closed (test_crossproc.TestPathBoundaries.test_a_path_too_long_for_the_buffer_fails_closed) ... skipped 'filesystem will not accept a path that long'
+test_roots_around_the_old_64_byte_buffer_all_resolve (test_crossproc.TestPathBoundaries.test_roots_around_the_old_64_byte_buffer_all_resolve) ... ok
+test_a_long_proc_root_still_resolves (test_crossproc.TestPathLength.test_a_long_proc_root_still_resolves) ... ok
+test_huge_procfs_is_capped_by_the_entry_limit (test_crossproc.TestPlannerBudgets.test_huge_procfs_is_capped_by_the_entry_limit) ... ok
+test_oversized_region_is_skipped_not_truncated (test_crossproc.TestPlannerBudgets.test_oversized_region_is_skipped_not_truncated) ... ok
+test_region_ceiling_is_per_target (test_crossproc.TestPlannerBudgets.test_region_ceiling_is_per_target) ... ok
+test_target_ceiling_stops_the_scan (test_crossproc.TestPlannerBudgets.test_target_ceiling_stops_the_scan) ... ok
+test_total_byte_budget_stops_collection (test_crossproc.TestPlannerBudgets.test_total_byte_budget_stops_collection) ... ok
+test_limits_struct_carries_only_budgets_and_an_advice_enum (test_crossproc.TestPlannerCannotNameAProcess.test_limits_struct_carries_only_budgets_and_an_advice_enum) ... ok
+test_no_writes_and_no_signals_anywhere_in_the_prototype (test_crossproc.TestPlannerCannotNameAProcess.test_no_writes_and_no_signals_anywhere_in_the_prototype) ... ok
+test_plan_build_takes_no_pid_or_path_argument (test_crossproc.TestPlannerCannotNameAProcess.test_plan_build_takes_no_pid_or_path_argument) ... ok
+test_procfs_root_is_fixed_outside_test_builds (test_crossproc.TestPlannerCannotNameAProcess.test_procfs_root_is_fixed_outside_test_builds) ... ok
+test_testing_build_rejects_a_relative_root (test_crossproc.TestPlannerCannotNameAProcess.test_testing_build_rejects_a_relative_root) ... ok
+test_empty_fixture_reports_no_candidates (test_crossproc.TestPlannerSelection.test_empty_fixture_reports_no_candidates) ... ok
+test_missing_root_reports_proc_unavailable (test_crossproc.TestPlannerSelection.test_missing_root_reports_proc_unavailable) ... ok
+test_non_numeric_proc_entries_are_ignored (test_crossproc.TestPlannerSelection.test_non_numeric_proc_entries_are_ignored) ... ok
+test_relative_root_override_is_ignored (test_crossproc.TestPlannerSelection.test_relative_root_override_is_ignored) ... ok
+test_selects_only_readable_private_mappings (test_crossproc.TestPlannerSelection.test_selects_only_readable_private_mappings) ... ok
+test_skips_pid1_self_kernel_threads_and_other_users (test_crossproc.TestPlannerSelection.test_skips_pid1_self_kernel_threads_and_other_users) ... ok
+test_a_stat_line_without_parentheses_is_unreadable_not_planned (test_crossproc.TestStatParsing.test_a_stat_line_without_parentheses_is_unreadable_not_planned) ... ok
+test_comm_with_spaces_and_parens_still_parses (test_crossproc.TestStatParsing.test_comm_with_spaces_and_parens_still_parses) ... ok
+test_start_time_lands_on_field_22 (test_crossproc.TestStatParsing.test_start_time_lands_on_field_22) ... ok
+test_app_scope_charge_is_not_part_of_immutable_process_snapshot (test_crossproc_candidates.CandidateScannerTest.test_app_scope_charge_is_not_part_of_immutable_process_snapshot) ... MR_XPROC_AUDIT phase=selection request_id=900008 client_pid=3265214 target_pid=4242 start_time=77 uid=1000 scope_hash=1168229735116215629 identity_hash=1492498370524486316 region_digest=1301419757310967983
+ok
+test_app_scope_mode_is_unavailable_without_its_kernel_control (test_crossproc_candidates.CandidateScannerTest.test_app_scope_mode_is_unavailable_without_its_kernel_control) ... ok
+test_candidate_after_previous_32_row_limit_is_offered (test_crossproc_candidates.CandidateScannerTest.test_candidate_after_previous_32_row_limit_is_offered) ... ok
+test_candidate_display_name_preserves_valid_utf8 (test_crossproc_candidates.CandidateScannerTest.test_candidate_display_name_preserves_valid_utf8) ... ok
+test_candidate_display_strings_replace_controls (test_crossproc_candidates.CandidateScannerTest.test_candidate_display_strings_replace_controls) ... ok
+test_candidate_exposes_live_rss_and_app_scope_charge_estimate (test_crossproc_candidates.CandidateScannerTest.test_candidate_exposes_live_rss_and_app_scope_charge_estimate) ... ok
+test_candidate_exposes_snapshot_state_and_executable_basename_without_path (test_crossproc_candidates.CandidateScannerTest.test_candidate_exposes_snapshot_state_and_executable_basename_without_path) ... ok
+test_candidate_list_limit_is_reported (test_crossproc_candidates.CandidateScannerTest.test_candidate_list_limit_is_reported) ... ok
+test_dotnet_application_in_user_scope_is_not_protected (test_crossproc_candidates.CandidateScannerTest.test_dotnet_application_in_user_scope_is_not_protected) ... ok
+test_malformed_smaps_is_reported_as_unreadable_not_kernel_thread (test_crossproc_candidates.CandidateScannerTest.test_malformed_smaps_is_reported_as_unreadable_not_kernel_thread) ... ok
+test_private_resident_change_after_selection_keeps_identity_valid (test_crossproc_candidates.CandidateScannerTest.test_private_resident_change_after_selection_keeps_identity_valid) ... MR_XPROC_AUDIT phase=selection request_id=900010 client_pid=3265214 target_pid=4242 start_time=77 uid=1000 scope_hash=1168229735116215629 identity_hash=1492498370524486316 region_digest=1301419757310967983
+ok
+test_private_resident_changes_do_not_invalidate_process_identity (test_crossproc_candidates.CandidateScannerTest.test_private_resident_changes_do_not_invalidate_process_identity) ... MR_XPROC_AUDIT phase=selection request_id=900009 client_pid=3265214 target_pid=4242 start_time=77 uid=1000 scope_hash=1168229735116215629 identity_hash=1492498370524486316 region_digest=1301419757310967983
+ok
+test_protected_executable_is_hidden_even_when_comm_is_unrelated (test_crossproc_candidates.CandidateScannerTest.test_protected_executable_is_hidden_even_when_comm_is_unrelated) ... ok
+test_region_digest_detects_same_sized_mapping_replacement (test_crossproc_candidates.CandidateScannerTest.test_region_digest_detects_same_sized_mapping_replacement) ... MR_XPROC_AUDIT phase=selection request_id=900006 client_pid=3265214 target_pid=4242 start_time=77 uid=1000 scope_hash=1168229735116215629 identity_hash=1492498370524486316 region_digest=1301419757310967983
+ok
+test_request_id_is_bound_to_snapshot_and_cleared_on_refresh (test_crossproc_candidates.CandidateScannerTest.test_request_id_is_bound_to_snapshot_and_cleared_on_refresh) ... MR_XPROC_AUDIT phase=selection request_id=900007 client_pid=3265214 target_pid=4242 start_time=77 uid=1000 scope_hash=1168229735116215629 identity_hash=1492498370524486316 region_digest=1301419757310967983
+ok
+test_same_uid_user_app_with_known_exe_and_app_cgroup_is_offered (test_crossproc_candidates.CandidateScannerTest.test_same_uid_user_app_with_known_exe_and_app_cgroup_is_offered) ... ok
+test_selection_snapshot_survives_a_rescan_and_same_name_candidates (test_crossproc_candidates.CandidateScannerTest.test_selection_snapshot_survives_a_rescan_and_same_name_candidates) ... MR_XPROC_AUDIT phase=selection request_id=900001 client_pid=3265214 target_pid=4242 start_time=77 uid=1000 scope_hash=4973630451483201103 identity_hash=2808513682108952802 region_digest=1301419757310967983
+ok
+test_snapshot_fails_closed_when_mapping_summary_changes (test_crossproc_candidates.CandidateScannerTest.test_snapshot_fails_closed_when_mapping_summary_changes) ... MR_XPROC_AUDIT phase=selection request_id=900005 client_pid=3265214 target_pid=4242 start_time=77 uid=1000 scope_hash=1168229735116215629 identity_hash=1492498370524486316 region_digest=1301419757310967983
+ok
+test_snapshot_fails_closed_when_scope_or_executable_changes (test_crossproc_candidates.CandidateScannerTest.test_snapshot_fails_closed_when_scope_or_executable_changes) ... MR_XPROC_AUDIT phase=selection request_id=900003 client_pid=3265214 target_pid=4242 start_time=77 uid=1000 scope_hash=1168229735116215629 identity_hash=1492498370524486316 region_digest=1301419757310967983
+ok
+test_snapshot_fails_closed_when_start_time_changes (test_crossproc_candidates.CandidateScannerTest.test_snapshot_fails_closed_when_start_time_changes) ... MR_XPROC_AUDIT phase=selection request_id=900004 client_pid=3265214 target_pid=4242 start_time=77 uid=1000 scope_hash=1168229735116215629 identity_hash=1492498370524486316 region_digest=1301419757310967983
+ok
+test_snapshot_fails_closed_when_target_identity_changes (test_crossproc_candidates.CandidateScannerTest.test_snapshot_fails_closed_when_target_identity_changes) ... MR_XPROC_AUDIT phase=selection request_id=900002 client_pid=3265214 target_pid=4242 start_time=77 uid=1000 scope_hash=1168229735116215629 identity_hash=1492498370524486316 region_digest=1301419757310967983
+ok
+test_system_and_login_session_cgroups_are_hidden (test_crossproc_candidates.CandidateScannerTest.test_system_and_login_session_cgroups_are_hidden) ... ok
+test_uid_tuple_mismatch_is_not_offered (test_crossproc_candidates.CandidateScannerTest.test_uid_tuple_mismatch_is_not_offered) ... ok
+test_unknown_process_state_is_not_offered (test_crossproc_candidates.CandidateScannerTest.test_unknown_process_state_is_not_offered) ... ok
+test_unreadable_executable_or_cgroup_is_hidden (test_crossproc_candidates.CandidateScannerTest.test_unreadable_executable_or_cgroup_is_hidden) ... ok
+test_unsupported_cgroup_layout_is_hidden (test_crossproc_candidates.CandidateScannerTest.test_unsupported_cgroup_layout_is_hidden) ... ok
+test_escape_cancel_signals_only_the_owned_child_and_reports_unknown (test_crossproc_helper.BridgeCancelTest.test_escape_cancel_signals_only_the_owned_child_and_reports_unknown) ... ok
+test_a_refused_start_never_reports_a_success_code (test_crossproc_helper.BridgeRefusalTest.test_a_refused_start_never_reports_a_success_code) ... ok
+test_every_refusal_reports_a_distinct_named_reason (test_crossproc_helper.BridgeRefusalTest.test_every_refusal_reports_a_distinct_named_reason) ... ok
+test_poll_is_idle_before_anything_starts (test_crossproc_helper.BridgeRefusalTest.test_poll_is_idle_before_anything_starts) ... ok
+test_accepted_result_must_match_the_selected_request_and_target (test_crossproc_helper.DriverTest.test_accepted_result_must_match_the_selected_request_and_target) ... ok
+test_accepted_with_one_call_and_nonzero_bytes (test_crossproc_helper.DriverTest.test_accepted_with_one_call_and_nonzero_bytes) ... ok
+test_disallowed_advice_or_path_fields_are_ignored_not_trusted (test_crossproc_helper.DriverTest.test_disallowed_advice_or_path_fields_are_ignored_not_trusted)
+The block cannot name a path, an address or a different verb. ... ok
+test_duplicate_key_is_outcome_unknown (test_crossproc_helper.DriverTest.test_duplicate_key_is_outcome_unknown) ... ok
+test_each_refusal_reason_maps_to_a_refusal_verdict (test_crossproc_helper.DriverTest.test_each_refusal_reason_maps_to_a_refusal_verdict) ... ok
+test_exit_code_disagreeing_with_the_token_is_outcome_unknown (test_crossproc_helper.DriverTest.test_exit_code_disagreeing_with_the_token_is_outcome_unknown) ... ok
+test_kernel_refusals_stay_distinguishable (test_crossproc_helper.DriverTest.test_kernel_refusals_stay_distinguishable) ... ok
+test_missing_marker_is_outcome_unknown_even_on_exit_zero (test_crossproc_helper.DriverTest.test_missing_marker_is_outcome_unknown_even_on_exit_zero) ... ok
+test_more_than_one_call_is_outcome_unknown (test_crossproc_helper.DriverTest.test_more_than_one_call_is_outcome_unknown) ... ok
+test_one_gib_pageout_result_is_parsed_without_truncation (test_crossproc_helper.DriverTest.test_one_gib_pageout_result_is_parsed_without_truncation) ... ok
+test_pageout_advice_cannot_exceed_or_understate_a_full_acceptance (test_crossproc_helper.DriverTest.test_pageout_advice_cannot_exceed_or_understate_a_full_acceptance) ... ok
+test_partial_is_not_reported_as_accepted (test_crossproc_helper.DriverTest.test_partial_is_not_reported_as_accepted) ... ok
+test_pkexec_cancel_and_authorization_failure_are_distinct (test_crossproc_helper.DriverTest.test_pkexec_cancel_and_authorization_failure_are_distinct) ... ok
+test_pkexec_code_with_a_helper_result_is_outcome_unknown (test_crossproc_helper.DriverTest.test_pkexec_code_with_a_helper_result_is_outcome_unknown) ... ok
+test_scope_reclaim_reports_the_write_request_without_fake_advised_bytes (test_crossproc_helper.DriverTest.test_scope_reclaim_reports_the_write_request_without_fake_advised_bytes) ... ok
+test_truncated_block_is_outcome_unknown (test_crossproc_helper.DriverTest.test_truncated_block_is_outcome_unknown) ... ok
+test_unknown_token_is_never_success (test_crossproc_helper.DriverTest.test_unknown_token_is_never_success) ... ok
+test_unknown_uid_is_reported_as_minus_one (test_crossproc_helper.DriverTest.test_unknown_uid_is_reported_as_minus_one) ... ok
+test_zero_bytes_cannot_be_accepted (test_crossproc_helper.DriverTest.test_zero_bytes_cannot_be_accepted) ... ok
+test_a_15_byte_unrelated_name_is_not_treated_as_protected (test_crossproc_helper.FixtureTreeTest.test_a_15_byte_unrelated_name_is_not_treated_as_protected)
+Truncation matching must not become a wildcard on short names. ... ok
+test_ancestry_walk_refuses_an_unprovable_chain (test_crossproc_helper.FixtureTreeTest.test_ancestry_walk_refuses_an_unprovable_chain)
+The walk starts at the helper's own PID, which the fixture lacks. ... ok
+test_app_scope_accepts_multiple_verified_members_in_the_same_scope (test_crossproc_helper.FixtureTreeTest.test_app_scope_accepts_multiple_verified_members_in_the_same_scope) ... ok
+test_app_scope_budget_is_limited_when_charge_is_below_one_gib (test_crossproc_helper.FixtureTreeTest.test_app_scope_budget_is_limited_when_charge_is_below_one_gib) ... ok
+test_app_scope_eagain_is_partial_and_is_not_retried (test_crossproc_helper.FixtureTreeTest.test_app_scope_eagain_is_partial_and_is_not_retried) ... ok
+test_app_scope_reclaim_does_not_require_process_pagemap (test_crossproc_helper.FixtureTreeTest.test_app_scope_reclaim_does_not_require_process_pagemap) ... ok
+test_app_scope_reclaim_is_bounded_to_anon_file_charge_and_one_write (test_crossproc_helper.FixtureTreeTest.test_app_scope_reclaim_is_bounded_to_anon_file_charge_and_one_write) ... ok
+test_app_scope_rejects_a_member_from_another_scope_before_writing (test_crossproc_helper.FixtureTreeTest.test_app_scope_rejects_a_member_from_another_scope_before_writing) ... ok
+test_app_scope_rejects_child_cgroups_before_writing (test_crossproc_helper.FixtureTreeTest.test_app_scope_rejects_child_cgroups_before_writing) ... ok
+test_app_scope_short_write_is_uncertain_and_is_not_retried (test_crossproc_helper.FixtureTreeTest.test_app_scope_short_write_is_uncertain_and_is_not_retried) ... ok
+test_budget_is_respected_and_smaller_than_the_mapping (test_crossproc_helper.FixtureTreeTest.test_budget_is_respected_and_smaller_than_the_mapping) ... ok
+test_capability_requirement_is_specific_to_pageout (test_crossproc_helper.FixtureTreeTest.test_capability_requirement_is_specific_to_pageout) ... ok
+test_exact_region_digest_rejects_same_size_different_mapping (test_crossproc_helper.FixtureTreeTest.test_exact_region_digest_rejects_same_size_different_mapping) ... ok
+test_exited_target_state_is_refused (test_crossproc_helper.FixtureTreeTest.test_exited_target_state_is_refused) ... ok
+test_invalid_credentials_and_pkexec_uid_claims_are_rejected (test_crossproc_helper.FixtureTreeTest.test_invalid_credentials_and_pkexec_uid_claims_are_rejected) ... ok
+test_kernel_thread_without_maps_is_refused (test_crossproc_helper.FixtureTreeTest.test_kernel_thread_without_maps_is_refused) ... ok
+test_matching_requester_uid_passes_the_cross_check (test_crossproc_helper.FixtureTreeTest.test_matching_requester_uid_passes_the_cross_check)
+The same invocation with an honest PKEXEC_UID must get past it. ... ok
+test_missing_or_unknown_cgroup_is_refused_closed (test_crossproc_helper.FixtureTreeTest.test_missing_or_unknown_cgroup_is_refused_closed) ... ok
+test_missing_pkexec_environment_is_refused (test_crossproc_helper.FixtureTreeTest.test_missing_pkexec_environment_is_refused) ... ok
+test_missing_status_is_refused (test_crossproc_helper.FixtureTreeTest.test_missing_status_is_refused) ... ok
+test_no_reclaimable_region_is_reported_as_such_not_as_success (test_crossproc_helper.FixtureTreeTest.test_no_reclaimable_region_is_reported_as_such_not_as_success) ... ok
+test_one_gib_pageout_budget_covers_a_large_mapping_in_one_call (test_crossproc_helper.FixtureTreeTest.test_one_gib_pageout_budget_covers_a_large_mapping_in_one_call) ... ok
+test_other_uid_target_is_refused_even_with_matching_start_time (test_crossproc_helper.FixtureTreeTest.test_other_uid_target_is_refused_even_with_matching_start_time) ... ok
+test_pagemap_scan_limit_is_reported_without_calling_the_backend (test_crossproc_helper.FixtureTreeTest.test_pagemap_scan_limit_is_reported_without_calling_the_backend) ... ok
+test_pageout_budget_is_capped_by_live_rss (test_crossproc_helper.FixtureTreeTest.test_pageout_budget_is_capped_by_live_rss) ... ok
+test_pageout_budget_is_capped_by_private_resident_pages (test_crossproc_helper.FixtureTreeTest.test_pageout_budget_is_capped_by_private_resident_pages) ... ok
+test_pageout_refuses_when_only_present_pages_are_shared (test_crossproc_helper.FixtureTreeTest.test_pageout_refuses_when_only_present_pages_are_shared) ... ok
+test_pageout_selects_only_present_pages_and_skips_swapped_pages (test_crossproc_helper.FixtureTreeTest.test_pageout_selects_only_present_pages_and_skips_swapped_pages) ... ok
+test_pageout_skips_present_pages_that_are_not_exclusively_mapped (test_crossproc_helper.FixtureTreeTest.test_pageout_skips_present_pages_that_are_not_exclusively_mapped) ... ok
+test_pkexec_requester_claim_must_match_kernel_target_uid (test_crossproc_helper.FixtureTreeTest.test_pkexec_requester_claim_must_match_kernel_target_uid)
+PKEXEC_UID alone is insufficient; the target's kernel UIDs must match it. ... ok
+test_pkexec_uses_root_for_both_real_and_effective_uid (test_crossproc_helper.FixtureTreeTest.test_pkexec_uses_root_for_both_real_and_effective_uid) ... ok
+test_private_resident_estimate_with_no_present_page_refuses_before_syscall (test_crossproc_helper.FixtureTreeTest.test_private_resident_estimate_with_no_present_page_refuses_before_syscall) ... ok
+test_protected_executable_is_refused_even_with_unrelated_comm (test_crossproc_helper.FixtureTreeTest.test_protected_executable_is_refused_even_with_unrelated_comm) ... ok
+test_protected_process_is_refused (test_crossproc_helper.FixtureTreeTest.test_protected_process_is_refused) ... ok
+test_reviewed_mapping_summary_must_still_match_after_authorization (test_crossproc_helper.FixtureTreeTest.test_reviewed_mapping_summary_must_still_match_after_authorization) ... ok
+test_root_owned_target_is_refused (test_crossproc_helper.FixtureTreeTest.test_root_owned_target_is_refused) ... ok
+test_scope_hash_mismatch_is_refused_before_syscall (test_crossproc_helper.FixtureTreeTest.test_scope_hash_mismatch_is_refused_before_syscall) ... ok
+test_selected_uid_must_match_the_authorized_requester (test_crossproc_helper.FixtureTreeTest.test_selected_uid_must_match_the_authorized_requester) ... ok
+test_selection_fingerprint_rejects_changed_same_pid_application (test_crossproc_helper.FixtureTreeTest.test_selection_fingerprint_rejects_changed_same_pid_application) ... ok
+test_selection_fingerprint_rejects_changed_scope_or_executable (test_crossproc_helper.FixtureTreeTest.test_selection_fingerprint_rejects_changed_scope_or_executable) ... ok
+test_start_time_mismatch_is_refused (test_crossproc_helper.FixtureTreeTest.test_start_time_mismatch_is_refused) ... ok
+test_stubbed_backend_reports_full_coverage_without_touching_a_process (test_crossproc_helper.FixtureTreeTest.test_stubbed_backend_reports_full_coverage_without_touching_a_process)
+The only path that reaches a 'accepted' verdict is the stub backend. ... ok
+test_system_and_login_session_cgroups_are_refused (test_crossproc_helper.FixtureTreeTest.test_system_and_login_session_cgroups_are_refused) ... ok
+test_target_is_self_is_refused (test_crossproc_helper.FixtureTreeTest.test_target_is_self_is_refused)
+The helper's self-target guard rejects only its own process ID. ... ok
+test_target_uid_real_effective_saved_and_fs_must_match (test_crossproc_helper.FixtureTreeTest.test_target_uid_real_effective_saved_and_fs_must_match) ... ok
+test_truncated_comm_name_still_matches_a_protected_program (test_crossproc_helper.FixtureTreeTest.test_truncated_comm_name_still_matches_a_protected_program)
+The kernel caps comm at 15 bytes, so the name arrives shortened. ... ok
+test_unreadable_executable_is_refused_closed (test_crossproc_helper.FixtureTreeTest.test_unreadable_executable_is_refused_closed) ... ok
+test_unreadable_pagemap_refuses_without_call (test_crossproc_helper.FixtureTreeTest.test_unreadable_pagemap_refuses_without_call) ... ok
+test_build_script_compiles_the_new_helper (test_crossproc_helper.InstallSurfaceTest.test_build_script_compiles_the_new_helper) ... ok
+test_candidate_install_has_gate_checked_nonwriting_preflight (test_crossproc_helper.InstallSurfaceTest.test_candidate_install_has_gate_checked_nonwriting_preflight) ... ok
+test_candidate_preflight_accepts_the_matching_crossproc_helper (test_crossproc_helper.InstallSurfaceTest.test_candidate_preflight_accepts_the_matching_crossproc_helper) ... ok
+test_candidate_preflight_rejects_a_gui_with_a_stale_protocol_marker (test_crossproc_helper.InstallSurfaceTest.test_candidate_preflight_rejects_a_gui_with_a_stale_protocol_marker) ... ok
+test_candidate_preflight_rejects_a_stale_crossproc_helper (test_crossproc_helper.InstallSurfaceTest.test_candidate_preflight_rejects_a_stale_crossproc_helper) ... ok
+test_incompatible_helper_gets_a_distinct_user_facing_preflight_state (test_crossproc_helper.InstallSurfaceTest.test_incompatible_helper_gets_a_distinct_user_facing_preflight_state) ... ok
+test_install_forces_root_ownership_on_the_new_helper (test_crossproc_helper.InstallSurfaceTest.test_install_forces_root_ownership_on_the_new_helper) ... ok
+test_install_places_helper_and_policy_at_the_pinned_paths (test_crossproc_helper.InstallSurfaceTest.test_install_places_helper_and_policy_at_the_pinned_paths) ... ok
+test_m0_m1_build_uses_a_unique_profile_gate (test_crossproc_helper.InstallSurfaceTest.test_m0_m1_build_uses_a_unique_profile_gate) ... ok
+test_preflight_rejects_gate_symbols_without_exact_profile (test_crossproc_helper.InstallSurfaceTest.test_preflight_rejects_gate_symbols_without_exact_profile) ... ok
+test_production_manifests_swap_out_the_ci_gtk_window_wrapper (test_crossproc_helper.InstallSurfaceTest.test_production_manifests_swap_out_the_ci_gtk_window_wrapper) ... ok
+test_uninstall_removes_every_new_file (test_crossproc_helper.InstallSurfaceTest.test_uninstall_removes_every_new_file) ... ok
+test_runtime_helper_probe_accepts_only_the_exact_protocol_marker (test_crossproc_helper.PolicyPreflightFileTest.test_runtime_helper_probe_accepts_only_the_exact_protocol_marker) ... ok
+test_symlink_writable_file_and_wrong_owner_are_rejected (test_crossproc_helper.PolicyPreflightFileTest.test_symlink_writable_file_and_wrong_owner_are_rejected) ... ok
+test_symlinked_parent_is_rejected (test_crossproc_helper.PolicyPreflightFileTest.test_symlinked_parent_is_rejected) ... ok
+test_valid_policy_is_bound_to_the_dedicated_action_and_helper (test_crossproc_helper.PolicyPreflightFileTest.test_valid_policy_is_bound_to_the_dedicated_action_and_helper) ... ok
+test_wrong_action_or_helper_path_fails_preflight (test_crossproc_helper.PolicyPreflightFileTest.test_wrong_action_or_helper_path_fails_preflight) ... ok
+test_action_id_is_the_crossproc_one_and_differs_from_page_cache (test_crossproc_helper.PolicyTest.test_action_id_is_the_crossproc_one_and_differs_from_page_cache) ... ok
+test_bilingual_description_and_message (test_crossproc_helper.PolicyTest.test_bilingual_description_and_message) ... ok
+test_defaults_require_interactive_admin_every_time (test_crossproc_helper.PolicyTest.test_defaults_require_interactive_admin_every_time) ... ok
+test_exec_path_points_at_a_different_helper_than_page_cache (test_crossproc_helper.PolicyTest.test_exec_path_points_at_a_different_helper_than_page_cache) ... ok
+test_installer_checks_the_installed_action_and_fixed_path (test_crossproc_helper.PolicyTest.test_installer_checks_the_installed_action_and_fixed_path) ... ok
+test_no_retained_authorization_annotation (test_crossproc_helper.PolicyTest.test_no_retained_authorization_annotation) ... ok
+test_policy_never_promises_a_fixed_amount (test_crossproc_helper.PolicyTest.test_policy_never_promises_a_fixed_amount) ... ok
+test_well_formed_with_exactly_one_action (test_crossproc_helper.PolicyTest.test_well_formed_with_exactly_one_action) ... ok
+test_binary_embeds_exact_protocol_abi_marker (test_crossproc_helper.ProductionBinaryTest.test_binary_embeds_exact_protocol_abi_marker) ... ok
+test_budget_above_ceiling_is_a_usage_error (test_crossproc_helper.ProductionBinaryTest.test_budget_above_ceiling_is_a_usage_error) ... ok
+test_pid_below_two_is_a_usage_error (test_crossproc_helper.ProductionBinaryTest.test_pid_below_two_is_a_usage_error) ... ok
+test_production_binary_contains_no_test_hooks (test_crossproc_helper.ProductionBinaryTest.test_production_binary_contains_no_test_hooks)
+The test hooks are compiled out, not merely unused. ... ok
+test_unprivileged_run_refuses_and_never_claims_a_target_was_inspected (test_crossproc_helper.ProductionBinaryTest.test_unprivileged_run_refuses_and_never_claims_a_target_was_inspected) ... ok
+test_usage_errors_exit_2_and_print_nothing_to_stdout (test_crossproc_helper.ProductionBinaryTest.test_usage_errors_exit_2_and_print_nothing_to_stdout) ... ok
+test_default_gate_answers_zero (test_crossproc_helper.ProductionBridgeTest.test_default_gate_answers_zero) ... ok
+test_no_test_entry_point_is_exported (test_crossproc_helper.ProductionBridgeTest.test_no_test_entry_point_is_exported) ... ok
+test_the_real_entry_points_are_still_present (test_crossproc_helper.ProductionBridgeTest.test_the_real_entry_points_are_still_present) ... ok
+test_advice_is_pageout_only (test_crossproc_helper.SourceContractTest.test_advice_is_pageout_only) ... ok
+test_helper_accepts_no_path_beyond_the_fixed_helper_name (test_crossproc_helper.SourceContractTest.test_helper_accepts_no_path_beyond_the_fixed_helper_name) ... ok
+test_helper_and_scanner_share_fail_closed_identity_policy (test_crossproc_helper.SourceContractTest.test_helper_and_scanner_share_fail_closed_identity_policy) ... ok
+test_helper_issues_exactly_one_syscall_expression (test_crossproc_helper.SourceContractTest.test_helper_issues_exactly_one_syscall_expression)
+Exactly one place builds the syscall expression. ... ok
+test_helper_never_execs_a_shell_or_sends_a_signal (test_crossproc_helper.SourceContractTest.test_helper_never_execs_a_shell_or_sends_a_signal) ... ok
+test_protected_names_have_one_authoritative_definition (test_crossproc_helper.SourceContractTest.test_protected_names_have_one_authoritative_definition) ... ok
+test_testing_hooks_are_inside_a_conditional (test_crossproc_helper.SourceContractTest.test_testing_hooks_are_inside_a_conditional)
+No test switch may exist in the production build. ... ok
+test_emitter_is_silent_without_ci_and_flushes_with_it (test_native.TestCiMarkerOutputPath.test_emitter_is_silent_without_ci_and_flushes_with_it) ... ok
+test_main_markers_use_the_unbuffered_native_emitter (test_native.TestCiMarkerOutputPath.test_main_markers_use_the_unbuffered_native_emitter) ... ok
+test_authorization_cancel_and_failure_have_distinct_feedback (test_native.TestConfirmationWording.test_authorization_cancel_and_failure_have_distinct_feedback) ... ok
+test_production_warning_does_not_reuse_simulation_sentences (test_native.TestConfirmationWording.test_production_warning_does_not_reuse_simulation_sentences) ... ok
+test_production_warning_states_cost_and_promises_nothing (test_native.TestConfirmationWording.test_production_warning_states_cost_and_promises_nothing) ... ok
+test_simulation_and_production_use_distinct_text (test_native.TestConfirmationWording.test_simulation_and_production_use_distinct_text) ... ok
+test_sample_failure_trigger_is_private_ci_only_and_one_shot (test_native.TestGuiTestBridge.test_sample_failure_trigger_is_private_ci_only_and_one_shot) ... ok
+test_widget_preview_environment_is_ci_gated_and_allowlisted (test_native.TestGuiTestBridge.test_widget_preview_environment_is_ci_gated_and_allowlisted) ... ok
+test_bridge_nonblocking_busy_and_invalid_action (test_native.TestNativeBackend.test_bridge_nonblocking_busy_and_invalid_action) ... kernel accepted the cache reclaim request; reclaimed bytes are not measured
+ok
+test_bridge_reports_spawn_wait_and_abnormal_child_failures (test_native.TestNativeBackend.test_bridge_reports_spawn_wait_and_abnormal_child_failures) ... kernel accepted the cache reclaim request; reclaimed bytes are not measured
+ok
+test_bridge_runs_fake_helper_and_normalizes_complete_result_mapping (test_native.TestNativeBackend.test_bridge_runs_fake_helper_and_normalizes_complete_result_mapping) ... kernel accepted the cache reclaim request; reclaimed bytes are not measured
+kernel rejected the cache reclaim request: Input/output error
+cache reclaim outcome is uncertain (write=1/2, close=ok); do not retry automatically
+ok
+test_exit_codes_126_and_127_need_child_evidence_to_be_attributed (test_native.TestNativeBackend.test_exit_codes_126_and_127_need_child_evidence_to_be_attributed)
+pkexec forwards the child status, so the number alone proves nothing. ... ok
+test_helper_dry_run_and_reject_unknown_mode (test_native.TestNativeBackend.test_helper_dry_run_and_reject_unknown_mode) ... ok
+test_production_clean_is_a_compile_time_gate (test_native.TestNativeBackend.test_production_clean_is_a_compile_time_gate) ... ok
+test_test_helper_does_not_retry_other_write_errors (test_native.TestNativeBackend.test_test_helper_does_not_retry_other_write_errors) ... ok
+test_test_helper_rejects_metadata_and_all_without_writing (test_native.TestNativeBackend.test_test_helper_rejects_metadata_and_all_without_writing) ... ok
+test_test_helper_rejects_non_regular_fifo_target (test_native.TestNativeBackend.test_test_helper_rejects_non_regular_fifo_target) ... ok
+test_test_helper_rejects_symlink_target (test_native.TestNativeBackend.test_test_helper_rejects_symlink_target) ... ok
+test_test_helper_reports_close_error_as_uncertain (test_native.TestNativeBackend.test_test_helper_reports_close_error_as_uncertain) ... ok
+test_test_helper_reports_partial_write_as_uncertain_without_retry (test_native.TestNativeBackend.test_test_helper_reports_partial_write_as_uncertain_without_retry) ... ok
+test_test_helper_retries_eintr_once (test_native.TestNativeBackend.test_test_helper_retries_eintr_once) ... ok
+test_test_helper_writes_only_pagecache_value_to_regular_file (test_native.TestNativeBackend.test_test_helper_writes_only_pagecache_value_to_regular_file) ... ok
+test_unprivileged_cannot_touch_kernel (test_native.TestNativeBackend.test_unprivileged_cannot_touch_kernel) ... ok
+test_production_wrapper_has_no_environment_control_or_ci_logs (test_native.TestProductionGtkWindowBridge.test_production_wrapper_has_no_environment_control_or_ci_logs) ... ok
+test_gui_wording_does_not_claim_system_wide_effect (test_native.TestSelfReclaim.test_gui_wording_does_not_claim_system_wide_effect) ... ok
+test_it_has_no_way_to_name_another_process (test_native.TestSelfReclaim.test_it_has_no_way_to_name_another_process) ... ok
+test_it_reports_an_amount_it_measured_itself (test_native.TestSelfReclaim.test_it_reports_an_amount_it_measured_itself) ... ok
+test_it_skips_shared_and_unreadable_mappings (test_native.TestSelfReclaim.test_it_skips_shared_and_unreadable_mappings) ... ok
+test_marker_states_that_it_cannot_touch_other_processes (test_native.TestSelfReclaim.test_marker_states_that_it_cannot_touch_other_processes) ... ok
+test_runs_and_only_ever_affects_itself (test_native.TestSelfReclaim.test_runs_and_only_ever_affects_itself)
+Drive the real function and check the outcome shape. ... ok
+test_install_asserts_helper_ownership_and_mode (test_polkit_policy.InstallScriptTest.test_install_asserts_helper_ownership_and_mode) ... ok
+test_install_rejects_symlinked_helper (test_polkit_policy.InstallScriptTest.test_install_rejects_symlinked_helper) ... ok
+test_install_sets_strict_mode (test_polkit_policy.InstallScriptTest.test_install_sets_strict_mode) ... ok
+test_install_ships_policy_and_uninstall_removes_it (test_polkit_policy.InstallScriptTest.test_install_ships_policy_and_uninstall_removes_it) ... ok
+test_scripts_parse (test_polkit_policy.InstallScriptTest.test_scripts_parse) ... ok
+test_uninstall_covers_every_installed_file (test_polkit_policy.InstallScriptTest.test_uninstall_covers_every_installed_file) ... ok
+test_action_id_matches_file_name_convention (test_polkit_policy.PolkitPolicyTest.test_action_id_matches_file_name_convention) ... ok
+test_defaults_match_the_documented_authorization_contract (test_polkit_policy.PolkitPolicyTest.test_defaults_match_the_documented_authorization_contract)
+Issue #13 M0 changed the contract from "grant nothing ever" to ... ok
+test_descriptions_and_messages_are_bilingual (test_polkit_policy.PolkitPolicyTest.test_descriptions_and_messages_are_bilingual) ... ok
+test_every_annotation_key_is_expected (test_polkit_policy.PolkitPolicyTest.test_every_annotation_key_is_expected) ... ok
+test_exactly_one_action_is_defined (test_polkit_policy.PolkitPolicyTest.test_exactly_one_action_is_defined) ... ok
+test_exec_path_annotation_pins_the_root_owned_helper (test_polkit_policy.PolkitPolicyTest.test_exec_path_annotation_pins_the_root_owned_helper) ... ok
+test_no_retained_authorization_annotation (test_polkit_policy.PolkitPolicyTest.test_no_retained_authorization_annotation) ... ok
+test_policy_does_not_mention_forbidden_actions (test_polkit_policy.PolkitPolicyTest.test_policy_does_not_mention_forbidden_actions) ... ok
+test_policy_file_exists_and_is_well_formed_xml (test_polkit_policy.PolkitPolicyTest.test_policy_file_exists_and_is_well_formed_xml) ... ok
+test_helper_is_configured_before_it_is_installed (test_polkit_policy.SimulatedInstallTest.test_helper_is_configured_before_it_is_installed) ... /home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_polkit_policy.py:189: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/scripts/install-arch.sh' mode='r' encoding='utf-8'>
+  text = open(os.path.join(ROOT, "scripts", "install-arch.sh"), encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_staging_precedes_system_paths (test_polkit_policy.SimulatedInstallTest.test_staging_precedes_system_paths) ... /home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/tests/test_polkit_policy.py:183: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/arlune_innersea/.codex/worktrees/q12-dof/memreduct-linux-zamak/scripts/install-arch.sh' mode='r' encoding='utf-8'>
+  text = open(os.path.join(ROOT, "scripts", "install-arch.sh"), encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_absent_uses_en_light_without_creating_config (test_preferences_store.TestPreferencesStore.test_absent_uses_en_light_without_creating_config) ... ok
+test_app_directory_and_lock_symlink_are_never_followed (test_preferences_store.TestPreferencesStore.test_app_directory_and_lock_symlink_are_never_followed) ... ok
+test_corrupt_configurations_block_writes_without_replacement (test_preferences_store.TestPreferencesStore.test_corrupt_configurations_block_writes_without_replacement) ... ok
+test_directory_fsync_failure_reads_back_visible_value (test_preferences_store.TestPreferencesStore.test_directory_fsync_failure_reads_back_visible_value) ... ok
+test_invalid_enum_has_distinct_status_and_no_write (test_preferences_store.TestPreferencesStore.test_invalid_enum_has_distinct_status_and_no_write) ... ok
+test_lock_is_private_and_persistent_across_transactions (test_preferences_store.TestPreferencesStore.test_lock_is_private_and_persistent_across_transactions) ... ok
+test_lock_mode_type_and_link_count_are_rejected_without_repair (test_preferences_store.TestPreferencesStore.test_lock_mode_type_and_link_count_are_rejected_without_repair) ... ok
+test_preferences_are_restored_in_a_fresh_process (test_preferences_store.TestPreferencesStore.test_preferences_are_restored_in_a_fresh_process) ... ok
+test_rename_before_failure_is_unchanged_and_rename_after_is_uncertain (test_preferences_store.TestPreferencesStore.test_rename_before_failure_is_unchanged_and_rename_after_is_uncertain) ... ok
+test_reset_from_absent_creates_defaults_only_when_requested (test_preferences_store.TestPreferencesStore.test_reset_from_absent_creates_defaults_only_when_requested) ... ok
+test_reset_is_a_persisted_transaction (test_preferences_store.TestPreferencesStore.test_reset_is_a_persisted_transaction) ... ok
+test_short_write_and_eintr_are_completed_without_data_loss (test_preferences_store.TestPreferencesStore.test_short_write_and_eintr_are_completed_without_data_loss) ... ok
+test_symlink_nonregular_and_permissions_are_distinguished_and_preserved (test_preferences_store.TestPreferencesStore.test_symlink_nonregular_and_permissions_are_distinguished_and_preserved) ... ok
+test_temp_residue_is_ignored_and_openat_fallback_is_used_only_on_enosys (test_preferences_store.TestPreferencesStore.test_temp_residue_is_ignored_and_openat_fallback_is_used_only_on_enosys) ... ok
+test_two_process_updates_merge_under_persistent_flock (test_preferences_store.TestPreferencesStore.test_two_process_updates_merge_under_persistent_flock) ... ok
+test_unknown_future_schema_is_not_downgraded_by_reset_or_set (test_preferences_store.TestPreferencesStore.test_unknown_future_schema_is_not_downgraded_by_reset_or_set) ... ok
+test_valid_read_and_unknown_keys_are_canonicalized_only_on_explicit_save (test_preferences_store.TestPreferencesStore.test_valid_read_and_unknown_keys_are_canonicalized_only_on_explicit_save) ... ok
+test_write_and_file_fsync_failures_keep_old_file_and_clean_owned_temp (test_preferences_store.TestPreferencesStore.test_write_and_file_fsync_failures_keep_old_file_and_clean_owned_temp) ... ok
+test_absolute_xdg_wins_over_fake_home (test_preferences_store.TestProductionPathResolution.test_absolute_xdg_wins_over_fake_home) ... ok
+test_absolute_xdg_with_dot_component_is_rejected_without_home_fallback (test_preferences_store.TestProductionPathResolution.test_absolute_xdg_with_dot_component_is_rejected_without_home_fallback) ... ok
+test_invalid_relative_xdg_falls_back_to_fake_home_config (test_preferences_store.TestProductionPathResolution.test_invalid_relative_xdg_falls_back_to_fake_home_config) ... ok
+test_missing_or_empty_xdg_uses_home_config (test_preferences_store.TestProductionPathResolution.test_missing_or_empty_xdg_uses_home_config) ... ok
+test_production_library_contains_no_test_injection_symbol (test_preferences_store.TestProductionPathResolution.test_production_library_contains_no_test_injection_symbol) ... ok
+test_selected_missing_xdg_does_not_fall_back_to_home (test_preferences_store.TestProductionPathResolution.test_selected_missing_xdg_does_not_fall_back_to_home) ... ok
+test_selected_unsafe_xdg_does_not_fall_back_to_home (test_preferences_store.TestProductionPathResolution.test_selected_unsafe_xdg_does_not_fall_back_to_home) ... ok
+test_symlinked_xdg_root_is_allowed_after_target_validation (test_preferences_store.TestProductionPathResolution.test_symlinked_xdg_root_is_allowed_after_target_validation) ... ok
+
+----------------------------------------------------------------------
+Ran 326 tests in 21.726s
+
+OK (skipped=4)
