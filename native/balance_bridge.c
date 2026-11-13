@@ -569,8 +569,18 @@ int64_t mr_bal_bridge_session_run(uint64_t budget_bytes)
                                        0, 0, 0, 0, 0);
         return 1;
     }
+    /* The budget is the session's own file pages, always.
+     *
+     * A caller-supplied budget was tried and is wrong here: the planner reasons
+     * about the whole machine and proposed 512 MiB while the session held
+     * 2354 MiB, so the run stopped at 512 MiB for no reason the user could see.
+     * The only honest ceiling is what the cgroup actually holds, and asking for
+     * more than that is the EAGAIN case measured on this host. budget_bytes is
+     * therefore ignored; it stays in the signature so callers that pass a plan
+     * value keep compiling, and so the mistake is visible here rather than
+     * silently reintroduced. */
     uint64_t budget = (uint64_t)file_bytes;
-    if (budget_bytes > 0 && budget_bytes < budget) budget = budget_bytes;
+    (void)budget_bytes;
 
     struct mr_bal_run_config config;
     mr_bal_run_config_for_budget(budget, &config);

@@ -2365,11 +2365,34 @@ fn activate(s: &mut MainWindow, target: f64):
                 s.status = label(s.zh, "No pressure evidence yet; nothing will run.", "尚无压力证据，本次不执行。")
                 if s.test_mode: mr_runtime_emit("CI_BALANCED_DISABLED entry=2 reason=no_evidence")
             elif s.bal_action == 0:
-                # The planner decided there is nothing worth reclaiming. Say so;
-                # do not run and then report a zero-byte success.
+                # The planner found no file-first plan. That is not a reason to
+                # do nothing: measured on this host, twelve 512 MiB file-only
+                # requests reclaimed 1116 MiB from the session even while the
+                # planner reported anon_pressure, because the session still held
+                # file pages it could give back. The planner's refusal decides
+                # the *strategy*, not whether the user's click does anything.
+                #
+                # What it must NOT do is fall back to the anonymous path, which
+                # pushes hot pages into swap. The session run below is the same
+                # swappiness=0 file-only request the planner would have made.
                 s.bal_view = 0
-                s.status = bal_plan_why_text(s)
-                if s.test_mode: mr_runtime_emit(f"CI_BALANCED_DISABLED entry=2 reason=no_action state={s.bal_state}")
+                if mr_bal_bridge_session_available() == 0:
+                    s.status = bal_plan_why_text(s)
+                    if s.test_mode: mr_runtime_emit(f"CI_BALANCED_DISABLED entry=2 reason=no_session state={s.bal_state}")
+                else:
+                    let ran = mr_bal_bridge_session_run(0) == 1
+                    s.bal_result_status = mr_bal_bridge_result_status_code()
+                    s.bal_result_stop = mr_bal_bridge_result_stop_code()
+                    s.bal_result_requested = mr_bal_bridge_result_requested_value()
+                    s.bal_result_accepted = mr_bal_bridge_result_accepted_value()
+                    s.bal_view = 1
+                    if ran:
+                        s.status = mr_bal_bridge_result_headline(if s.zh: 1 else: 0)
+                    else:
+                        s.status = bal_plan_why_text(s)
+                    if s.test_mode:
+                        let outcome = if ran: "executed" else: "not-run"
+                        mr_runtime_emit(f"CI_BALANCED_RUN outcome={outcome} accepted={s.bal_result_accepted} fallback=file_only")
             else:
                 # "Free memory" means the whole session, not one application:
                 # measured here, the largest app scope held 107 MiB of file
