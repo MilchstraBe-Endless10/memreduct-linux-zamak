@@ -52,6 +52,7 @@ extern fn mr_runtime_sample_failure_requested() -> i64
 extern fn mr_runtime_consume_sample_failure_trigger() -> i64
 extern fn mr_runtime_log_canvas_font() -> i64
 extern fn mr_runtime_start_settings() -> i64
+extern fn mr_runtime_start_balanced_picker() -> i64
 extern fn mr_runtime_widget_preview_resource() -> i64
 extern fn mr_runtime_schedule_capture() -> i64
 extern fn mr_runtime_selected_group() -> i64
@@ -507,12 +508,19 @@ fn bal_scope_index(s: &MainWindow, slot: i64) -> i64:
 
 # A short, human-readable size for a scope row. Deliberately coarse: the exact
 # byte count would imply a precision the measurement does not have.
+# Integer-only size text. `/` on i64 produces a float in this language, which
+# is how a row rendered "file 58.12890625 MiB": the value was right and the
+# formatting was wrong. `//` is the integer division, and the decimal is built
+# from a remainder rather than a float.
 fn bal_mib_short(bytes: i64) -> string:
     if bytes < 0: return "—"
-    let mib = bytes / 1048576
-    if mib >= 1024:
-        let tenths = bytes * 10 / 1073741824
+    if bytes >= 1073741824:
+        let tenths = bytes * 10 // 1073741824
         return f"{tenths // 10}.{tenths % 10} GiB"
+    let mib = bytes // 1048576
+    if mib < 10:
+        let tenths = bytes * 10 // 1048576
+        return f"{tenths // 10}.{tenths % 10} MiB"
     f"{mib} MiB"
 
 # Running the balanced clean. The scope is chosen by the user before this is
@@ -528,6 +536,21 @@ fn bal_rescan(s: &mut MainWindow):
             if mr_bal_bridge_scope_refresh(i) == 1 and mr_bal_bridge_scope_eligible() == 1:
                 s.bal_scope_index = i
                 break
+
+# The budget the Run button would actually use for the selected scope: the
+# plan's request, capped by that scope's own file pages. Showing the plan's
+# whole-machine number next to a Run button for one scope was the mismatch in
+# the first screenshot of this panel.
+fn bal_scope_budget_text(s: &MainWindow) -> string:
+    if s.bal_scope_index < 0:
+        return label(s.zh, "Request budget: 0 (nothing will be submitted)", "请求预算：0（不提交）")
+    let file_bytes = mr_bal_bridge_scope_file_bytes(s.bal_scope_index)
+    if file_bytes <= 0:
+        return label(s.zh, "This application has no reclaimable file pages.", "此应用没有可回收的文件页。")
+    let mut budget = s.bal_request_bytes
+    if budget <= 0 or budget > file_bytes: budget = file_bytes
+    let prefix = label(s.zh, "Request budget (not an amount freed): ", "请求预算（不是释放量）：")
+    prefix + bal_mib_short(budget)
 
 fn bal_scope_label(index: i64) -> string:
     if index < 0: return ""
@@ -2750,6 +2773,10 @@ fn main():
     )
     state.status = preferences_load_feedback(initial_zh, preferences_status)
     if mr_runtime_start_settings() != 0: set_settings_open(&mut state, true)
+    if mr_runtime_start_balanced_picker() != 0:
+        bal_refresh(&mut state)
+        bal_rescan(&mut state)
+        state.bal_view = 1
     refresh(&mut state)
     app.run(window, state)
     if test_mode: mr_runtime_emit("CI_APP_RETURNED")
@@ -2763,7 +2790,7 @@ fn draw_balanced_picker(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary
     p.text(panel.x + 9.0, panel.y + 8.0, label(s.zh, "Balanced clean — choose one application", "均衡清理 — 选择一个应用"), fg, size=8.0)
     # The budget line is a request, and says so, because the kernel decides how
     # much of it to honour and never reports what stayed out.
-    p.text(panel.x + 9.0, panel.y + 24.0, bal_plan_budget_text(s), secondary, size=8.0)
+    p.text(panel.x + 9.0, panel.y + 24.0, bal_scope_budget_text(s), secondary, size=8.0)
     p.text(panel.x + 9.0, panel.y + 38.0, label(s.zh, "File pages only: anonymous pages are never requested here.", "仅文件页：此处从不请求匿名页。"), secondary, size=7.0)
 
     if s.bal_scope_count == 0:
@@ -2792,8 +2819,17 @@ fn draw_balanced_picker(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary
                 detail = detail + label(s.zh, " · no reclaimable file pages", " · 无可回收文件页")
             p.text(rect.x + 4.0, rect.y + 13.0, detail, secondary, size=7.0)
 
+    # The line above the buttons explains why Run is (or is not) available.
+    # A disabled button with no stated reason is the same failure as a fake
+    # success, just quieter.
     if s.bal_scope_index < 0:
         p.text(panel.x + 9.0, panel.bottom() - 46.0, label(s.zh, "Select an application above.", "请在上方选择一个应用。"), secondary, size=7.0)
+    elif s.bal_action == 0:
+        # Chosen, but the planner will not act. Say which state it saw.
+        let why = bal_plan_why_text(s)
+        p.text(panel.x + 9.0, panel.bottom() - 46.0, why, secondary, size=7.0)
+        if s.test_mode:
+            mr_runtime_emit(f"CI_BALANCED_PICKER_WHY state={s.bal_state} action={s.bal_action}")
     else:
         let chosen = bal_scope_label(s.bal_scope_index)
         p.text(panel.x + 9.0, panel.bottom() - 46.0, label(s.zh, f"Selected: {chosen}", f"已选择：{chosen}"), secondary, size=7.0)
@@ -2805,3 +2841,8 @@ fn draw_balanced_picker(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary
     if s.test_mode:
         let run_text = if can_run: "true" else: "false"
         mr_runtime_emit(f"CI_BALANCED_PICKER scopes={s.bal_scope_count} selected={s.bal_scope_index} can_run={run_text}")
+        # Publish the first row's rect for the harness. Recomputing the layout
+        # in a shell script is how the first click test missed every row.
+        if s.bal_scope_count > 0:
+            let row0 = bal_row_rect(&panel, 0)
+            mr_runtime_emit(f"CI_BALANCED_ROW0 x={row0.x} y={row0.y} w={row0.w} h={row0.h}")

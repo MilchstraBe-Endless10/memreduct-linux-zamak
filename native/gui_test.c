@@ -559,6 +559,19 @@ long long mr_runtime_start_settings(void)
     return mr_runtime_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
 }
 
+/* Test-only: open the balanced-clean scope picker at startup.
+ *
+ * The picker normally appears only when the planner proposes an action, and on
+ * an anonymous-heavy host it correctly proposes nothing. Without this hook the
+ * picker's rendering and its click handling could only be exercised on a machine
+ * that happened to be in the right state, which is not a test. The hook selects
+ * nothing and reclaims nothing; it only opens the panel. */
+long long mr_runtime_start_balanced_picker(void)
+{
+    const char *value = getenv("MEMREDUCT_CI_START_BALANCED_PICKER");
+    return mr_runtime_mode() != 0 && value != NULL && strcmp(value, "1") == 0 ? 1 : 0;
+}
+
 long long mr_runtime_widget_preview_resource(void)
 {
     const char *value = getenv("MEMREDUCT_CI_WIDGET_PREVIEW");
