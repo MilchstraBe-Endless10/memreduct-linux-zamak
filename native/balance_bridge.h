@@ -13,6 +13,7 @@
 
 #include <stdint.h>
 
+
 /* Availability. All five inputs are capabilities, not measurements. */
 int64_t mr_bal_bridge_entry(int64_t built_in, int64_t gate_enabled,
                             int64_t helper_ready, int64_t busy,
@@ -59,10 +60,27 @@ int64_t mr_bal_bridge_scan_scopes(void);
 const char *mr_bal_bridge_scope_name(int64_t index);
 const char *mr_bal_bridge_scope_label(int64_t index);
 
+/* Full skip/selection picture for one scope, so the picker can explain itself
+ * instead of listing a name and a number. */
+struct mr_bal_scope_view {
+    int64_t file_bytes;      /* reclaimable file pages charged here */
+    int64_t anon_bytes;      /* anonymous, which a file-first run must not touch */
+    int64_t current_bytes;   /* memory.current */
+    int64_t eligible;        /* 1 when this scope would be acted on */
+};
+int mr_bal_bridge_scope_view(int64_t index, struct mr_bal_scope_view *out);
+
 /* File-page bytes charged to the i-th scanned scope, or -1 when unreadable.
  * This is the only input to "which scope is worth asking"; a scope under
  * active use has pages the kernel will not give back and should lose. */
 int64_t mr_bal_bridge_scope_file_bytes(int64_t index);
+
+/* Scalar form of mr_bal_scope_view for the Zamak controller: refresh the view
+ * for one index, then read the fields. */
+int64_t mr_bal_bridge_scope_refresh(int64_t index);
+int64_t mr_bal_bridge_scope_anon_bytes(void);
+int64_t mr_bal_bridge_scope_current_bytes(void);
+int64_t mr_bal_bridge_scope_eligible(void);
 
 /* Run the plan against the i-th scanned scope with the given budget.
  * Returns 1 when something was attempted, 0 when it refused or there was

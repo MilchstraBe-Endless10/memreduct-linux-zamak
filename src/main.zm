@@ -41,6 +41,10 @@ extern fn mr_bal_bridge_plan_request_bytes() -> i64
 extern fn mr_bal_bridge_scope_name(index: i64) -> string
 extern fn mr_bal_bridge_scope_label(index: i64) -> string
 extern fn mr_bal_bridge_scope_file_bytes(index: i64) -> i64
+extern fn mr_bal_bridge_scope_refresh(index: i64) -> i64
+extern fn mr_bal_bridge_scope_anon_bytes() -> i64
+extern fn mr_bal_bridge_scope_current_bytes() -> i64
+extern fn mr_bal_bridge_scope_eligible() -> i64
 extern fn mr_bal_bridge_run(index: i64, budget: i64, batch: i64, max_batches: i64, psi_stop: i64) -> i64
 extern fn mr_runtime_mode() -> i64
 extern fn mr_runtime_timeout_ms() -> i64
@@ -231,6 +235,8 @@ struct MainWindow:
     # The scope the user picked. -1 means none, and no run may happen then.
     bal_scope_index: i64
     bal_scope_count: i64
+    bal_scope_scroll: i64
+    bal_focus: i64
     xproc_simulation: bool
     main_close_guard_ready: bool
     xproc_view: i64
@@ -471,8 +477,58 @@ fn bal_plan_budget_text(s: &MainWindow) -> string:
     if not bal_plan_publish(s): return ""
     mr_bal_bridge_plan_budget(zh)
 
+# Scope picker for the balanced clean. The user chooses which application to
+# reclaim in; nothing picks one on their behalf. The panel lists every app scope
+# with its file/anon split so "why is this one greyed out" has an answer on
+# screen rather than in a commit message.
+fn bal_panel(s: &MainWindow) -> ui.Rect:
+    ui.rect((s.width - 320.0) / 2.0, (s.height - 300.0) / 2.0, 320.0, 300.0)
+
+const BAL_ROW_SLOTS: i64 = 6
+
+fn bal_row_rect(panel: &ui.Rect, slot: i64) -> ui.Rect:
+    ui.rect(panel.x + 8.0, panel.y + 58.0 + f64(slot) * 32.0, panel.w - 16.0, 30.0)
+
+fn bal_run_button_rect(panel: &ui.Rect) -> ui.Rect:
+    ui.rect(panel.x + 96.0, panel.bottom() - 30.0, 130.0, 22.0)
+
+fn bal_cancel_button_rect(panel: &ui.Rect) -> ui.Rect:
+    ui.rect(panel.x + 232.0, panel.bottom() - 30.0, 78.0, 22.0)
+
+fn bal_refresh_button_rect(panel: &ui.Rect) -> ui.Rect:
+    ui.rect(panel.x + 10.0, panel.bottom() - 30.0, 78.0, 22.0)
+
+fn bal_scope_visible(s: &MainWindow, slot: i64) -> bool:
+    let index = s.bal_scope_scroll + slot
+    index < s.bal_scope_count
+
+fn bal_scope_index(s: &MainWindow, slot: i64) -> i64:
+    s.bal_scope_scroll + slot
+
+# A short, human-readable size for a scope row. Deliberately coarse: the exact
+# byte count would imply a precision the measurement does not have.
+fn bal_mib_short(bytes: i64) -> string:
+    if bytes < 0: return "—"
+    let mib = bytes / 1048576
+    if mib >= 1024:
+        let tenths = bytes * 10 / 1073741824
+        return f"{tenths // 10}.{tenths % 10} GiB"
+    f"{mib} MiB"
+
 # Running the balanced clean. The scope is chosen by the user before this is
 # called; nothing here enumerates and picks on the user's behalf.
+fn bal_rescan(s: &mut MainWindow):
+    s.bal_scope_count = mr_bal_bridge_scan_scopes()
+    s.bal_scope_scroll = 0
+    if s.bal_scope_index >= s.bal_scope_count: s.bal_scope_index = -1
+    # Pre-select the first scope that can actually be reclaimed, so the common
+    # case is one click, but never auto-select a scope with nothing to give.
+    if s.bal_scope_index < 0:
+        for i in 0..s.bal_scope_count:
+            if mr_bal_bridge_scope_refresh(i) == 1 and mr_bal_bridge_scope_eligible() == 1:
+                s.bal_scope_index = i
+                break
+
 fn bal_scope_label(index: i64) -> string:
     if index < 0: return ""
     mr_bal_bridge_scope_label(index)
@@ -492,21 +548,6 @@ fn bal_run_selected(s: &mut MainWindow) -> bool:
     if s.test_mode:
         mr_runtime_emit(f"CI_BALANCED_RUN scope={bal_scope_label(s.bal_scope_index)} status={s.bal_result_status} stop={s.bal_result_stop} requested={s.bal_result_requested} accepted={s.bal_result_accepted}")
     return true
-
-# Choose the scope with the largest reclaimable file-page share. Reads only.
-fn pick_balanced_scope() -> i64:
-    if mr_bal_bridge_scan_scopes() <= 0: return -1
-    let mut best: i64 = -1
-    let mut best_file: i64 = -1
-    let count = mr_bal_bridge_scan_scopes()
-    for i in 0..count:
-        let f = mr_bal_bridge_scope_file_bytes(i)
-        if f > best_file:
-            best_file = f
-            best = i
-    if best_file <= 0: return -1
-    best
-
 fn bal_plan_skips_text(s: &MainWindow) -> string:
     let zh: i64 = if s.zh: 1 else: 0
     if not bal_plan_publish(s): return ""
@@ -1264,7 +1305,18 @@ fn xproc_hit(s: &MainWindow, x: f64, y: f64) -> f64:
         return 840.0
     0.0
 
+fn bal_hit(s: &MainWindow, x: f64, y: f64) -> f64:
+    let panel = bal_panel(s)
+    for slot in 0..BAL_ROW_SLOTS:
+        if not bal_scope_visible(s, slot): continue
+        if bal_row_rect(&panel, slot).contains(x, y): return 950.0 + f64(bal_scope_index(s, slot))
+    if bal_refresh_button_rect(&panel).contains(x, y): return 920.0
+    if bal_run_button_rect(&panel).contains(x, y): return 921.0
+    if bal_cancel_button_rect(&panel).contains(x, y): return 922.0
+    0.0
+
 fn hit(s: &MainWindow, x: f64, y: f64) -> f64:
+    if s.bal_view == 1: return bal_hit(s, x, y)
     if s.xproc_view != 0: return xproc_hit(s, x, y)
     if s.clean_state == 1:
         if clean_confirm_button(true).contains(x, y): return 710.0
@@ -1491,6 +1543,9 @@ fn xproc_button(p: &ui.Painter, rect: &ui.Rect, text: string, focused: bool, ena
     else: p.text(rect.x + 8.0, rect.y + 6.0, text, disabled, size=8.0)
 
 fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Color, disabled: &ui.Color, border: &ui.Color, surface: &ui.Color, hot: &ui.Color):
+    if s.bal_view == 1:
+        draw_balanced_picker(s, p, fg, secondary, disabled, border, surface, hot)
+        return
     if s.xproc_view == 0: return
     let panel = xproc_panel(s)
     p.fill_rect(&panel, surface)
@@ -1619,7 +1674,6 @@ fn draw_xproc(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Colo
             p.text(panel.x + 9.0, panel.y + 190.0, label(s.zh, f"MemAvailable KiB: {s.xproc_before_available} → {s.xproc_after_available}", f"MemAvailable（KiB）：{s.xproc_before_available} → {s.xproc_after_available}"), secondary, size=7.0)
             p.text(panel.x + 9.0, panel.y + 205.0, label(s.zh, "Scope and MemAvailable deltas are observations.", "作用域和 MemAvailable 变化仅是观测值。"), secondary, size=7.0)
         xproc_button(p, xproc_result_close_rect(&panel), label(s.zh, "Close", "关闭"), true, true, fg, disabled, border, surface, hot)
-
 fn draw(s: &mut MainWindow, p: &ui.Painter):
     let old_w = s.width
     let old_h = s.height
@@ -2074,6 +2128,30 @@ fn open_clean_menu(s: &mut MainWindow, source: string):
     log_popup(s, "clean", &clean_popup_rect(s))
 
 fn activate(s: &mut MainWindow, target: f64):
+    if s.bal_view == 1:
+        if target == 922.0:
+            s.bal_view = 0
+            s.canvas.redraw()
+            return
+        if target == 920.0:
+            bal_rescan(s)
+            s.canvas.redraw()
+            return
+        if target == 921.0:
+            if bal_run_selected(s):
+                s.bal_view = 0
+            s.canvas.redraw()
+            return
+        if target >= 950.0:
+            let index = i64(target - 950.0)
+            # Selecting a scope refreshes its counters so the detail line the
+            # user is about to act on is the one measured most recently.
+            if mr_bal_bridge_scope_refresh(index) == 1:
+                s.bal_scope_index = index
+            s.canvas.redraw()
+            return
+        s.canvas.redraw()
+        return
     if s.xproc_view == 1:
         if target >= 900.0 and target < 932.0:
             xproc_set_selected(s, i64(target - 900.0))
@@ -2257,21 +2335,22 @@ fn activate(s: &mut MainWindow, target: f64):
                 s.status = bal_plan_why_text(s)
                 if s.test_mode: mr_runtime_emit(f"CI_BALANCED_DISABLED entry=2 reason=no_action state={s.bal_state}")
             else:
-                # Pick the scope with the most file pages, not the first by name:
-                # the first by name is arbitrary and may be the one the user just
-                # interacted with, whose pages would come straight back.
-                s.bal_scope_count = mr_bal_bridge_scan_scopes()
-                s.bal_scope_index = pick_balanced_scope()
-                if s.bal_scope_index < 0:
+                # Show the list and let the user choose. Picking a scope on the
+                # user's behalf is a decision they cannot see or undo, and
+                # "which application did it just touch" is exactly the question
+                # this product must always be able to answer.
+                s.bal_scope_index = -1
+                bal_rescan(s)
+                if s.bal_scope_count == 0:
                     s.bal_view = 0
-                    s.status = label(s.zh, "No application scope has reclaimable file pages.", "没有应用作用域存在可回收文件页。")
-                    if s.test_mode: mr_runtime_emit(f"CI_BALANCED_DISABLED entry=2 reason=no_scope scanned={s.bal_scope_count}")
-                elif bal_run_selected(s):
-                    s.bal_view = 1
-                    s.status = mr_bal_bridge_result_headline(if s.zh: 1 else: 0)
-                    if s.test_mode: mr_runtime_emit(f"CI_BALANCED_PLAN state={s.bal_state} action={s.bal_action} request_bytes={s.bal_request_bytes} executed=true")
+                    s.status = label(s.zh, "No application scope is reclaimable here.", "此处没有可回收的应用作用域。")
+                    if s.test_mode: mr_runtime_emit("CI_BALANCED_DISABLED entry=2 reason=no_scope scanned=0")
                 else:
-                    s.bal_view = 0
+                    s.bal_view = 1
+                    s.bal_focus = 1
+                    s.status = label(s.zh, "Choose the application to release file pages in.", "请选择要释放文件页的应用。")
+                    if s.test_mode:
+                        mr_runtime_emit(f"CI_BALANCED_PICKER scopes={s.bal_scope_count} selected={s.bal_scope_index}")
         elif index == 8:
             if clean_operation_busy(s.clean_state):
                 s.status = label(s.zh, "Wait for the current memory operation to finish.", "请等待当前内存操作完成。")
@@ -2665,7 +2744,7 @@ fn main():
         bal_result_status: 0, bal_result_stop: 0, bal_result_requested: 0,
         bal_result_accepted: 0, bal_result_batches_ok: 0,
         bal_result_batches_rejected: 0, bal_result_available_delta: 0, bal_view: 0,
-        bal_scope_index: -1, bal_scope_count: 0,
+        bal_scope_index: -1, bal_scope_count: 0, bal_scope_scroll: 0, bal_focus: 0,
         preferences_load_status: preferences_status,
         settings_open: false, settings: settings_ui.initial(test_mode)
     )
@@ -2674,3 +2753,55 @@ fn main():
     refresh(&mut state)
     app.run(window, state)
     if test_mode: mr_runtime_emit("CI_APP_RETURNED")
+
+
+
+fn draw_balanced_picker(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, secondary: &ui.Color, disabled: &ui.Color, border: &ui.Color, surface: &ui.Color, hot: &ui.Color):
+    let panel = bal_panel(s)
+    p.fill_rect(&panel, surface)
+    draw_outline(p, &panel, border)
+    p.text(panel.x + 9.0, panel.y + 8.0, label(s.zh, "Balanced clean — choose one application", "均衡清理 — 选择一个应用"), fg, size=8.0)
+    # The budget line is a request, and says so, because the kernel decides how
+    # much of it to honour and never reports what stayed out.
+    p.text(panel.x + 9.0, panel.y + 24.0, bal_plan_budget_text(s), secondary, size=8.0)
+    p.text(panel.x + 9.0, panel.y + 38.0, label(s.zh, "File pages only: anonymous pages are never requested here.", "仅文件页：此处从不请求匿名页。"), secondary, size=7.0)
+
+    if s.bal_scope_count == 0:
+        p.text(panel.x + 9.0, panel.y + 90.0, label(s.zh, "No application scope is reclaimable right now.", "当前没有可回收的应用作用域。"), secondary, size=8.0)
+    else:
+        for slot in 0..BAL_ROW_SLOTS:
+            if not bal_scope_visible(s, slot): continue
+            let index = bal_scope_index(s, slot)
+            let rect = bal_row_rect(&panel, slot)
+            if index == s.bal_scope_index: p.fill_rect(&rect, hot)
+            if s.bal_focus == 1 and index == s.bal_scope_index: draw_outline(p, &rect, border)
+            let refreshed = mr_bal_bridge_scope_refresh(index) == 1
+            let file_bytes = mr_bal_bridge_scope_file_bytes(index)
+            let anon_bytes = if refreshed: mr_bal_bridge_scope_anon_bytes() else: -1
+            let eligible = refreshed and mr_bal_bridge_scope_eligible() == 1
+            let name_text = bal_scope_label(index)
+            if eligible: p.text(rect.x + 4.0, rect.y + 1.0, name_text, fg, size=8.0)
+            else: p.text(rect.x + 4.0, rect.y + 1.0, name_text, disabled, size=8.0)
+            # Two numbers, never summed: file pages are what a run may take,
+            # anonymous pages are what it must not touch. Adding them would
+            # describe a quantity that no action here can move.
+            let detail_en = f"file {bal_mib_short(file_bytes)} · anon {bal_mib_short(anon_bytes)}"
+            let detail_zh = f"文件页 {bal_mib_short(file_bytes)} · 匿名页 {bal_mib_short(anon_bytes)}"
+            let mut detail = if s.zh: detail_zh else: detail_en
+            if not eligible:
+                detail = detail + label(s.zh, " · no reclaimable file pages", " · 无可回收文件页")
+            p.text(rect.x + 4.0, rect.y + 13.0, detail, secondary, size=7.0)
+
+    if s.bal_scope_index < 0:
+        p.text(panel.x + 9.0, panel.bottom() - 46.0, label(s.zh, "Select an application above.", "请在上方选择一个应用。"), secondary, size=7.0)
+    else:
+        let chosen = bal_scope_label(s.bal_scope_index)
+        p.text(panel.x + 9.0, panel.bottom() - 46.0, label(s.zh, f"Selected: {chosen}", f"已选择：{chosen}"), secondary, size=7.0)
+
+    xproc_button(p, bal_refresh_button_rect(&panel), label(s.zh, "Refresh", "刷新"), s.bal_focus == 3, true, fg, disabled, border, surface, hot)
+    let can_run = s.bal_scope_index >= 0 and s.bal_action != 0 and s.bal_request_bytes > 0
+    xproc_button(p, bal_run_button_rect(&panel), label(s.zh, "Run balanced clean", "执行均衡清理"), s.bal_focus == 1, can_run, fg, disabled, border, surface, hot)
+    xproc_button(p, bal_cancel_button_rect(&panel), label(s.zh, "Close", "关闭"), s.bal_focus == 2, true, fg, disabled, border, surface, hot)
+    if s.test_mode:
+        let run_text = if can_run: "true" else: "false"
+        mr_runtime_emit(f"CI_BALANCED_PICKER scopes={s.bal_scope_count} selected={s.bal_scope_index} can_run={run_text}")

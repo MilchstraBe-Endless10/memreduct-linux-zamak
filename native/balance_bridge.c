@@ -249,6 +249,105 @@ const char *mr_bal_bridge_scope_label(int64_t index)
     return mr_bal_exec_app_label(mr_bal_exec_scope_name(index));
 }
 
+/* Reads the three counters a picker row shows. Separate from the executor so
+ * the panel never opens memory.reclaim just to display a number. */
+int mr_bal_bridge_scope_view(int64_t index, struct mr_bal_scope_view *out)
+{
+    if (out == NULL) return -1;
+    memset(out, 0, sizeof(*out));
+    out->file_bytes = -1;
+    out->anon_bytes = -1;
+    out->current_bytes = -1;
+    if (index < 0 || index >= scanned_count) return -1;
+
+    int64_t file = mr_bal_bridge_scope_file_bytes(index);
+    out->file_bytes = file;
+
+    const char *root = mr_bal_bridge_scope_root();
+    if (root[0] == '\0') return -1;
+    int fd = mr_bal_exec_open_scope(root, mr_bal_exec_scope_name(index));
+    if (fd < 0) return -1;
+
+    int stat_fd = openat(fd, "memory.stat", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (stat_fd >= 0) {
+        char text[4096];
+        ssize_t got = read(stat_fd, text, sizeof(text) - 1);
+        (void)close(stat_fd);
+        if (got > 0) {
+            text[got] = '\0';
+            for (char *line = text; *line != '\0';) {
+                char *line_end = strchr(line, '\n');
+                if (line_end == NULL) line_end = line + strlen(line);
+                if (strncmp(line, "anon ", 5) == 0) {
+                    uint64_t value = 0;
+                    int digits = 0;
+                    for (char *p = line + 5; *p >= '0' && *p <= '9'; p++) {
+                        value = value * 10u + (uint64_t)(*p - '0');
+                        digits++;
+                    }
+                    if (digits > 0) out->anon_bytes = (int64_t)value;
+                }
+                if (*line_end == '\0') break;
+                line = line_end + 1;
+            }
+        }
+    }
+    int current_fd = openat(fd, "memory.current", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (current_fd >= 0) {
+        char text[64];
+        ssize_t got = read(current_fd, text, sizeof(text) - 1);
+        (void)close(current_fd);
+        if (got > 0) {
+            text[got] = '\0';
+            uint64_t value = 0;
+            int digits = 0;
+            for (char *p = text; *p >= '0' && *p <= '9'; p++) {
+                value = value * 10u + (uint64_t)(*p - '0');
+                digits++;
+            }
+            if (digits > 0) out->current_bytes = (int64_t)value;
+        }
+    }
+    (void)close(fd);
+    /* Eligible means there is something a file-first run could actually take.
+     * A scope with no file pages is listed but cannot be chosen, which is the
+     * difference between "nothing here" and "not allowed". */
+    out->eligible = out->file_bytes > 0 ? 1 : 0;
+    return 0;
+}
+
+static struct mr_bal_scope_view last_view;
+static int last_view_valid;
+
+int64_t mr_bal_bridge_scope_refresh(int64_t index)
+{
+    /* Clear before filling: a failed refresh must not leave the previous
+     * scope's numbers readable, because the picker would then draw one
+     * application's counters next to another application's name. */
+    memset(&last_view, 0, sizeof(last_view));
+    last_view.file_bytes = -1;
+    last_view.anon_bytes = -1;
+    last_view.current_bytes = -1;
+    last_view.eligible = 0;
+    last_view_valid = mr_bal_bridge_scope_view(index, &last_view) == 0;
+    return last_view_valid ? 1 : 0;
+}
+
+int64_t mr_bal_bridge_scope_anon_bytes(void)
+{
+    return last_view_valid ? last_view.anon_bytes : -1;
+}
+
+int64_t mr_bal_bridge_scope_current_bytes(void)
+{
+    return last_view_valid ? last_view.current_bytes : -1;
+}
+
+int64_t mr_bal_bridge_scope_eligible(void)
+{
+    return last_view_valid ? last_view.eligible : 0;
+}
+
 int64_t mr_bal_bridge_scope_file_bytes(int64_t index)
 {
     if (index < 0 || index >= scanned_count) return -1;

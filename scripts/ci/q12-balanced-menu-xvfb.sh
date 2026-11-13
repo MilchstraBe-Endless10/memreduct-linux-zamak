@@ -170,13 +170,27 @@ printf 'CLICK row9 at %s,%s (row %s,%s %sx%s, window %s,%s)\n' "$click_x" "$clic
 xdotool mousemove "$click_x" "$click_y" click 1
 sleep 1.0
 
-# The row must answer. Either it produced a plan or it said why it could not;
-# silence would mean the click missed the row entirely.
-if ! grep -qE 'CI_BALANCED_PLAN|CI_BALANCED_DISABLED' "$artifact_dir/app.log"; then
+# The row must answer. Either it opened the scope picker (the normal path) or it
+# said why it could not; silence would mean the click missed the row entirely.
+if ! grep -qE 'CI_BALANCED_PICKER|CI_BALANCED_DISABLED' "$artifact_dir/app.log"; then
   printf 'FAIL clicking the tenth row produced no CI_BALANCED_* line\n' | tee -a "$harness_log" >&2
   exit 1
 fi
 grep -E 'CI_BALANCED' "$artifact_dir/app.log" | tee -a "$harness_log"
+
+# If the picker opened, the panel must be visible in the window and offer a
+# selectable scope. A picker that draws nothing is worse than no picker.
+if grep -q 'CI_BALANCED_PICKER' "$artifact_dir/app.log"; then
+  import -window "$window_id" "$artifact_dir/picker.png"
+  identify "$artifact_dir/picker.png" >>"$harness_log"
+  scopes="$(grep -o 'CI_BALANCED_PICKER scopes=[0-9]*' "$artifact_dir/app.log" | head -1 | cut -d= -f2)"
+  printf 'PICKER_SCOPES=%s\n' "$scopes" >>"$harness_log"
+  if [[ -z "$scopes" || "$scopes" == "0" ]]; then
+    printf 'FAIL the picker opened with no selectable scope\n' | tee -a "$harness_log" >&2
+    exit 1
+  fi
+  printf 'PASS picker opened with %s scope(s)\n' "$scopes" >>"$harness_log"
+fi
 printf 'PASS balanced row reachable by pointer\n' >>"$harness_log"
 
 # Terminate cleanly and let the harness record the exit.

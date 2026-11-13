@@ -85,6 +85,30 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(self.lib.mr_bal_bridge_scope_file_bytes(-1), -1)
         self.assertEqual(self.lib.mr_bal_bridge_scope_file_bytes(10_000), -1)
 
+    def test_scope_view_reports_the_three_counters(self):
+        """The picker shows file, anon and current; summing file+anon would
+        describe a quantity no action here can move."""
+        count = self.lib.mr_bal_bridge_scan_scopes()
+        if count == 0:
+            self.skipTest("no app scopes on this host")
+        self.lib.mr_bal_bridge_scope_refresh.argtypes = [ctypes.c_int64]
+        self.lib.mr_bal_bridge_scope_refresh.restype = ctypes.c_int64
+        for name in ("mr_bal_bridge_scope_eligible",
+                     "mr_bal_bridge_scope_anon_bytes",
+                     "mr_bal_bridge_scope_current_bytes"):
+            getattr(self.lib, name).argtypes = []
+            getattr(self.lib, name).restype = ctypes.c_int64
+        self.assertEqual(self.lib.mr_bal_bridge_scope_refresh(0), 1)
+        anon = self.lib.mr_bal_bridge_scope_anon_bytes()
+        cur = self.lib.mr_bal_bridge_scope_current_bytes()
+        self.assertGreaterEqual(anon, -1)
+        self.assertGreaterEqual(cur, -1)
+        if cur >= 0 and anon >= 0:
+            self.assertLessEqual(anon, cur, "anon cannot exceed the scope total")
+        # An out-of-range index leaves the view invalid rather than stale.
+        self.assertEqual(self.lib.mr_bal_bridge_scope_refresh(-1), 0)
+        self.assertEqual(self.lib.mr_bal_bridge_scope_eligible(), 0)
+
     def test_run_with_zero_budget_refuses(self):
         count = self.lib.mr_bal_bridge_scan_scopes()
         if count == 0:
