@@ -208,7 +208,16 @@ const char *mr_bal_bridge_scope_root(void)
             if (after == '\0' || after == '/') found = cursor;
         }
     }
-    if (found == NULL) return scope_root;
+    if (found == NULL) {
+        /* Fallback: not inside app.slice (e.g. launched bare from a session
+         * scope). The picker still needs the user's app.slice, so derive it
+         * from the session root + the fixed component name rather than
+         * returning empty and showing a picker with zero rows. */
+        const char *session = mr_bal_exec_session_root();
+        if (session[0] != '/') return scope_root;
+        snprintf(scope_root, sizeof(scope_root), "%s/app.slice", session);
+        return scope_root;
+    }
     size_t root_length = (size_t)(found - path) + marker_length;
     /* /proc/self/cgroup reports the path relative to the cgroup mount point;
      * the filesystem calls need it rooted there. */

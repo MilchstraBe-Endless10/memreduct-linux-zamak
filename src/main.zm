@@ -382,7 +382,8 @@ fn reset_preferences(s: &mut MainWindow):
 fn root_menu_target(menu: i64, row: i64) -> f64:
     if menu == 1:
         if row == 0: return 101.0
-        if row == 2: return 102.0
+        if row == 1: return 103.0
+        if row == 3: return 102.0
     elif menu == 2:
         if row == 0: return 201.0
         if row == 1: return 202.0
@@ -1410,9 +1411,16 @@ fn draw_root_menu(s: &MainWindow, p: &ui.Painter, fg: &ui.Color, disabled: &ui.C
     if s.menu == 1:
         draw_menu_item(s, p, &row1, 101.0, label(s.zh, "Settings...", "设置..."), true, fg, disabled, hot)
         draw_menu_shortcut(p, &row1, "F2", fg)
-        let separator = ui_geometry.root_menu_item_rect(&r, s.menu, 1)
+        # The clean control at the bottom of the window is drawn on the canvas,
+        # so a keyboard user can never reach it and a synthetic pointer on
+        # Wayland cannot activate it. This menu row is the same action through a
+        # path that does work: real menu geometry, real focus, real keyboard.
+        let clean_row = ui_geometry.root_menu_item_rect(&r, s.menu, 1)
+        draw_menu_item(s, p, &clean_row, 103.0, label(s.zh, "Balanced clean (free memory)", "均衡清理（释放内存）"), true, fg, disabled, hot)
+        draw_menu_shortcut(p, &clean_row, "F9", fg)
+        let separator = ui_geometry.root_menu_item_rect(&r, s.menu, 2)
         draw_menu_separator(p, &separator, border)
-        let row2 = ui_geometry.root_menu_item_rect(&r, s.menu, 2)
+        let row2 = ui_geometry.root_menu_item_rect(&r, s.menu, 3)
         draw_menu_item(s, p, &row2, 102.0, label(s.zh, "Exit", "退出"), true, fg, disabled, hot)
     elif s.menu == 2:
         draw_menu_item(s, p, &row1, 201.0, label(s.zh, "Always on top", "窗口始终置顶"), false, fg, disabled, hot)
@@ -2293,6 +2301,28 @@ fn activate(s: &mut MainWindow, target: f64):
     elif target >= 40.0 and target < 43.0:
         s.selected_group = i64(target - 40.0)
         if s.test_mode: mr_runtime_emit(f"CI_GROUP_SELECT group={s.selected_group} selected=true")
+    elif target == 103.0:
+        # Same action as the tenth row of the clean menu, reached through a path
+        # that actually works: real menu geometry, real focus, real keyboard.
+        s.menu = 0
+        s.popup = 1
+        bal_refresh(s)
+        if mr_bal_bridge_session_available() == 0:
+            s.status = label(s.zh, "This session has no writable memory cgroup.", "此会话没有可写的内存 cgroup。")
+        else:
+            let ran = mr_bal_bridge_session_run(0) == 1
+            s.bal_result_status = mr_bal_bridge_result_status_code()
+            s.bal_result_stop = mr_bal_bridge_result_stop_code()
+            s.bal_result_requested = mr_bal_bridge_result_requested_value()
+            s.bal_result_accepted = mr_bal_bridge_result_accepted_value()
+            s.bal_view = 1
+            if ran:
+                s.status = mr_bal_bridge_result_headline(if s.zh: 1 else: 0)
+            else:
+                s.status = label(s.zh, "The session could not be cleaned.", "无法清理此会话。")
+            if s.test_mode:
+                let outcome = if ran: "executed" else: "not-run"
+                mr_runtime_emit(f"CI_BALANCED_MENU outcome={outcome} accepted={s.bal_result_accepted}")
     elif target == 101.0:
         set_settings_open(s, true)
     elif target == 102.0:
@@ -2606,6 +2636,15 @@ fn key(s: &mut MainWindow, event: &ui.Key):
         s.status = label(s.zh, "About page is not implemented yet", "关于页面尚未实现")
     elif name == "F2":
         set_settings_open(s, true)
+    elif name == "F9":
+        # Keyboard path to balanced clean. The canvas button at the window
+        # bottom cannot be reached by Tab and cannot be activated by a synthetic
+        # pointer on Wayland; this shortcut reaches the same action.
+        if s.xproc_view == 0 and s.bal_view == 0:
+            s.menu = 0
+            s.popup = 0
+            activate(s, 103.0)
+            s.canvas.redraw()
     elif name == "Down" or name == "Up":
         if s.popup == 0:
             if s.focus < 4.0:
