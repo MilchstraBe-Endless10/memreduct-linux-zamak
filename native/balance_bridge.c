@@ -518,6 +518,88 @@ int64_t mr_bal_bridge_plan_request_bytes(void)
     return plan_valid ? (int64_t)published_plan.request_bytes : 0;
 }
 
+/* ---- session target ------------------------------------------------------ */
+
+int64_t mr_bal_bridge_session_available(void)
+{
+    const char *root = mr_bal_exec_session_root();
+    return root[0] == '/' ? 1 : 0;
+}
+
+const char *mr_bal_bridge_session_root(void)
+{
+    return mr_bal_exec_session_root();
+}
+
+int64_t mr_bal_bridge_session_file_bytes(void)
+{
+    const char *root = mr_bal_exec_session_root();
+    if (root[0] != '/') return -1;
+    int fd = mr_bal_exec_open_session(root);
+    if (fd < 0) return -1;
+    int64_t bytes = mr_bal_exec_session_file_bytes(fd);
+    (void)close(fd);
+    return bytes;
+}
+
+/* Reclaim across the whole user session.
+ *
+ * The budget is clamped to the session's own file pages, because asking for
+ * more than the cgroup holds is the EAGAIN case measured on this host: the
+ * kernel accepts the request and gives back whatever it could, which reads as
+ * a failed run when it is really the ceiling. */
+int64_t mr_bal_bridge_session_run(uint64_t budget_bytes)
+{
+    const char *root = mr_bal_exec_session_root();
+    if (root[0] != '/') return 0;
+    int fd = mr_bal_exec_open_session(root);
+    if (fd < 0) return 0;
+    uint32_t uid = (uint32_t)getuid();
+    /* MR_BAL_EXEC_OK is 0, not 1: comparing against 1 here refused every
+     * session run while the executor was working correctly. */
+    int64_t probe = mr_bal_exec_session_probe(fd, uid);
+    if (probe != MR_BAL_EXEC_OK) {
+        (void)close(fd);
+        return 0;
+    }
+    int64_t file_bytes = mr_bal_exec_session_file_bytes(fd);
+    if (file_bytes <= 0) {
+        (void)close(fd);
+        (void)mr_bal_bridge_result_set(MR_BAL_EXEC_STOPPED, MR_BAL_EXEC_STOP_NO_COLD_PAGES,
+                                       0, 0, 0, 0, 0);
+        return 1;
+    }
+    uint64_t budget = (uint64_t)file_bytes;
+    if (budget_bytes > 0 && budget_bytes < budget) budget = budget_bytes;
+
+    struct mr_bal_run_config config;
+    mr_bal_run_config_for_budget(budget, &config);
+    struct mr_bal_exec_result exec;
+    int ran = mr_bal_exec_run_on_fd(fd, &config, &exec) == 0;
+    (void)close(fd);
+    if (!ran) return 0;
+
+    /* Report the measured change, not the kernel's acknowledgement. Writing
+     * 2G to a cgroup holding 1.7 GiB of file pages returns success and reclaims
+     * 442 MiB; calling that "accepted 2G" would be the fake-success failure
+     * this project keeps guarding against. */
+    uint64_t requested = exec.requested_bytes;
+    uint64_t actually_gone = 0;
+    if (exec.scope_file_before >= 0 && exec.scope_file_after >= 0 &&
+        exec.scope_file_before > exec.scope_file_after) {
+        actually_gone = (uint64_t)(exec.scope_file_before - exec.scope_file_after);
+    }
+    uint64_t accepted = exec.accepted_bytes < actually_gone ? exec.accepted_bytes : actually_gone;
+    /* The status reported here is the executor's own verdict, never a value
+     * chosen to look better: a run that reclaimed nothing is STOPPED, not
+     * PARTIAL. */
+    int64_t status = exec.status == MR_BAL_EXEC_OK ? MR_BAL_EXEC_OK
+                   : (exec.batches_accepted > 0 ? MR_BAL_EXEC_PARTIAL : MR_BAL_EXEC_REFUSED);
+    return mr_bal_bridge_result_set(status, exec.stop_reason, requested, accepted,
+                                    exec.batches_accepted, exec.batches_rejected,
+                                    0) == 1 ? 1 : 0;
+}
+
 int64_t mr_bal_bridge_result_status_code(void)
 {
     return result.valid ? result.status : MR_BAL_EXEC_BAD_REQUEST;

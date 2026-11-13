@@ -22,6 +22,10 @@
 
 #include "balance_exec.h"
 
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
 #define MIB (1024ull * 1024ull)
 #define RECLAIM_FILE "memory.reclaim"
 
@@ -215,6 +219,128 @@ static uint32_t read_psi_some_centi(void)
         while (digits < 2) { frac *= 10u; digits++; }
     }
     return whole * 100u + frac;
+}
+
+/* ---- session target ------------------------------------------------------ */
+
+/* Walk /proc/self/cgroup up to the `user@<uid>.service` component. The balanced
+ * path must never be able to address a cgroup outside the caller's own session,
+ * so the walk stops there and returns "" when it is absent. */
+const char *mr_bal_exec_session_root(void)
+{
+    static char root[PATH_MAX];
+    static int ready;
+    if (ready) return root;
+    ready = 1;
+    root[0] = '\0';
+
+    FILE *fp = fopen("/proc/self/cgroup", "r");
+    if (fp == NULL) return root;
+    char line[PATH_MAX];
+    char rel[PATH_MAX];
+    rel[0] = '\0';
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        /* cgroup v2 unified line is "0::/path". */
+        if (strncmp(line, "0::", 3) != 0) continue;
+        char *nl = strchr(line, '\n');
+        if (nl != NULL) *nl = '\0';
+        snprintf(rel, sizeof(rel), "%s", line + 3);
+        break;
+    }
+    (void)fclose(fp);
+    if (rel[0] != '/' ) return root;
+
+    /* Find "/user@<n>.service" and cut right after it. */
+    char *at = strstr(rel, "/user@");
+    if (at == NULL) return root;
+    char *dot_service = strstr(at, ".service");
+    if (dot_service == NULL) return root;
+    char *cut = dot_service + strlen(".service");
+    size_t keep = (size_t)(cut - rel);
+    if (keep == 0 || keep >= sizeof(rel)) return root;
+    snprintf(root, sizeof(root), "/sys/fs/cgroup%.*s", (int)keep, rel);
+    return root;
+}
+
+int mr_bal_exec_open_session(const char *session_path)
+{
+    if (session_path == NULL || session_path[0] != '/') {
+        errno = EINVAL;
+        return -1;
+    }
+    /* O_DIRECTORY only; not O_NOFOLLOW, because /sys/fs/cgroup entries are
+     * not symlinks and refusing them would reject the legitimate path. */
+    return open(session_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+}
+
+int64_t mr_bal_exec_session_probe(int fd, uint32_t expected_uid)
+{
+    /* Same check as a scope: the directory owner is the uid whose cgroup it
+     * is, read from the fd so a rename cannot redirect it. */
+    return mr_bal_exec_probe(fd, expected_uid);
+}
+
+int64_t mr_bal_exec_session_file_bytes(int fd)
+{
+    if (fd < 0) return -1;
+    int stat_fd = openat(fd, "memory.stat", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (stat_fd < 0) return -1;
+    char text[8192];
+    ssize_t got = read(stat_fd, text, sizeof(text) - 1);
+    (void)close(stat_fd);
+    if (got <= 0) return -1;
+    text[got] = '\0';
+    for (char *line = text; *line != '\0';) {
+        char *line_end = strchr(line, '\n');
+        if (line_end == NULL) line_end = line + strlen(line);
+        if (strncmp(line, "file ", 5) == 0) {
+            uint64_t value = 0;
+            int digits = 0;
+            for (char *p = line + 5; *p >= '0' && *p <= '9'; p++) {
+                value = value * 10u + (uint64_t)(*p - '0');
+                digits++;
+            }
+            return digits > 0 ? (int64_t)value : -1;
+        }
+        if (*line_end == '\0') break;
+        line = line_end + 1;
+    }
+    return -1;
+}
+
+int64_t mr_bal_exec_run_on_fd(int fd, const struct mr_bal_run_config *config,
+                              struct mr_bal_exec_result *out)
+{
+    if (config == NULL || out == NULL) return -1;
+    memset(out, 0, sizeof(*out));
+    out->status = MR_BAL_EXEC_BAD_REQUEST;
+    out->scope_current_before = -1;
+    out->scope_current_after = -1;
+    out->scope_anon_before = -1;
+    out->scope_anon_after = -1;
+    out->scope_file_before = -1;
+    out->scope_file_after = -1;
+    if (fd < 0 || config->budget_bytes == 0) return -1;
+
+    /* Snapshot BEFORE the first probe, so nothing a probe does can hide in the
+     * delta. This ordering was a real bug once: a run reported file pages
+     * dropping while claiming nothing had been accepted. */
+    out->scope_file_before = mr_bal_exec_session_file_bytes(fd);
+    struct mr_bal_run_result run;
+    if (mr_bal_reclaim_run(fd, config, &run) != 0) return -1;
+    out->scope_file_after = mr_bal_exec_session_file_bytes(fd);
+
+    out->requested_bytes = run.requested_bytes;
+    out->accepted_bytes = run.accepted_bytes;
+    out->batches_attempted = run.batches_attempted;
+    out->batches_accepted = run.batches_accepted;
+    out->batches_rejected = run.batches_rejected;
+    out->observed_on_reject_bytes = 0;
+    out->error_code = run.error_code;
+    out->stop_reason = run.stop_reason;
+    out->status = run.status == 0 ? MR_BAL_EXEC_OK
+                : (run.batches_accepted > 0 ? MR_BAL_EXEC_PARTIAL : MR_BAL_EXEC_REFUSED);
+    return 0;
 }
 
 int mr_bal_exec_run(int scope_fd, const struct mr_bal_exec_config *config,

@@ -34,6 +34,9 @@ extern fn mr_bal_bridge_result_accepted_value() -> i64
 # balanced clean opens one exact scope by fd and writes the measured-safe form.
 extern fn mr_bal_bridge_scope_root() -> string
 extern fn mr_bal_bridge_scan_scopes() -> i64
+extern fn mr_bal_bridge_session_available() -> i64
+extern fn mr_bal_bridge_session_file_bytes() -> i64
+extern fn mr_bal_bridge_session_run(budget_bytes: i64) -> i64
 extern fn mr_bal_bridge_plan_probe() -> i64
 extern fn mr_bal_bridge_plan_state_code() -> i64
 extern fn mr_bal_bridge_plan_action_code() -> i64
@@ -2368,22 +2371,33 @@ fn activate(s: &mut MainWindow, target: f64):
                 s.status = bal_plan_why_text(s)
                 if s.test_mode: mr_runtime_emit(f"CI_BALANCED_DISABLED entry=2 reason=no_action state={s.bal_state}")
             else:
-                # Show the list and let the user choose. Picking a scope on the
-                # user's behalf is a decision they cannot see or undo, and
-                # "which application did it just touch" is exactly the question
-                # this product must always be able to answer.
-                s.bal_scope_index = -1
-                bal_rescan(s)
-                if s.bal_scope_count == 0:
-                    s.bal_view = 0
-                    s.status = label(s.zh, "No application scope is reclaimable here.", "此处没有可回收的应用作用域。")
-                    if s.test_mode: mr_runtime_emit("CI_BALANCED_DISABLED entry=2 reason=no_scope scanned=0")
+                # "Free memory" means the whole session, not one application:
+                # measured here, the largest app scope held 107 MiB of file
+                # pages while the session held 1584 MiB. A picker would make the
+                # user choose a number two orders of magnitude smaller than the
+                # problem they came to fix, so the row acts on the session and
+                # reports the observed change.
+                s.bal_view = 0
+                if mr_bal_bridge_session_available() == 0:
+                    s.status = label(s.zh, "This session has no writable memory cgroup.", "此会话没有可写的内存 cgroup。")
+                    if s.test_mode: mr_runtime_emit("CI_BALANCED_DISABLED entry=2 reason=no_session_cgroup")
                 else:
+                    # The budget comes from the plan, which is the machine-wide
+                    # judgement, but the run is clamped to what the session
+                    # actually holds; asking for more is the EAGAIN case.
+                    let ran = mr_bal_bridge_session_run(s.bal_request_bytes) == 1
+                    s.bal_result_status = mr_bal_bridge_result_status_code()
+                    s.bal_result_stop = mr_bal_bridge_result_stop_code()
+                    s.bal_result_requested = mr_bal_bridge_result_requested_value()
+                    s.bal_result_accepted = mr_bal_bridge_result_accepted_value()
                     s.bal_view = 1
-                    s.bal_focus = 1
-                    s.status = label(s.zh, "Choose the application to release file pages in.", "请选择要释放文件页的应用。")
+                    if ran:
+                        s.status = mr_bal_bridge_result_headline(if s.zh: 1 else: 0)
+                    else:
+                        s.status = label(s.zh, "The session could not be cleaned.", "无法清理此会话。")
                     if s.test_mode:
-                        mr_runtime_emit(f"CI_BALANCED_PICKER scopes={s.bal_scope_count} selected={s.bal_scope_index}")
+                        let outcome = if ran: "executed" else: "not-run"
+                        mr_runtime_emit(f"CI_BALANCED_RUN outcome={outcome} requested={s.bal_result_requested} accepted={s.bal_result_accepted}")
         elif index == 8:
             if clean_operation_busy(s.clean_state):
                 s.status = label(s.zh, "Wait for the current memory operation to finish.", "请等待当前内存操作完成。")
@@ -2788,18 +2802,15 @@ fn main():
         bal_rescan(&mut state)
         state.bal_view = 1
     if mr_runtime_start_balanced_run() != 0:
-        # Same path as pressing Run: plan, then select, then execute.
+        # Same path as the tenth row: plan, then act on the whole session.
         bal_refresh(&mut state)
-        bal_rescan(&mut state)
-        let wanted = mr_runtime_balanced_run_scope()
-        if wanted != "":
-            state.bal_scope_index = bal_scope_index_by_name(wanted)
-            let found = state.bal_scope_index >= 0
-            let ran = if found: bal_run_selected(&mut state) else: false
-            let outcome = if not found: "scope-not-found" elif ran: "executed" else: "not-run"
-            # Report the index rather than the borrowed name: reading the name
-            # twice would mean copying a String that the scan already moved.
-            mr_runtime_emit(f"CI_BALANCED_RUN outcome={outcome} index={state.bal_scope_index}")
+        let ran = mr_bal_bridge_session_run(state.bal_request_bytes) == 1
+        state.bal_result_status = mr_bal_bridge_result_status_code()
+        state.bal_result_stop = mr_bal_bridge_result_stop_code()
+        state.bal_result_requested = mr_bal_bridge_result_requested_value()
+        state.bal_result_accepted = mr_bal_bridge_result_accepted_value()
+        let outcome = if ran: "executed" else: "not-run"
+        mr_runtime_emit(f"CI_BALANCED_RUN outcome={outcome} requested={state.bal_result_requested} accepted={state.bal_result_accepted}")
     refresh(&mut state)
     app.run(window, state)
     if test_mode: mr_runtime_emit("CI_APP_RETURNED")

@@ -26,6 +26,8 @@
 
 #include <stdint.h>
 
+#include "balance_reclaim.h"
+
 enum mr_bal_exec_status {
     MR_BAL_EXEC_OK = 0,
     MR_BAL_EXEC_PARTIAL = 1,
@@ -109,6 +111,29 @@ const char *mr_bal_exec_scope_name(int64_t index);
  * `app-com.google.Chrome-2701326.scope` becomes `com.google.Chrome`. Returns a
  * static buffer; do not free. */
 const char *mr_bal_exec_app_label(const char *scope_name);
+
+/* ---- session target -------------------------------------------------------
+ *
+ * An app scope is the right unit for "this application", but it is the wrong
+ * unit for "free memory": measured on this host, the largest app scope held
+ * 107 MiB of file pages while the user session held 1592 MiB. A product whose
+ * whole purpose is reclaiming memory must be able to address the larger thing.
+ *
+ * The session target is the user's own systemd session cgroup, which this uid
+ * owns and may write. It is NOT the root cgroup: that one is root-only, and
+ * reaching for it would mean privilege the balanced path does not need. */
+int mr_bal_exec_open_session(const char *session_path);
+int64_t mr_bal_exec_session_probe(int fd, uint32_t expected_uid);
+int64_t mr_bal_exec_run_on_fd(int fd, const struct mr_bal_run_config *config,
+                              struct mr_bal_exec_result *out);
+
+/* Where this user's session cgroup is, derived from /proc/self/cgroup by
+ * walking up to the `user@UID.service` component. Returns "" when the process
+ * is not inside such a session, which is the honest answer for a container. */
+const char *mr_bal_exec_session_root(void);
+
+/* File-page bytes charged to the session cgroup, or -1. */
+int64_t mr_bal_exec_session_file_bytes(int fd);
 
 const char *mr_bal_exec_status_name(int64_t status);
 const char *mr_bal_exec_stop_name(int64_t stop);

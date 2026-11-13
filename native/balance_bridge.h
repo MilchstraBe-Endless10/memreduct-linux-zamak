@@ -102,6 +102,20 @@ int64_t mr_bal_bridge_plan_state_code(void);
 int64_t mr_bal_bridge_plan_action_code(void);
 int64_t mr_bal_bridge_plan_request_bytes(void);
 
+/* ---- session target ------------------------------------------------------
+ *
+ * The app-scope target answers "free this application's pages". The session
+ * target answers "free memory", which is what the product is for. Measured on
+ * this host: the largest app scope held 107 MiB of file pages while the user
+ * session held 1592 MiB, so the scope-limited path could never reach a GB. */
+int64_t mr_bal_bridge_session_available(void);
+int64_t mr_bal_bridge_session_file_bytes(void);
+const char *mr_bal_bridge_session_root(void);
+/* Returns 1 when the run happened, 0 when it could not start. The result is
+ * available through the mr_bal_bridge_result_* accessors, where accepted means
+ * bytes measured leaving the cgroup, not bytes the kernel acknowledged. */
+int64_t mr_bal_bridge_session_run(uint64_t budget_bytes);
+
 const char *mr_bal_bridge_state_name(int64_t state);
 const char *mr_bal_bridge_action_name(int64_t action);
 
