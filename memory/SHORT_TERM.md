@@ -872,3 +872,10 @@
 - 结论：守卫逻辑（PSI 缺失→-3 跳过、pages/s 速率停批、outcome 三态、EAGAIN 补采样）在 CI 断言与代码审读层面已覆盖；真机守卫触发验证需要人工在桌面点菜单或环境调整 binds 后补做——非代码缺陷。
 - popup 几何权威数据：CI_POPUP root menu=1 rect canvas(8,24,153,99)，Deep=row2 canvas 72..94，Exit=row4 101..123；titlebar_h=0（canvas顶=窗口顶）。
 - 检索词：守卫触发验证 ydotoold-sl F10拦截 popup几何
+
+## 2026-11-14 18:56 守卫真机验证检查点（换气熔断，接手者读此续跑）
+- 【做到哪】守卫触发真机验证未完成。此前 ydotool 路径失败根因已查明：F9/F10 被 Hyprland 全局 binds 拦截、popup 开启后合成 motion 偶发不到达、ydotoold 已复活（systemd 单元 ydotoold-sl）。
+- 【下一步（用户已明确要求 AI 自主验证，禁止甩给用户）】改走 computer-use 路径：@deepseek-ai/dsh-computer-use / dsh-computer-use-cua-driver-native / @botharness/computer（target: local）——先截屏定位窗口与菜单，再用其点击动作触发 Deep clean 双击闸，同时后台跑 /tmp/hog（已建：512MiB×12 轮换出突发）制造 pages/s 压力，观察状态栏 outcome 三态文案 + CI_DEEP_CLEAN 的 rounds/partial 字段。对比验收脚本 scripts/acceptance-prod-gui.sh 可复用。
+- 【备选路径】若 computer-use 也不可达 popup：临时解绑 Hyprland F10 bind（hyprctl keyword unbind F10，验证后还原）再走键盘路径。
+- 【卡在哪】换气额度 0/6 熔断，本会话需手动压缩后续跑。
+- 【检索词】守卫真机验证 computer-use hog 压力 备选unbind
