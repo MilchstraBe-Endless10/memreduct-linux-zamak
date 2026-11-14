@@ -99,6 +99,8 @@ extern fn mr_bal_bridge_pressure_observed_end_to_end() -> i64
 extern fn mr_bal_bridge_pressure_accumulated_positive() -> i64
 extern fn mr_bal_bridge_pressure_rounds_completed() -> i64
 extern fn mr_bal_bridge_pressure_partial_flags() -> i64
+extern fn mr_bal_bridge_pressure_outcome() -> i64
+extern fn mr_bal_bridge_pressure_stopped_by_guard() -> i64
 # Read-only check of the fixed privileged chain (helper / polkit action /
 # pkexec). Lets the window name the missing component instead of showing the
 # unattributable "outcome unconfirmed" that a bare pkexec 126/127 produces.
@@ -222,6 +224,8 @@ struct MainWindow:
     draw_logged: bool
     test_mode: bool
     deep_scope_ack: i64
+    deep_pressure_active: bool
+    deep_entry_avail: i64
     test_timeout_ms: i64
     elapsed_ms: i64
     ci_sample_failure_latched: bool
@@ -2145,6 +2149,30 @@ fn tick(s: &mut MainWindow):
             s.status = xproc_waiting_text(s.zh, s.xproc_state, true)
             if s.test_mode: mr_runtime_emit("CI_XPROC_SIM stage=mock-helper-running authorization_simulated=true helper=mock no_syscall=true")
             s.canvas.redraw()
+    if s.deep_pressure_active:
+        let poll_rc = mr_bal_bridge_pressure_poll()
+        if poll_rc == 1:
+            s.deep_pressure_active = false
+            let outcome = mr_bal_bridge_pressure_outcome()
+            let rounds = mr_bal_bridge_pressure_rounds_completed()
+            let pos_mib = mr_bal_bridge_pressure_accumulated_positive() / 1048576
+            let exit_avail = mr_mem_available_bytes()
+            let net_mib = (exit_avail - s.deep_entry_avail) / 1048576
+            if outcome == 1:
+                s.status = label(s.zh,
+                    f"Deep clean pressure finished: {rounds} batches, net {net_mib} MiB end-to-end, +{pos_mib} MiB accumulated.",
+                    f"深度清理压力阶段完成：{rounds} 批，全程净 {net_mib} MiB，累计正增量 +{pos_mib} MiB。")
+            elif outcome == 2:
+                s.status = label(s.zh,
+                    f"Deep clean pressure stopped early (guard fired or a batch was refused): {rounds} batches ran, net {net_mib} MiB end-to-end.",
+                    f"深度清理压力阶段提前停止（守卫触发或批次被拒）：已运行 {rounds} 批，全程净 {net_mib} MiB。")
+            else:
+                s.status = label(s.zh,
+                    "Deep clean pressure stage did not run: no batches completed.",
+                    "深度清理压力阶段未运行：没有批次完成。")
+            s.canvas.redraw()
+        elif poll_rc == 0:
+            s.canvas.redraw()
     if s.test_mode and mr_runtime_sample_failure_requested() != 0:
         refresh(s)
     elif s.elapsed_ms % 3000 == 0:
@@ -2324,8 +2352,8 @@ fn activate(s: &mut MainWindow, target: f64):
         if s.deep_scope_ack == 0:
             s.deep_scope_ack = 1
             s.status = label(s.zh,
-                "Deep clean covers the whole session cgroup (not just selected apps); cold anonymous pages may be pushed into ZRAM/swap. Press again to start.",
-                "深度清理作用于整个会话 cgroup（不只选定应用）；冷匿名页可能压入 ZRAM/swap。再按一次开始。")
+                "Deep clean scope: stage 1 clears the GLOBAL page cache machine-wide; later stages reclaim the whole session cgroup (not just selected apps) and may push cold anonymous pages into ZRAM/swap. Press again to start.",
+                "深度清理范围：阶段 1 全机清除全局页缓存；后续阶段作用于整个会话 cgroup（不只选定应用），冷匿名页可能压入 ZRAM/swap。再按一次开始。")
             s.canvas.redraw()
             return
         s.deep_scope_ack = 0
@@ -2362,32 +2390,37 @@ fn activate(s: &mut MainWindow, target: f64):
         # (EAGAIN) keep their samples and are flagged, never discarded.
         stages_ran += 1
         let start_rc = mr_bal_bridge_pressure_start()
-        let mut poll_rc = 0
         if start_rc == 0:
-            let mut waited = 0
-            while poll_rc == 0 and waited < 600:
-                s.canvas.redraw()
-                mr_bal_bridge_sleep_ms(100)
-                waited += 1
-                poll_rc = mr_bal_bridge_pressure_poll()
-            if poll_rc == 1: stages_ok += 1
+            # Hand off to the tick loop: the GTK event loop keeps running and
+            # this callback returns right now. Results are read only after
+            # poll reports the worker thread has joined.
+            s.deep_pressure_active = true
+            s.deep_entry_avail = mr_mem_available_bytes()
+            s.status = label(s.zh,
+                "Deep clean pressure stage running in background; the interface stays responsive.",
+                "深度清理压力阶段后台执行中；界面保持响应。")
+        else:
+            s.status = label(s.zh,
+                "Deep clean pressure stage could not start (memory telemetry unavailable).",
+                "深度清理压力阶段无法启动（内存遥测不可用）。")
         s.canvas.redraw()
+        # Stages 1-3 report here; the S4 outcome is reported by the tick
+        # finish path once the worker thread has actually joined. This
+        # handler never reads pressure getters, so it can never race the
+        # thread or overstate a run that has not finished.
         let avail_after = mr_mem_available_bytes()
         let observed_mib = (avail_after - avail_before) / 1048576
-        let pressure_pos_mib = mr_bal_bridge_pressure_accumulated_positive() / 1048576
-        let rounds = mr_bal_bridge_pressure_rounds_completed()
-        let partial = mr_bal_bridge_pressure_partial_flags()
         let gib_tenths = (observed_mib * 10 + 512) / 1024
         if observed_mib > 0:
             s.status = label(s.zh,
-                f"Deep clean finished: {stages_ok}/{stages_ran} stages; net +{gib_tenths / 10}.{gib_tenths % 10} GiB end-to-end; pressure rounds {rounds} (+{pressure_pos_mib} MiB)",
-                f"深度清理完成：{stages_ok}/{stages_ran} 阶段；全程净 +{gib_tenths / 10}.{gib_tenths % 10} GiB；压力轮次 {rounds}（+{pressure_pos_mib} MiB）")
+                f"Deep clean stages 1-3 done ({stages_ok}/{stages_ran}); net +{gib_tenths / 10}.{gib_tenths % 10} GiB so far; pressure stage running in background.",
+                f"深度清理阶段 1-3 完成（{stages_ok}/{stages_ran}）；目前净 +{gib_tenths / 10}.{gib_tenths % 10} GiB；压力阶段后台执行中。")
         else:
             s.status = label(s.zh,
-                f"Deep clean finished: {stages_ok}/{stages_ran} stages, no net gain end-to-end; pressure rounds {rounds} (+{pressure_pos_mib} MiB)",
-                f"深度清理完成：{stages_ok}/{stages_ran} 阶段，全程无净增长；压力轮次 {rounds}（+{pressure_pos_mib} MiB）")
+                f"Deep clean stages 1-3 done ({stages_ok}/{stages_ran}), no net gain so far; pressure stage running in background.",
+                f"深度清理阶段 1-3 完成（{stages_ok}/{stages_ran}），暂无净增长；压力阶段后台执行中。")
         if s.test_mode:
-            mr_runtime_emit(f"CI_DEEP_CLEAN ok={stages_ok} ran={stages_ran} net_mib={observed_mib} pressure_pos_mib={pressure_pos_mib} rounds={rounds} partial={partial}")
+            mr_runtime_emit(f"CI_DEEP_CLEAN ok={stages_ok} ran={stages_ran} net_mib={observed_mib} s4=background")
     elif target == 103.0:
         # Same action as the tenth row of the clean menu, reached through a path
         # that actually works: real menu geometry, real focus, real keyboard.
@@ -2921,7 +2954,7 @@ fn main():
         zh: initial_zh, dark: initial_dark, menu: 0, popup: 0, hover: 0.0, pressed: 0.0,
         focus: -1.0, menu_focus: 0.0, collapsed_groups: 0, selected_group: initial_selected_group, status: "", mem_total: 0, mem_available: 0, swap_total: 0,
         swap_free: 0, page_cache_estimate: 0, sample_ok: false, draw_logged: false,
-        test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, deep_scope_ack: 0, ci_sample_failure_latched: false, sample_failure_draw_logged: false,
+        test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, deep_scope_ack: 0, deep_pressure_active: false, deep_entry_avail: 0, ci_sample_failure_latched: false, sample_failure_draw_logged: false,
         clean_simulation: clean_simulation, clean_production: clean_production,
         xproc_simulation: xproc_simulation, main_close_guard_ready: main_close_guard_ready, xproc_view: 0, xproc_state: 0, xproc_cancel_status: 0,
         xproc_selected: -1, xproc_scroll: 0, xproc_focus: 0, xproc_budget_choice: 0,

@@ -703,6 +703,7 @@ static struct {
     int64_t pressure_accumulated;     /* sum of positive per-round deltas; never negative */
     int64_t rounds_completed;
     int64_t partial_flags;            /* bit0 = some batch ended in EAGAIN/partial */
+    int64_t stopped_by_guard;         /* 1 = guard fired mid-run (PSI or swap rate) */
 } mr_pressure_result;
 
 static double mr_pressure_psi_some_avg10(void)
@@ -761,6 +762,13 @@ static void *mr_pressure_worker(void *arg)
     const double psi_growth_limit = 8.0;  /* avg10 points over baseline */
 
     double psi_base = mr_pressure_psi_some_avg10();
+    if (psi_base < 0.0) {
+        /* No PSI telemetry: the guard cannot run, so the stage must not. */
+        mr_pressure_result.observed_end_to_end = -3;
+        return NULL;
+    }
+    struct timespec rate_start;
+    clock_gettime(CLOCK_MONOTONIC, &rate_start);
     (void)mr_pressure_swap_delta();       /* zero the rate window */
 
     int64_t before = mr_mem_available_bytes();
@@ -775,8 +783,20 @@ static void *mr_pressure_worker(void *arg)
         double psi_now = mr_pressure_psi_some_avg10();
         if (psi_now >= 0.0 && psi_base >= 0.0 && psi_now > psi_base + psi_growth_limit)
             break;
-        if (mr_pressure_swap_delta() > 60000) /* > ~230 MiB paged out in the window */
-            break;
+        {
+            struct timespec rate_now;
+            clock_gettime(CLOCK_MONOTONIC, &rate_now);
+            double rate_dt = (double)(rate_now.tv_sec - rate_start.tv_sec)
+                + (double)(rate_now.tv_nsec - rate_start.tv_nsec) / 1e9;
+            int64_t swap_pages = mr_pressure_swap_delta();
+            if (rate_dt > 0.2 && swap_pages >= 0
+                && (double)swap_pages / rate_dt > 20000.0) {
+                /* > ~78 MiB/s of machine-wide swapout: disk-grade paging,
+                 * not zram compression. Stop submitting batches. */
+                mr_pressure_result.stopped_by_guard = 1;
+                break;
+            }
+        }
 
         FILE *f = fopen(path, "w");
         if (f == NULL) break;
@@ -784,7 +804,17 @@ static void *mr_pressure_worker(void *arg)
         int werr = fclose(f);             /* EAGAIN here may still have done work */
         if (werr != 0) {
             mr_pressure_result.partial_flags |= 1;
-            break;                        /* kernel refused/short: keep sample, stop */
+            /* The write may still have reclaimed pages: sample the delta
+             * before leaving so this round is counted, not discarded. */
+            struct timespec settle2 = { .tv_sec = 1, .tv_nsec = 200000000 };
+            (void)nanosleep(&settle2, NULL);
+            int64_t now2 = mr_mem_available_bytes();
+            if (now2 >= 0) {
+                int64_t d2 = now2 - before;
+                if (d2 > 0) mr_pressure_result.pressure_accumulated += d2;
+                before = now2;
+            }
+            break;
         }
         mr_pressure_result.rounds_completed = r + 1;
 
@@ -838,6 +868,21 @@ int64_t mr_bal_bridge_pressure_rounds_completed(void)
 
 int64_t mr_bal_bridge_pressure_partial_flags(void)
 { return mr_pressure_result.partial_flags; }
+
+/* Three-state outcome: 1 = all submitted batches completed, 2 = partial (a
+ * batch was refused or the guard stopped early), 3 = nothing ran (start
+ * failure, zero rounds, or missing telemetry). 0 = never started. */
+int64_t mr_bal_bridge_pressure_outcome(void)
+{
+    if (mr_pressure_result.observed_end_to_end == -3) return 3;
+    if (mr_pressure_result.rounds_completed == 0) return 3;
+    if (mr_pressure_result.partial_flags != 0 || mr_pressure_result.stopped_by_guard != 0)
+        return 2;
+    return 1;
+}
+
+int64_t mr_bal_bridge_pressure_stopped_by_guard(void)
+{ return mr_pressure_result.stopped_by_guard; }
 
 int64_t mr_bal_bridge_sleep_ms(int64_t ms)
 {
