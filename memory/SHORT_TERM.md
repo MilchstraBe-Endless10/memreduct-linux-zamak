@@ -855,3 +855,11 @@
 - 硬数据：MemAvailable AV0=805 MiB → AV1=1533 MiB，**外部观测 +728 MiB**（15.4G 机器低水位起点）。这是 /usr/bin 生产二进制（c1d252ed）非 CI 模式真实 GUI 点击触发全管线（S1 页缓存+S2/S3 会话+S4 后台批处理）的实测。
 - scope 闸行为验证：两次点击间隔内 AV 无变化（第一次不执行），第二次后才释放——闸门语义正确。截图因 popup 覆盖+窗口层级没抓到提示画面（已知 UI 截图限制，逻辑有测试覆盖）。
 - 检索词：正式GUI验收 728 scope闸 真机
+
+## 2026-11-14 16:42 reviewer 三缺口修复完成（9c975b9，已部署 b2e1e91c）
+- ①非阻塞：activate 只 start+置位立即返回；轮询移到 tick（GTK 事件循环每轮处理），poll==1（线程已 join）才读 getter 收尾；S4 期间点击 File popup 开关被正常处理、app 存活——事件循环未被阻塞。
+- ②守卫：pswpout 改速率（pages/s 除以 CLOCK_MONOTONIC 实际窗口秒数，阈值 20000≈78MiB/s）；PSI 读不到→start 返回 -3 整段跳过（不再"读不到继续"）；EAGAIN break 前先补采样该批正增量；outcome 三态 getter（1 全批完成/2 部分成功/3 未运行），0 批完成不再计成功。
+- ③文案：scope 提示补「阶段 1 全机清除全局页缓存」；结果文案按三态区分（成功/提前停止/未运行），S1-3 汇总与 S4 收尾分离（handler 不再读 pressure getter，杜绝竞态）。
+- 部署：候选 b2e1e91c→/usr/bin 单文件替换（pkexec），哈希核对一致；commit 9c975b9 已推 origin。
+- 真机复验：S4 执行期间点击 File popup 开关正常响应、app_alive=1、窗口 at 稳定；status 文案截图坐标换算仍不准（已知限制，逻辑有测试覆盖）。85 tests 绿。
+- 检索词：三缺口 tick轮询 速率守卫 outcome三态 b2e1e91c
