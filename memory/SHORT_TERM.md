@@ -916,3 +916,9 @@
 - 含义：hog（512MiB×12 轮换出突发）压力下，S4 完成第 1 批后守卫触发、拒绝提交第 2 批，outcome=2=提前停止，三态文案第二分支（「提前停止（守卫触发或批次被拒）」）真机命中。reviewer 三条验收线全闭环：①tick 轮询非阻塞（ACTION 104 双击全链路 + s4=background + S4 期间 CI_MEMORY 持续 tick）②速率守卫真机早停（stopped_by_guard=1）③三态结果文案（outcome=2 分支真机渲染）。
 - 自动化路径沉淀（此后复用）：渐进 hover（popup 开启后 205→238 每步 0.25-0.35s）才能让 motion 事件到达；File 菜单 yd(405,201)=屏幕(810,402)（ydotool 坐标即屏幕像素，gv9 推导 /2 是错的但那对值恰好也落在 File 上）；Windows VM 占据的 workspace 会吞掉所有点击（gv22/gv23 MISS 根因）；全部脚本放 $HOME（systemd-run /tmp 是私有 tmpfs）；脚本必须整段放 systemd-run（前台 bash 60s 被杀会连坐 app）。
 - CI_DEEP_S4 发射是本轮新加（test_mode only，main.zm:2158），三态在 UI 状态栏的渲染路径不变。
+
+## 2026-11-14 22:47 reviewer 结项确认（S4 三卡验收正式通过）
+- 复审原文要点：远端 7cf3c4f 核对通过；关键证据=S4 期间 CI_MEMORY 持续更新 + 守卫第一批后阻止第二批提交——直接补上「worker 在后台但 GUI 仍等待」和「守卫未实测阻止后续写入」两缺口。
+- 交付口径（reviewer 定调，后续引用以此为准）：gv28=带测试观测的真机验收（后台轮询+守卫分支跑通）；无 CI 钩子的早期点击记录=正式入口真实回收；net_mib=93.7 是提前停止场景的 MemAvailable 观测增量，非净释放物理 RAM，非四段全成功证明。
+- 产品边界：深度清理维持高级手动；均衡清理保持默认行为；不再提档位。下一步=owner 决定 PR 合并；翻译决策独立（issue #13=内存回收产品规格，issue #3=UI 对照任务——编号以此为准）。
+- 本轮 reviewer 只读核查，未改 Issue 未合 PR。S4 整改三条线正式结项。
