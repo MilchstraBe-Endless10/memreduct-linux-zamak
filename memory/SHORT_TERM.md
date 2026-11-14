@@ -863,3 +863,12 @@
 - 部署：候选 b2e1e91c→/usr/bin 单文件替换（pkexec），哈希核对一致；commit 9c975b9 已推 origin。
 - 真机复验：S4 执行期间点击 File popup 开关正常响应、app_alive=1、窗口 at 稳定；status 文案截图坐标换算仍不准（已知限制，逻辑有测试覆盖）。85 tests 绿。
 - 检索词：三缺口 tick轮询 速率守卫 outcome三态 b2e1e91c
+
+## 2026-11-14 17:24 守卫触发验证（自动化环境结论）
+- 真机 GUI 双击触发回收链路已验证（+728MiB，e8ca63f 前后）；守卫触发场景的本机自动化验证遇到环境硬限制：
+  ①ydotoold 随 DSH Web 重启死掉（已用 systemd 用户单元 ydotoold-sl 复活）；
+  ②F9/F10 被 Hyprland 全局 binds 拦截（hyprctl binds 实证 F9 __lua），键盘路径进不了 app；
+  ③popup 开启后 motion 事件在自动化注入下偶发不到达（人工操作无此问题）。
+- 结论：守卫逻辑（PSI 缺失→-3 跳过、pages/s 速率停批、outcome 三态、EAGAIN 补采样）在 CI 断言与代码审读层面已覆盖；真机守卫触发验证需要人工在桌面点菜单或环境调整 binds 后补做——非代码缺陷。
+- popup 几何权威数据：CI_POPUP root menu=1 rect canvas(8,24,153,99)，Deep=row2 canvas 72..94，Exit=row4 101..123；titlebar_h=0（canvas顶=窗口顶）。
+- 检索词：守卫触发验证 ydotoold-sl F10拦截 popup几何
