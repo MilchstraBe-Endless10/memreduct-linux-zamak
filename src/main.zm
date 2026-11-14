@@ -2157,6 +2157,8 @@ fn tick(s: &mut MainWindow):
             let pos_mib = mr_bal_bridge_pressure_accumulated_positive() / 1048576
             let exit_avail = mr_mem_available_bytes()
             let net_mib = (exit_avail - s.deep_entry_avail) / 1048576
+            let stopped = mr_bal_bridge_pressure_stopped_by_guard()
+            if s.test_mode: mr_runtime_emit(f"CI_DEEP_S4 outcome={outcome} rounds={rounds} net_mib={net_mib} pos_mib={pos_mib} stopped_by_guard={stopped}")
             if outcome == 1:
                 s.status = label(s.zh,
                     f"Deep clean pressure finished: {rounds} batches, net {net_mib} MiB end-to-end, +{pos_mib} MiB accumulated.",

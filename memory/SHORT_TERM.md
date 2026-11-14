@@ -908,3 +908,11 @@
 - 验证：now 列 6 会话实时事件 ✓；find "自动压缩根因"命中 seq=13513 ✓；find "workbuddy/auto" 命中 21:33 修复轨迹 ✓；open seq=13742 返回原文 JSON ✓。
 - memindex.mjs 未重建（索引数据 10-28 建好后一直没更新，SELF.md 提示建索引的命令同样会 MODULE_NOT_FOUND）——后续需要时重建，当前 memq find 已够用。
 - 检索词：memq重建 四腿验证 两层目录
+
+## 2026-11-14 22:41 S4 守卫真机验证 DONE（reviewer 验收闭环）
+- 决定性证据（gv28，新二进制 1c3ef7e0 带 CI_DEEP_S4 发射）：
+  CI_DEEP_CLEAN ok=2 ran=3 net_mib=93.7 s4=background
+  CI_DEEP_S4 outcome=2 rounds=1 net_mib=58.3 pos_mib=16.4 stopped_by_guard=1
+- 含义：hog（512MiB×12 轮换出突发）压力下，S4 完成第 1 批后守卫触发、拒绝提交第 2 批，outcome=2=提前停止，三态文案第二分支（「提前停止（守卫触发或批次被拒）」）真机命中。reviewer 三条验收线全闭环：①tick 轮询非阻塞（ACTION 104 双击全链路 + s4=background + S4 期间 CI_MEMORY 持续 tick）②速率守卫真机早停（stopped_by_guard=1）③三态结果文案（outcome=2 分支真机渲染）。
+- 自动化路径沉淀（此后复用）：渐进 hover（popup 开启后 205→238 每步 0.25-0.35s）才能让 motion 事件到达；File 菜单 yd(405,201)=屏幕(810,402)（ydotool 坐标即屏幕像素，gv9 推导 /2 是错的但那对值恰好也落在 File 上）；Windows VM 占据的 workspace 会吞掉所有点击（gv22/gv23 MISS 根因）；全部脚本放 $HOME（systemd-run /tmp 是私有 tmpfs）；脚本必须整段放 systemd-run（前台 bash 60s 被杀会连坐 app）。
+- CI_DEEP_S4 发射是本轮新加（test_mode only，main.zm:2158），三态在 UI 状态栏的渲染路径不变。
