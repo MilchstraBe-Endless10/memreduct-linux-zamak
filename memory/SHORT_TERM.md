@@ -887,3 +887,9 @@
 - 修复：cordis.patch.yml thresholdRatio 0.22→0.15（≈19.7k tokens，dump 已验证生效），备份 .bak-11141905。生效需 DSH 重启（配置在 agent 启动时读取）——留给用户决定时机。
 - 附带发现：dsh-agent-compaction/dsh-live-compact/computer-use 等可选插件每次启动都因 service 抢位失败（optional startup failures）——与 compaction-basic 无冲突（basic 总是先赢），但 computer-use 因此在本 profile 不可用。
 - 检索词：自动压缩根因 0.15 CHARS_PER_TOKEN 低估 换气熔断闭环
+
+## 2026-11-14 21:30 重启后守株待兔验证（用户已重启 DSH）
+- 已确认：dump 显示 thresholdRatio=0.15 生效；compaction-basic 正常装载（失败的仍只有竞争者）。
+- 决定性数据：本会话 seq13626 assistant/message usage inputTokens=781173（21:27:16）——meter 的 usageTokens()=input+cacheRead+cacheWrite+output（源码 674 行实证），是累计口径；若 meter baseline 采用 usage 分支，totalTokens≈781k >> 阈值 19.7k。
+- 验证方法（下一条用户消息发出后立刻执行）：grep "compaction (pressure): shadowed" ~/.config/open-deepseek-harness-desktop/logs/harness.log | tail -1 —— 出现即自动压缩已激活；若仍无而 usage 分支又该命中，则查 compactIfNeeded 的 routedTarget/session.requestHeader 路径（provider/model 路由是否 undefined 导致静默 return null——源码 743 行）。
+- 检索词：重启后验证 shadowed usage 781k
