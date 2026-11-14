@@ -41,3 +41,35 @@
 - memq 检索词：`task-mwg594lc S4 守卫 速率 outcome 断点`
 - 本文件：`progress/S4-guard-telemetry-outcome-checkpoint-20261114.md`（q12-dof worktree）
 - 账本指针：`log:session-未知子会话id#seq=未知`（子 worker 拿不到自身 seq，用检索词回取）
+
+---
+
+## 第二轮续跑更新（2026-11-14 16:37，再次熔断）
+
+### 重大新事实
+worktree HEAD 已变 e8ca63f → **9c975b9**（提交时间 16:35:42，作者 MilchstraBe-Endless10），
+提交已覆盖契约五点主体：
+- balance_bridge.c：psi_base<0 → worker 早退置 observed_end_to_end=-3（S4 实际不跑批次）；
+  swap 速率化（CLOCK_MONOTONIC 实际秒数，>20000 pages/s 停 + stopped_by_guard 标志）；
+  EAGAIN 后补 1.2s settle + 采样 avail 差值再退出；新增 `mr_bal_bridge_pressure_outcome()`
+  三态 getter（0/1/2/3）+ `mr_bal_bridge_pressure_stopped_by_guard()`。
+- main.zm：新增两个 extern 声明；MainWindow 加 deep_pressure_active/deep_entry_avail；
+  S4 改 tick 轮询非阻塞；outcome==1/2/3 三态文案；CI 行改 `s4=background`；
+  scope 确认文案补充「阶段1全机清页缓存」。
+- 断点文件本身也进了该提交。
+
+### 尚未核验 / 偏差点（下一步逐条处理）
+1. zam check . / zam test .（85）/ zam build . 三件套未跑——第一优先。
+2. 契约③「批前检查不中断已提交内核写入」注释语义：旧注释含此意，未逐字核对是否保留。
+3. 与契约字面偏差（需上报裁决）：psi 缺失检查在 worker 内而非 start() 返回 -3——
+   start() 仍返回 0 并 spawn，worker 立即退出置 -3，outcome()==3。语义等效（S4 不跑批次），
+   但「start() 返回 -3 专属码」字面未实现。
+4. outcome==2 含 stopped_by_guard——与契约「partial 或 rounds<max 因守卫停」吻合。
+5. main.zm 旧同步轮询块已删，需确认 mr_bal_bridge_sleep_ms 无残留调用点。
+
+### 下一步（依序）
+1. 跑三件套验证（worktree 内）。
+2. 核对偏差点 2/5。
+3. board_report(kind=complete)，summary 注明偏差点 3 交主窗口/Verifier 裁决
+   + send_message 给 parent session-dad7b6ae-b58c-4e51-af83-3e5b95a4c0a5。
+4. 断点文件更新不提交（git 红线：不 commit/push）。

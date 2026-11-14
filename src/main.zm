@@ -92,7 +92,6 @@ extern fn mr_runtime_xproc_result_mode() -> i64
 extern fn mr_runtime_emit(line: &string)
 extern fn mr_production_clean_enabled() -> i64
 extern fn mr_mem_available_bytes() -> i64
-extern fn mr_bal_bridge_sleep_ms(ms: i64) -> i64
 extern fn mr_bal_bridge_pressure_start() -> i64
 extern fn mr_bal_bridge_pressure_poll() -> i64
 extern fn mr_bal_bridge_pressure_observed_end_to_end() -> i64
