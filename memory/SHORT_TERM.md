@@ -822,3 +822,10 @@
 - 最终验证走 CI 钩子：MEMREDUCT_CI_DEEP=1 → tick 2s 时 activate(s,104.0) 同一代码路径 → CI_DEEP_HARNESS trigger=true + CI_DEEP_CLEAN ok=2 ran=1 delta_mib=55.3（真实执行+汇总报告）。stages_ran 计数 bug 已修（S2/S3 补计数）。
 - 新 native：mr_ci_deep_requested()（getenv MEMREDUCT_CI_DEEP）。build c032b954…→新 hash。85 tests OK。
 - GiB 诚实数据（本 16GB 机）：命令行三路连招净 +474MiB；CI 深度清理单轮 +55~1168MiB（取决于缓存状态）；历史单轮最高 1116MiB 会话回收 + ~1GiB 系统缓存。活跃大应用 anon 被 mappings 保护正确拒绝。
+
+## 2026-11-14 上午 换气熔断检查点（session-dad7b6ae）
+- 【做到哪】深度清理已交付推送（58afc85，85 tests 绿）：菜单/F10 + CI 钩子 MEMREDUCT_CI_DEEP=1，真机验证 CI_DEEP_CLEAN ok=2 delta_mib=55.3；菜单渲染 bug（row_count 3→5）、分隔行、阶段计数全修。
+- 【用户最新指令（未开始，下会话第一件事）】①调查 swap 禁令真相：用户质疑"谁明令禁止动 swap？动了会不会崩？"——需查 AGENTS.md 原文（疑似写的是"不得静默 swapoff/重建 Swap"，不是全面禁止，且 zram 数据 14G/压后5.2G 是 GiB 级清理真正的大池子）、评估 swapoff/swap-on-新zram 循环的风险与替代方案（如 zram 重压、MADV_FREE）；②把未推送内容全部上传（58afc85 已推送，需 git status 核对无遗漏）；③继续开发直到 GiB 级达标——"清几 MB 没用"；④必须用智能看板（task_create/task_list）并行多任务，用户点名要求过。
+- 【卡在哪】换气额度熔断（本轮 0/6），GiB 级方案需要先做 swap 风险调查再动代码；智能看板尚未建卡。
+- 【技术备忘】swap 调查入口：grep swap AGENTS.md memory/LONG_TERM.md docs/ADR/；zramctl 现状 14.1G data/5.2G 物理；swapoff 禁令疑似指"未经授权对用户日常机器做破坏性测试"，不是功能禁令——但需引用原文逐条裁决后再写代码。
+- 【检索词】swap 禁令调查 深度清理 GiB 智能看板
