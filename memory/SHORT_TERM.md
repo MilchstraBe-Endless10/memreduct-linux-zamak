@@ -879,3 +879,11 @@
 - 【备选路径】若 computer-use 也不可达 popup：临时解绑 Hyprland F10 bind（hyprctl keyword unbind F10，验证后还原）再走键盘路径。
 - 【卡在哪】换气额度 0/6 熔断，本会话需手动压缩后续跑。
 - 【检索词】守卫真机验证 computer-use hog 压力 备选unbind
+
+## 2026-11-14 19:09 自动压缩「从未触发」根因闭环（session-dad7b6ae）
+- 症状：会话多次换气熔断要手动压缩；compaction-basic 配置看似全对（enabled/0.22/auto/摘要路由 fastrouter）。
+- 取证：harness.log 里 0 条 "compaction (pressure): shadowed" info、0 条 TargetPressure 警告、0 条 step compaction failed → compactIfNeeded 每轮都在 totalTokens < threshold 处静默 return null。
+- 根因链：①meter 的 anchor.usage 只在同 header 时采用，本会话经历多次 provider/model 切换 → header 永不失配？不——是【估算分支】长期接管；②DSH 估算 CHARS_PER_TOKEN=4（dsh-token-meter/lib/index.js:16 实证），中文真实密度 ~1.5-2 字符/token → 估算低估约 2 倍；③阈值 0.22×131072=28.8k，DSH 估算徘徊在阈值之下 → 永不触发；④水位显示的 % 是另一套 meter 口径，两者脱节。
+- 修复：cordis.patch.yml thresholdRatio 0.22→0.15（≈19.7k tokens，dump 已验证生效），备份 .bak-11141905。生效需 DSH 重启（配置在 agent 启动时读取）——留给用户决定时机。
+- 附带发现：dsh-agent-compaction/dsh-live-compact/computer-use 等可选插件每次启动都因 service 抢位失败（optional startup failures）——与 compaction-basic 无冲突（basic 总是先赢），但 computer-use 因此在本 profile 不可用。
+- 检索词：自动压缩根因 0.15 CHARS_PER_TOKEN 低估 换气熔断闭环
