@@ -2,7 +2,8 @@
  *
  * Scalar bridge for the balanced-clean presentation helpers.
  */
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -681,96 +682,166 @@ int64_t mr_mem_available_bytes(void)
     return value;
 }
 
-int64_t mr_ci_deep_requested(void)
+
+
+/* Deep-clean pressure stage, second revision.
+ *
+ * Small batches instead of one multi-GiB write: each round asks the session
+ * cgroup for a fixed 512 MiB, an amount the kernel can service quickly, and
+ * the guard runs BEFORE the first batch as well as between batches. The stop
+ * conditions are short-window PSI growth (avg10 vs. the pre-run baseline) and
+ * swap rate, not a percentage of avg300. Once the guard fires, no further
+ * batch is submitted — the write already in the kernel cannot be interrupted,
+ * and the code does not pretend otherwise.
+ *
+ * Batch count is capped at 8 (4 GiB worst case) by a hard constant; the
+ * environment-variable escape hatch is gone on purpose. Results are exposed
+ * through four getters over a module-local struct, following the
+ * mr_bal_bridge_result_set convention used by the balanced stage. */
+static struct {
+    int64_t observed_end_to_end;      /* avail at exit minus avail at entry; may be negative */
+    int64_t pressure_accumulated;     /* sum of positive per-round deltas; never negative */
+    int64_t rounds_completed;
+    int64_t partial_flags;            /* bit0 = some batch ended in EAGAIN/partial */
+} mr_pressure_result;
+
+static double mr_pressure_psi_some_avg10(void)
 {
-    const char *v = getenv("MEMREDUCT_CI_DEEP");
-    return (v != NULL && v[0] == '1') ? 1 : 0;
+    FILE *f = fopen("/proc/pressure/memory", "r");
+    if (f == NULL) return -1.0;
+    char line[128];
+    double v = -1.0;
+    while (fgets(line, sizeof(line), f) != NULL) {
+        if (strncmp(line, "some ", 5) == 0) {
+            const char *p = strstr(line, "avg10=");
+            if (p != NULL) v = atof(p + 6);
+            break;
+        }
+    }
+    (void)fclose(f);
+    return v;
 }
 
-/* Deep-clean pressure stage.
- *
- * Writes an explicit reclaim request to user@1000.service/memory.reclaim and
- * reports only the observed MemAvailable delta. No swap configuration is
- * touched: this reuses the exact mechanism the balanced stage already uses,
- * with a much larger request so the kernel walks colder pages, and a PSI
- * guard that stops early when memory stall spikes. Round budget comes from
- * MR_BAL_PRESSURE_BUDGET_BYTES (default 3 GiB), rounds from
- * MR_BAL_PRESSURE_ROUNDS (default 2). Returns the summed observed delta in
- * bytes, or -1 when the session cgroup cannot be opened. */
-int64_t mr_bal_bridge_pressure_run(void)
+static int64_t mr_pressure_swap_delta(void) /* pswpout pages since last call */
 {
+    static int64_t last = -1;
+    FILE *f = fopen("/proc/vmstat", "r");
+    if (f == NULL) return -1;
+    char key[32];
+    int64_t val = 0;
+    int64_t cur = -1;
+    while (fscanf(f, "%31s %ld", key, &val) == 2) {
+        if (strcmp(key, "pswpout") == 0) { cur = val; break; }
+    }
+    (void)fclose(f);
+    if (cur < 0) return -1;
+    if (last < 0) { last = cur; return 0; }
+    int64_t d = cur - last;
+    last = cur;
+    return d;
+}
+
+static void *mr_pressure_worker(void *arg)
+{
+    (void)arg;
     const char *root = mr_bal_exec_session_root();
-    if (root[0] != '/') return -1;
+    if (root[0] != '/') {
+        mr_pressure_result.observed_end_to_end = -1;
+        return NULL;
+    }
     char path[512];
     if ((size_t)snprintf(path, sizeof(path), "%s/memory.reclaim", root)
-        >= sizeof(path)) return -1;
-
-    uint64_t budget = 3ull * 1024ull * 1024ull * 1024ull;
-    int rounds = 2;
-    const char *env_b = getenv("MR_BAL_PRESSURE_BUDGET_BYTES");
-    const char *env_r = getenv("MR_BAL_PRESSURE_ROUNDS");
-    if (env_b != NULL) {
-        long long v = atoll(env_b);
-        if (v > 0 && v <= 16ll * 1024ll * 1024ll * 1024ll)
-            budget = (uint64_t)v;
-    }
-    if (env_r != NULL) {
-        int v = atoi(env_r);
-        if (v > 0 && v <= 6) rounds = v;
+        >= sizeof(path)) {
+        mr_pressure_result.observed_end_to_end = -1;
+        return NULL;
     }
 
-    FILE *psi = fopen("/proc/pressure/memory", "r");
-    double stall0 = 0.0;
-    if (psi != NULL) {
-        char line[128];
-        while (fgets(line, sizeof(line), psi) != NULL) {
-            if (strncmp(line, "some ", 5) == 0) {
-                const char *p = strstr(line, "avg300=");
-                if (p != NULL) stall0 = atof(p + 7);
-                break;
-            }
-        }
-        (void)fclose(psi);
-    }
+    const uint64_t batch = 512ull * 1024ull * 1024ull;
+    const int max_rounds = 8;
+    const double psi_growth_limit = 8.0;  /* avg10 points over baseline */
+
+    double psi_base = mr_pressure_psi_some_avg10();
+    (void)mr_pressure_swap_delta();       /* zero the rate window */
 
     int64_t before = mr_mem_available_bytes();
-    if (before < 0) return -1;
-    int64_t delta_sum = 0;
+    if (before < 0) {
+        mr_pressure_result.observed_end_to_end = -1;
+        return NULL;
+    }
+    int64_t entry = before;
 
-    for (int r = 0; r < rounds; r++) {
+    for (int r = 0; r < max_rounds; r++) {
+        /* Guard BEFORE each batch, including the first. */
+        double psi_now = mr_pressure_psi_some_avg10();
+        if (psi_now >= 0.0 && psi_base >= 0.0 && psi_now > psi_base + psi_growth_limit)
+            break;
+        if (mr_pressure_swap_delta() > 60000) /* > ~230 MiB paged out in the window */
+            break;
+
         FILE *f = fopen(path, "w");
-        if (f == NULL) return delta_sum > 0 ? delta_sum : -1;
-        fprintf(f, "%" PRIu64, budget);
-        /* fclose blocks until the kernel finishes or gives up, which is the
-         * measurement boundary; the write itself is best-effort. */
-        if (fclose(f) != 0 && delta_sum == 0 && r == 0) return -1;
-        /* settle: let writeback and counters land */
+        if (f == NULL) break;
+        fprintf(f, "%" PRIu64, batch);
+        int werr = fclose(f);             /* EAGAIN here may still have done work */
+        if (werr != 0) {
+            mr_pressure_result.partial_flags |= 1;
+            break;                        /* kernel refused/short: keep sample, stop */
+        }
+        mr_pressure_result.rounds_completed = r + 1;
+
         struct timespec settle = { .tv_sec = 1, .tv_nsec = 200000000 };
         (void)nanosleep(&settle, NULL);
 
         int64_t now = mr_mem_available_bytes();
         if (now < 0) break;
         int64_t d = now - before;
-        if (d > 0) delta_sum += d;
+        if (d > 0) mr_pressure_result.pressure_accumulated += d;
         before = now;
-
-        /* PSI guard: if memory stall ballooned vs the pre-run baseline, stop
-         * instead of pushing the desktop into swap thrash. */
-        FILE *psi2 = fopen("/proc/pressure/memory", "r");
-        if (psi2 != NULL) {
-            char line[128];
-            while (fgets(line, sizeof(line), psi2) != NULL) {
-                if (strncmp(line, "some ", 5) == 0) {
-                    const char *p = strstr(line, "avg300=");
-                    if (p != NULL && atof(p + 7) > stall0 + 20.0) {
-                        (void)fclose(psi2);
-                        return delta_sum;
-                    }
-                    break;
-                }
-            }
-            (void)fclose(psi2);
-        }
     }
-    return delta_sum;
+
+    int64_t exitv = mr_mem_available_bytes();
+    if (exitv >= 0) mr_pressure_result.observed_end_to_end = exitv - entry;
+    return NULL;
+}
+
+static pthread_t mr_pressure_thread;
+static volatile int mr_pressure_running = 0;
+
+/* Launch the pressure stage on a worker thread so the GUI callback returns
+ * immediately; poll with mr_bal_bridge_pressure_poll(). */
+int64_t mr_bal_bridge_pressure_start(void)
+{
+    if (mr_pressure_running) return -2;   /* already running */
+    memset(&mr_pressure_result, 0, sizeof(mr_pressure_result));
+    if (pthread_create(&mr_pressure_thread, NULL, mr_pressure_worker, NULL) != 0)
+        return -1;
+    mr_pressure_running = 1;
+    return 0;
+}
+
+/* 1 = finished, 0 = still running, -1 = never started. */
+int64_t mr_bal_bridge_pressure_poll(void)
+{
+    if (!mr_pressure_running) return -1;
+    if (pthread_tryjoin_np(mr_pressure_thread, NULL) != 0) return 0;
+    mr_pressure_running = 0;
+    return 1;
+}
+
+int64_t mr_bal_bridge_pressure_observed_end_to_end(void)
+{ return mr_pressure_result.observed_end_to_end; }
+
+int64_t mr_bal_bridge_pressure_accumulated_positive(void)
+{ return mr_pressure_result.pressure_accumulated; }
+
+int64_t mr_bal_bridge_pressure_rounds_completed(void)
+{ return mr_pressure_result.rounds_completed; }
+
+int64_t mr_bal_bridge_pressure_partial_flags(void)
+{ return mr_pressure_result.partial_flags; }
+
+int64_t mr_bal_bridge_sleep_ms(int64_t ms)
+{
+    if (ms <= 0 || ms > 5000) return -1;
+    struct timespec ts = { .tv_sec = ms / 1000, .tv_nsec = (ms % 1000) * 1000000L };
+    return nanosleep(&ts, NULL) == 0 ? 0 : -1;
 }

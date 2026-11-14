@@ -1,0 +1,12 @@
+== immediate 2026-11-14 12:49:15 ==
+MemAvailable_kib=1301784
+PSI_mem_some_avg10=avg300=2.26 avg60=total=1534485396
+pswpin 407035670 pswpout 439486244 
+== 30s 2026-11-14 12:49:45 ==
+MemAvailable_kib=1146356
+PSI_mem_some_avg10=avg300=2.10 avg60=total=1534738706
+pswpin 407118818 pswpout 439536842 
+== 3min 2026-11-14 12:52:45 ==
+MemAvailable_kib=769868
+PSI_mem_some_avg10=avg300=2.10 avg60=total=1539142361
+pswpin 408117692 pswpout 440649832 

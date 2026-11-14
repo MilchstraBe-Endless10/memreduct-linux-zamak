@@ -92,8 +92,13 @@ extern fn mr_runtime_xproc_result_mode() -> i64
 extern fn mr_runtime_emit(line: &string)
 extern fn mr_production_clean_enabled() -> i64
 extern fn mr_mem_available_bytes() -> i64
-extern fn mr_ci_deep_requested() -> i64
-extern fn mr_bal_bridge_pressure_run() -> i64
+extern fn mr_bal_bridge_sleep_ms(ms: i64) -> i64
+extern fn mr_bal_bridge_pressure_start() -> i64
+extern fn mr_bal_bridge_pressure_poll() -> i64
+extern fn mr_bal_bridge_pressure_observed_end_to_end() -> i64
+extern fn mr_bal_bridge_pressure_accumulated_positive() -> i64
+extern fn mr_bal_bridge_pressure_rounds_completed() -> i64
+extern fn mr_bal_bridge_pressure_partial_flags() -> i64
 # Read-only check of the fixed privileged chain (helper / polkit action /
 # pkexec). Lets the window name the missing component instead of showing the
 # unattributable "outcome unconfirmed" that a bare pkexec 126/127 produces.
@@ -216,6 +221,7 @@ struct MainWindow:
     sample_ok: bool
     draw_logged: bool
     test_mode: bool
+    deep_scope_ack: i64
     test_timeout_ms: i64
     elapsed_ms: i64
     ci_sample_failure_latched: bool
@@ -2143,11 +2149,6 @@ fn tick(s: &mut MainWindow):
         refresh(s)
     elif s.elapsed_ms % 3000 == 0:
         refresh(s)
-    # CI harness: MEMREDUCT_CI_DEEP=1 fires the deep-clean pipeline once at the
-    # two-second tick, on the same code path as the menu target 104.
-    if s.test_mode and mr_ci_deep_requested() == 1 and s.elapsed_ms >= 2000 and s.elapsed_ms < 2600:
-        mr_runtime_emit("CI_DEEP_HARNESS trigger=true")
-        activate(s, 104.0)
     if not s.test_mode or s.test_timeout_ms <= 0: return
     if s.elapsed_ms >= s.test_timeout_ms:
         mr_runtime_emit("CI_QUIT source=bounded_test_timer")
@@ -2315,9 +2316,19 @@ fn activate(s: &mut MainWindow, target: f64):
         if s.test_mode: mr_runtime_emit(f"CI_GROUP_SELECT group={s.selected_group} selected=true")
     elif target == 104.0:
         # Deep clean pipeline. Each stage reports what it actually did; the
-        # headline is the sum of measured deltas, never a requested number.
+        # headline is the measured end-to-end delta, never a requested number.
+        # First press shows the scope statement; the second press within the
+        # session runs it — the user must see the blast radius before it goes.
         s.menu = 0
         s.popup = 0
+        if s.deep_scope_ack == 0:
+            s.deep_scope_ack = 1
+            s.status = label(s.zh,
+                "Deep clean covers the whole session cgroup (not just selected apps); cold anonymous pages may be pushed into ZRAM/swap. Press again to start.",
+                "深度清理作用于整个会话 cgroup（不只选定应用）；冷匿名页可能压入 ZRAM/swap。再按一次开始。")
+            s.canvas.redraw()
+            return
+        s.deep_scope_ack = 0
         let avail_before = mr_mem_available_bytes()
         let mut stages_ok = 0
         let mut stages_ran = 0
@@ -2345,27 +2356,38 @@ fn activate(s: &mut MainWindow, target: f64):
         if mr_bal_bridge_session_available() == 1:
             let r3 = mr_bal_bridge_session_run(0)
             if r3 == 1: stages_ok += 1
-        # S4: high-pressure sweep — the same session memory.reclaim mechanism
-        # with a multi-GiB request, so the kernel walks cold anonymous pages
-        # into zram. PSI-guarded inside the bridge; reports observed delta.
+        # S4: batched high-pressure sweep on a worker thread. The GUI polls
+        # instead of blocking; the bridge stops submitting batches when PSI
+        # or swap rate says the desktop is under pressure. Partial rounds
+        # (EAGAIN) keep their samples and are flagged, never discarded.
         stages_ran += 1
-        let pressure = mr_bal_bridge_pressure_run()
-        if pressure > 0: stages_ok += 1
+        let start_rc = mr_bal_bridge_pressure_start()
+        let mut poll_rc = 0
+        if start_rc == 0:
+            let mut waited = 0
+            while poll_rc == 0 and waited < 600:
+                s.canvas.redraw()
+                mr_bal_bridge_sleep_ms(100)
+                waited += 1
+                poll_rc = mr_bal_bridge_pressure_poll()
+            if poll_rc == 1: stages_ok += 1
         s.canvas.redraw()
         let avail_after = mr_mem_available_bytes()
         let observed_mib = (avail_after - avail_before) / 1048576
-        let pressure_mib = pressure / 1048576
-        let delta_mib = if observed_mib > 0: observed_mib else: pressure_mib
-        if delta_mib > 0:
+        let pressure_pos_mib = mr_bal_bridge_pressure_accumulated_positive() / 1048576
+        let rounds = mr_bal_bridge_pressure_rounds_completed()
+        let partial = mr_bal_bridge_pressure_partial_flags()
+        let gib_tenths = (observed_mib * 10 + 512) / 1024
+        if observed_mib > 0:
             s.status = label(s.zh,
-                f"Deep clean finished: {stages_ok}/{stages_ran} stages, +{delta_mib} MiB observed",
-                f"深度清理完成：{stages_ok}/{stages_ran} 阶段，观测 +{delta_mib} MiB")
+                f"Deep clean finished: {stages_ok}/{stages_ran} stages; net +{gib_tenths / 10}.{gib_tenths % 10} GiB end-to-end; pressure rounds {rounds} (+{pressure_pos_mib} MiB)",
+                f"深度清理完成：{stages_ok}/{stages_ran} 阶段；全程净 +{gib_tenths / 10}.{gib_tenths % 10} GiB；压力轮次 {rounds}（+{pressure_pos_mib} MiB）")
         else:
             s.status = label(s.zh,
-                f"Deep clean finished: {stages_ok}/{stages_ran} stages, no net gain observed",
-                f"深度清理完成：{stages_ok}/{stages_ran} 阶段，未观测到净增长")
+                f"Deep clean finished: {stages_ok}/{stages_ran} stages, no net gain end-to-end; pressure rounds {rounds} (+{pressure_pos_mib} MiB)",
+                f"深度清理完成：{stages_ok}/{stages_ran} 阶段，全程无净增长；压力轮次 {rounds}（+{pressure_pos_mib} MiB）")
         if s.test_mode:
-            mr_runtime_emit(f"CI_DEEP_CLEAN ok={stages_ok} ran={stages_ran} delta_mib={delta_mib}")
+            mr_runtime_emit(f"CI_DEEP_CLEAN ok={stages_ok} ran={stages_ran} net_mib={observed_mib} pressure_pos_mib={pressure_pos_mib} rounds={rounds} partial={partial}")
     elif target == 103.0:
         # Same action as the tenth row of the clean menu, reached through a path
         # that actually works: real menu geometry, real focus, real keyboard.
@@ -2837,6 +2859,7 @@ fn test_font_policy_name_reports_only_a_confirmed_result():
 
 fn main():
     let test_mode = mr_runtime_mode() != 0
+    let deep_scope_ack_init = 0
     let preferences_status = mr_preferences_load()
     let mut initial_zh = false
     let mut initial_dark = false
@@ -2898,7 +2921,7 @@ fn main():
         zh: initial_zh, dark: initial_dark, menu: 0, popup: 0, hover: 0.0, pressed: 0.0,
         focus: -1.0, menu_focus: 0.0, collapsed_groups: 0, selected_group: initial_selected_group, status: "", mem_total: 0, mem_available: 0, swap_total: 0,
         swap_free: 0, page_cache_estimate: 0, sample_ok: false, draw_logged: false,
-        test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, ci_sample_failure_latched: false, sample_failure_draw_logged: false,
+        test_mode: test_mode, test_timeout_ms: test_timeout, elapsed_ms: 0, deep_scope_ack: 0, ci_sample_failure_latched: false, sample_failure_draw_logged: false,
         clean_simulation: clean_simulation, clean_production: clean_production,
         xproc_simulation: xproc_simulation, main_close_guard_ready: main_close_guard_ready, xproc_view: 0, xproc_state: 0, xproc_cancel_status: 0,
         xproc_selected: -1, xproc_scroll: 0, xproc_focus: 0, xproc_budget_choice: 0,

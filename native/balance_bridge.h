@@ -119,4 +119,22 @@ int64_t mr_bal_bridge_session_run(uint64_t budget_bytes);
 const char *mr_bal_bridge_state_name(int64_t state);
 const char *mr_bal_bridge_action_name(int64_t action);
 
+/* ---- deep-clean pressure stage ------------------------------------------
+ *
+ * Batched high-pressure sweep on a worker thread. start() launches, poll()
+ * reports 1 = finished / 0 = still running / -1 = never started. The four
+ * result getters are only meaningful after poll() returned 1:
+ *   observed_end_to_end   MemAvailable at exit minus at entry; may be negative
+ *   accumulated_positive  sum of positive per-round deltas only
+ *   rounds_completed      batches the kernel accepted
+ *   partial_flags         bit0 = some batch ended EAGAIN/short (sample kept) */
+int64_t mr_bal_bridge_pressure_start(void);
+int64_t mr_bal_bridge_pressure_poll(void);
+int64_t mr_bal_bridge_pressure_observed_end_to_end(void);
+int64_t mr_bal_bridge_pressure_accumulated_positive(void);
+int64_t mr_bal_bridge_pressure_rounds_completed(void);
+int64_t mr_bal_bridge_pressure_partial_flags(void);
+/* Sleep used by the GUI poll loop between polls. */
+int64_t mr_bal_bridge_sleep_ms(int64_t ms);
+
 #endif /* MEMREDUCT_BALANCE_BRIDGE_H */
