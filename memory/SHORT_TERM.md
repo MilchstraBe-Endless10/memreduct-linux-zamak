@@ -893,3 +893,10 @@
 - 决定性数据：本会话 seq13626 assistant/message usage inputTokens=781173（21:27:16）——meter 的 usageTokens()=input+cacheRead+cacheWrite+output（源码 674 行实证），是累计口径；若 meter baseline 采用 usage 分支，totalTokens≈781k >> 阈值 19.7k。
 - 验证方法（下一条用户消息发出后立刻执行）：grep "compaction (pressure): shadowed" ~/.config/open-deepseek-harness-desktop/logs/harness.log | tail -1 —— 出现即自动压缩已激活；若仍无而 usage 分支又该命中，则查 compactIfNeeded 的 routedTarget/session.requestHeader 路径（provider/model 路由是否 undefined 导致静默 return null——源码 743 行）。
 - 检索词：重启后验证 shadowed usage 781k
+
+## 2026-11-14 21:37 自动压缩首次真触发 ✓ + 摘要路由修复
+- 里程碑：重启后 thresholdRatio=0.15 生效，21:33:13 本会话自动压缩真触发（compactionId 826e7f87，摘要 29472 字符，水位 75%→49%）——「换气熔断→手动压缩」循环结束的转折点。
+- 新根因（第二段）：21:33:45/21:33:54 两次后续压缩失败，error="pi-ai provider omniroute has no configured model fastrouter/auto"——fastrouter/auto 已被从 omniroute 模型清单移除（额度），summarizationModel 指向幽灵模型 → 摘要生成必败。
+- 修复：cordis.patch.yml summarizationModel fastrouter/auto → workbuddy/auto（omniroute 现存清单：workbuddy/auto、glm-5.3、glm-5.3-flash、deepseek-v4.1-flash、minimax-m3、minimax-m3.1-flash，dump 验证生效，需下次重启读取）。
+- 诊断路径沉淀：session jsonl 里 "compaction/end" 带 error 字段 → compaction/summary 看产物。harness.log 的 shadowed info 不落盘（只 ctx.logger.info 到 stdout）。
+- 检索词：压缩真触发 fastrouter幽灵 workbuddy/auto 路由
