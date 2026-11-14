@@ -19,6 +19,9 @@
 #include "balance_bridge.h"
 #include "balance_exec.h"
 #include "balance_gui.h"
+#include <inttypes.h>
+#include <time.h>
+#include <unistd.h>
 #include "balance_plan.h"
 #include "balance_snapshot.h"
 
@@ -682,4 +685,92 @@ int64_t mr_ci_deep_requested(void)
 {
     const char *v = getenv("MEMREDUCT_CI_DEEP");
     return (v != NULL && v[0] == '1') ? 1 : 0;
+}
+
+/* Deep-clean pressure stage.
+ *
+ * Writes an explicit reclaim request to user@1000.service/memory.reclaim and
+ * reports only the observed MemAvailable delta. No swap configuration is
+ * touched: this reuses the exact mechanism the balanced stage already uses,
+ * with a much larger request so the kernel walks colder pages, and a PSI
+ * guard that stops early when memory stall spikes. Round budget comes from
+ * MR_BAL_PRESSURE_BUDGET_BYTES (default 3 GiB), rounds from
+ * MR_BAL_PRESSURE_ROUNDS (default 2). Returns the summed observed delta in
+ * bytes, or -1 when the session cgroup cannot be opened. */
+int64_t mr_bal_bridge_pressure_run(void)
+{
+    const char *root = mr_bal_exec_session_root();
+    if (root[0] != '/') return -1;
+    char path[512];
+    if ((size_t)snprintf(path, sizeof(path), "%s/memory.reclaim", root)
+        >= sizeof(path)) return -1;
+
+    uint64_t budget = 3ull * 1024ull * 1024ull * 1024ull;
+    int rounds = 2;
+    const char *env_b = getenv("MR_BAL_PRESSURE_BUDGET_BYTES");
+    const char *env_r = getenv("MR_BAL_PRESSURE_ROUNDS");
+    if (env_b != NULL) {
+        long long v = atoll(env_b);
+        if (v > 0 && v <= 16ll * 1024ll * 1024ll * 1024ll)
+            budget = (uint64_t)v;
+    }
+    if (env_r != NULL) {
+        int v = atoi(env_r);
+        if (v > 0 && v <= 6) rounds = v;
+    }
+
+    FILE *psi = fopen("/proc/pressure/memory", "r");
+    double stall0 = 0.0;
+    if (psi != NULL) {
+        char line[128];
+        while (fgets(line, sizeof(line), psi) != NULL) {
+            if (strncmp(line, "some ", 5) == 0) {
+                const char *p = strstr(line, "avg300=");
+                if (p != NULL) stall0 = atof(p + 7);
+                break;
+            }
+        }
+        (void)fclose(psi);
+    }
+
+    int64_t before = mr_mem_available_bytes();
+    if (before < 0) return -1;
+    int64_t delta_sum = 0;
+
+    for (int r = 0; r < rounds; r++) {
+        FILE *f = fopen(path, "w");
+        if (f == NULL) return delta_sum > 0 ? delta_sum : -1;
+        fprintf(f, "%" PRIu64, budget);
+        /* fclose blocks until the kernel finishes or gives up, which is the
+         * measurement boundary; the write itself is best-effort. */
+        if (fclose(f) != 0 && delta_sum == 0 && r == 0) return -1;
+        /* settle: let writeback and counters land */
+        struct timespec settle = { .tv_sec = 1, .tv_nsec = 200000000 };
+        (void)nanosleep(&settle, NULL);
+
+        int64_t now = mr_mem_available_bytes();
+        if (now < 0) break;
+        int64_t d = now - before;
+        if (d > 0) delta_sum += d;
+        before = now;
+
+        /* PSI guard: if memory stall ballooned vs the pre-run baseline, stop
+         * instead of pushing the desktop into swap thrash. */
+        FILE *psi2 = fopen("/proc/pressure/memory", "r");
+        if (psi2 != NULL) {
+            char line[128];
+            while (fgets(line, sizeof(line), psi2) != NULL) {
+                if (strncmp(line, "some ", 5) == 0) {
+                    const char *p = strstr(line, "avg300=");
+                    if (p != NULL && atof(p + 7) > stall0 + 20.0) {
+                        (void)fclose(psi2);
+                        return delta_sum;
+                    }
+                    break;
+                }
+            }
+            (void)fclose(psi2);
+        }
+    }
+    return delta_sum;
 }

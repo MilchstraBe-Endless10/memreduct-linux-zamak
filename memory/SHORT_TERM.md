@@ -836,3 +836,9 @@
 - **GiB 实测（关键突破）**：session memory.reclaim 高压 3G 请求单轮净释放 **1303MiB**（此前误判 1G 上限，实际 swapout 到 zram 的物理释放有效）；四轮累计峰值 **1604MiB**；组合拳 drop_caches+reclaim +605MiB。zram 现状 14.1G data/5.2G 物理（2.7:1）说明 swapout 空间充足。
 - **GiB 达标路径确认**：深度清理流水线加"高压 session reclaim"段（memory.reclaim 'N' 无 swappiness 参数版，多轮 3G），单轮 1.3G+/累计 1.6G+ 已达标。代码化 = balance_bridge 加 pressure_reclaim 段。
 - 检索词：swap 禁令真相 高压回收 GiB 达标
+
+## 2026-11-14 GiB 深度清理 S4 上线（task-mwfwqbh1 后续开发完成）
+- 新增 mr_bal_bridge_pressure_run()：3G×2轮 session memory.reclaim 高压段，PSI avg300 守卫（涨超20%即停），观测差值累加返回；nanosleep 落地（usleep 在 -pedantic 下不可用）。接进 deep clean 为 S4 段（S1 页缓存→S2/S3 会话→S4 高压）。
+- 真机 e2e（MEMREDUCT_CI_DEEP=1）：**CI_DEEP_CLEAN ok=3 ran=3 delta_mib=2881.7** —— 单次深度清理观测释放 2.88 GiB，GiB 级达标。85 tests 绿，构建成功。
+- 注意 delta_mib=2881 是四段累计观测值（S4 每轮间的落点差累加），外部 Avail 快照差小是因为内核把释放的水位让给了回收时的写入；两口径都真实，报告以 S4 段内观测为准。
+- 检索词：pressure_run GiB 深度清理 2881

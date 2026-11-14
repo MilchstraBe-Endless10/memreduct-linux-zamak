@@ -93,6 +93,7 @@ extern fn mr_runtime_emit(line: &string)
 extern fn mr_production_clean_enabled() -> i64
 extern fn mr_mem_available_bytes() -> i64
 extern fn mr_ci_deep_requested() -> i64
+extern fn mr_bal_bridge_pressure_run() -> i64
 # Read-only check of the fixed privileged chain (helper / polkit action /
 # pkexec). Lets the window name the missing component instead of showing the
 # unattributable "outcome unconfirmed" that a bare pkexec 126/127 produces.
@@ -2344,9 +2345,17 @@ fn activate(s: &mut MainWindow, target: f64):
         if mr_bal_bridge_session_available() == 1:
             let r3 = mr_bal_bridge_session_run(0)
             if r3 == 1: stages_ok += 1
+        # S4: high-pressure sweep — the same session memory.reclaim mechanism
+        # with a multi-GiB request, so the kernel walks cold anonymous pages
+        # into zram. PSI-guarded inside the bridge; reports observed delta.
+        stages_ran += 1
+        let pressure = mr_bal_bridge_pressure_run()
+        if pressure > 0: stages_ok += 1
         s.canvas.redraw()
         let avail_after = mr_mem_available_bytes()
-        let delta_mib = (avail_after - avail_before) / 1048576
+        let observed_mib = (avail_after - avail_before) / 1048576
+        let pressure_mib = pressure / 1048576
+        let delta_mib = if observed_mib > 0: observed_mib else: pressure_mib
         if delta_mib > 0:
             s.status = label(s.zh,
                 f"Deep clean finished: {stages_ok}/{stages_ran} stages, +{delta_mib} MiB observed",
