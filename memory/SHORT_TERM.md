@@ -842,3 +842,16 @@
 - 真机 e2e（MEMREDUCT_CI_DEEP=1）：**CI_DEEP_CLEAN ok=3 ran=3 delta_mib=2881.7** —— 单次深度清理观测释放 2.88 GiB，GiB 级达标。85 tests 绿，构建成功。
 - 注意 delta_mib=2881 是四段累计观测值（S4 每轮间的落点差累加），外部 Avail 快照差小是因为内核把释放的水位让给了回收时的写入；两口径都真实，报告以 S4 段内观测为准。
 - 检索词：pressure_run GiB 深度清理 2881
+
+## 2026-11-14 S4 计量修正：两口径分开 + EAGAIN 部分回收保留（task-mwfx84el，commit 1527543）
+- reviewer 三点落地：①整轮净值（avail_before→avail_after，activate(104) 进出，复用现有变量）与 S4 段内累计正增量分开显示互不覆盖；②GiB 单位按 tenths 整数先例换算（2881.7MiB→2.8GiB，不再 MiB 冒充 GiB）；③EAGAIN/短写批次保留采样并置 partial_flags bit0，不再丢首轮。
+- C 侧（balance_bridge.c/h）：pressure 改 worker 线程批处理（512 MiB×上限 8 批、env 逃生门删除），start/poll 异步 + 四 getter（pressure_observed_end_to_end / accumulated_positive / rounds_completed / partial_flags），守卫改 avg10 短窗 + pswpout 速率、每批前先查；mr_ci_deep_requested 无调用方随之删除。
+- main.zm S4 段轮询替代阻塞；状态栏双语两口径；CI_DEEP_CLEAN 行拆 net_mib/pressure_pos_mib/rounds/partial。
+- 验收：zam check OK、zam test 85/85 绿、build-arch.sh Build successful。改动由主会话集成提交（1527543 已推 origin）。
+- 检索词：S4 计量修正 两口径 EAGAIN partial_flags end_to_end 1527543
+
+## 2026-11-14 13:13 正式 GUI 真机验收（无 CI_DEEP，双击路径）
+- 点击序列：File yd(405,201) → popup → Deep row yd(428,252) 第一次点击（scope 提示，未执行）→ 1.5s 后同位置第二次点击（确认执行）→ 等 100s。
+- 硬数据：MemAvailable AV0=805 MiB → AV1=1533 MiB，**外部观测 +728 MiB**（15.4G 机器低水位起点）。这是 /usr/bin 生产二进制（c1d252ed）非 CI 模式真实 GUI 点击触发全管线（S1 页缓存+S2/S3 会话+S4 后台批处理）的实测。
+- scope 闸行为验证：两次点击间隔内 AV 无变化（第一次不执行），第二次后才释放——闸门语义正确。截图因 popup 覆盖+窗口层级没抓到提示画面（已知 UI 截图限制，逻辑有测试覆盖）。
+- 检索词：正式GUI验收 728 scope闸 真机
