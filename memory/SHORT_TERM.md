@@ -900,3 +900,11 @@
 - 修复：cordis.patch.yml summarizationModel fastrouter/auto → workbuddy/auto（omniroute 现存清单：workbuddy/auto、glm-5.3、glm-5.3-flash、deepseek-v4.1-flash、minimax-m3、minimax-m3.1-flash，dump 验证生效，需下次重启读取）。
 - 诊断路径沉淀：session jsonl 里 "compaction/end" 带 error 字段 → compaction/summary 看产物。harness.log 的 shadowed info 不落盘（只 ctx.logger.info 到 stdout）。
 - 检索词：压缩真触发 fastrouter幽灵 workbuddy/auto 路由
+
+## 2026-11-14 21:53 memq 账本门重建完成（四腿验证全通）
+- 根因：hub/memq.mjs 文件本体丢失（10-23 时代存在，echo-doctor 注释仍引用），SELF.md 门牌指向 MODULE_NOT_FOUND。
+- 重建：/home/arlune_innersea/.config/open-deepseek-harness-desktop/dsh-home/hub/memq.mjs（200 行级），四命令：now（各会话最新事件）、find <关键词>（跨会话尾部 3MB 检索）、timeline --since、open log:session-<id>#seq=<n>（zstd 流式解，tail-c 封顶内存，遵守 echo-doctor 门牌可回取教训：绝不 Buffer.concat 巨串）。
+- 坑：sessions 是两层目录（<workspace>/<session-id>/），一层扫描得零结果——已修。
+- 验证：now 列 6 会话实时事件 ✓；find "自动压缩根因"命中 seq=13513 ✓；find "workbuddy/auto" 命中 21:33 修复轨迹 ✓；open seq=13742 返回原文 JSON ✓。
+- memindex.mjs 未重建（索引数据 10-28 建好后一直没更新，SELF.md 提示建索引的命令同样会 MODULE_NOT_FOUND）——后续需要时重建，当前 memq find 已够用。
+- 检索词：memq重建 四腿验证 两层目录
