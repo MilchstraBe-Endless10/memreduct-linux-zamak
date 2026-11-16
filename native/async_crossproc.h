@@ -1,0 +1,168 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Unprivileged bridge to the cross-process reclaim helper (Issue #12, M1.1).
+ *
+ * The GUI never holds privilege. This module is the only place that spawns the
+ * privileged helper, and it does so through pkexec with a literal argv: one
+ * fixed helper path, one fixed verb, and seven decimal identity/budget numbers. There is no
+ * shell, no path from input, and no way to ask for a different action.
+ *
+ * Two behaviours are deliberate and tested:
+ *   1. At most one run is in flight. A second request is refused, not queued.
+ *   2. Nothing retries. A failed or uncertain run stays failed or uncertain.
+ *      An advice may have been applied, and repeating it doubles the cost for
+ *      no promised gain.
+ */
+#ifndef MEMREDUCT_ASYNC_CROSSPROC_H
+#define MEMREDUCT_ASYNC_CROSSPROC_H
+
+#include <stdint.h>
+#include <sys/types.h>
+
+#include "crossproc_helper.h"
+
+/* Start results. Nonnegative means a child was spawned; the list is separate
+ * from the poll states so "it never ran" and "it ran and refused" cannot be
+ * confused. */
+enum mr_xproc_start {
+    MR_XPROC_START_OK = 0,
+    MR_XPROC_START_BUSY = 1,        /* a run is already in flight */
+    MR_XPROC_START_BAD_REQUEST = 2, /* the target does not satisfy the contract */
+    MR_XPROC_START_LAUNCH_FAILED = 3
+};
+
+enum mr_xproc_mode {
+    MR_XPROC_MODE_PROCESS_PAGEOUT = 0,
+    MR_XPROC_MODE_APP_SCOPE = 1
+};
+
+/* Poll results. Negative values are nonterminal. The terminal set keeps four
+ * kinds of "no" apart, because they need four different sentences:
+ *   - we refused before spawning (REFUSED_LOCAL);
+ *   - the launch failed (LAUNCH_FAILED);
+ *   - the authorization was dismissed (AUTH_CANCELLED), or authorization / the
+ *     fixed helper launch failed (AUTH_FAILED);
+ *   - the helper ran and the kernel answered (HELPER_*).
+ */
+enum mr_xproc_poll {
+    MR_XPROC_POLL_IDLE = -2,
+    MR_XPROC_POLL_RUNNING = -1,
+    MR_XPROC_POLL_ACCEPTED = 0,          /* kernel accepted the whole request */
+    MR_XPROC_POLL_PARTIAL = 1,           /* kernel covered part of it */
+    MR_XPROC_POLL_REFUSED = 2,           /* helper refused; see the reason line */
+    MR_XPROC_POLL_NO_PERMISSION = 3,     /* the kernel said EPERM */
+    MR_XPROC_POLL_TARGET_GONE = 4,       /* the target vanished */
+    MR_XPROC_POLL_UNSUPPORTED = 5,       /* no process_madvise on this kernel */
+    MR_XPROC_POLL_NO_REGIONS = 6,        /* nothing eligible to ask about */
+    MR_XPROC_POLL_AUTH_UNATTRIBUTED = 7, /* pkexec refused, or the helper did */
+    MR_XPROC_POLL_LAUNCH_FAILED = 8,     /* could not spawn pkexec at all */
+    MR_XPROC_POLL_OUTCOME_UNKNOWN = 9,   /* the child died or could not be read */
+    MR_XPROC_POLL_REFUSED_LOCAL = 10,    /* our own pre-checks said no */
+    MR_XPROC_POLL_AUTH_CANCELLED = 11,   /* pkexec returned its cancellation code */
+    MR_XPROC_POLL_AUTH_FAILED = 12,      /* pkexec could not authorize or start helper */
+    MR_XPROC_POLL_CANCELLED_UNKNOWN = 13 /* stopped child; helper may have started */
+};
+
+/* Why our own pre-checks refused, readable through mr_xproc_local_refusal(). */
+enum mr_xproc_local_reason {
+    MR_XPROC_LOCAL_NONE = 0,
+    MR_XPROC_LOCAL_BAD_PID = 1,
+    MR_XPROC_LOCAL_BAD_START_TIME = 2,
+    MR_XPROC_LOCAL_BAD_BUDGET = 3,
+    MR_XPROC_LOCAL_NOT_INSTALLED = 4,   /* helper or policy missing */
+    MR_XPROC_LOCAL_NOT_ENABLED = 5,     /* this build cannot do it */
+    MR_XPROC_LOCAL_BAD_IDENTITY = 6     /* selected snapshot is incomplete */
+};
+
+/* Is the privileged chain present and usable right now? Read-only: stat on the
+ * fixed helper path, the fixed policy path and pkexec. Returns an
+ * mr_xproc_preflight value. */
+enum mr_xproc_preflight {
+    MR_XPROC_PREFLIGHT_READY = 0,
+    MR_XPROC_PREFLIGHT_NEED_HELPER = 1,
+    MR_XPROC_PREFLIGHT_NEED_POLICY = 2,
+    MR_XPROC_PREFLIGHT_NEED_PKEXEC = 3,
+    MR_XPROC_PREFLIGHT_NEED_KERNEL = 4,  /* no pidfd_open / process_madvise */
+    MR_XPROC_PREFLIGHT_HELPER_PROTOCOL = 5 /* installed helper is incompatible */
+};
+int64_t mr_xproc_preflight(void);
+
+/* Whether this build may reach the privileged path at all. Separate from
+ * preflight: a fully installed chain still cannot be used by a build that was
+ * compiled with the capability switched off. */
+int64_t mr_xproc_enabled(void);
+
+/* Start one reclaim for exactly this immutable selection. The helper compares
+ * the numeric identity fingerprint against fresh procfs data after Polkit.
+ * Returns an mr_xproc_start value. */
+/* Request IDs are opaque per-request correlation values. They are not
+ * credentials and never authorize helper behaviour. */
+int64_t mr_xproc_request_id_new(void);
+int64_t mr_xproc_audit_confirmation(int64_t request_id, int64_t pid,
+                                    int64_t start_time, int64_t uid,
+                                    int64_t scope_hash, int64_t identity_hash,
+                                    int64_t region_digest);
+int64_t mr_xproc_start(int64_t request_id, int64_t mode, int64_t pid, int64_t start_time,
+                       int64_t uid, int64_t identity_hash,
+                       int64_t scope_hash, int64_t region_digest,
+                       int64_t reviewed_bytes, int64_t reviewed_regions,
+                       int64_t max_bytes);
+
+/* Poll the running child. Returns an mr_xproc_poll value. Safe to call when
+ * idle, which answers MR_XPROC_POLL_IDLE. */
+int64_t mr_xproc_poll(void);
+/* Ask only the spawned pkexec child to stop. A successful signal request is
+ * not proof that authorization or helper execution had not already completed. */
+int64_t mr_xproc_cancel(void);
+
+/* Fields of the most recent finished run. All valid only after poll returned a
+ * terminal value; before that they read 0 and must not be shown. */
+int64_t mr_xproc_result_status(void);
+int64_t mr_xproc_result_advised_bytes(void);
+int64_t mr_xproc_result_requested_bytes(void);
+int64_t mr_xproc_result_regions(void);
+int64_t mr_xproc_result_error_code(void);
+int64_t mr_xproc_result_call_count(void);
+int64_t mr_xproc_result_pid(void);
+int64_t mr_xproc_result_start_time(void);
+int64_t mr_xproc_result_start_time_verified(void);
+int64_t mr_xproc_result_uid(void);
+/* The pkexec child status, kept separately from the helper's result block.
+ * exit_code is -1 when it was not a normal exit; signal is nonzero only when
+ * waitpid reported signal termination. */
+int64_t mr_xproc_result_exit_code(void);
+int64_t mr_xproc_result_signal(void);
+int64_t mr_xproc_result_mode(void);
+int64_t mr_xproc_result_target_rss_before_kib(void);
+int64_t mr_xproc_result_target_rss_after_kib(void);
+int64_t mr_xproc_result_target_swap_before_kib(void);
+int64_t mr_xproc_result_target_swap_after_kib(void);
+int64_t mr_xproc_result_scope_current_before_bytes(void);
+int64_t mr_xproc_result_scope_current_after_bytes(void);
+int64_t mr_xproc_result_scope_anon_before_bytes(void);
+int64_t mr_xproc_result_scope_anon_after_bytes(void);
+int64_t mr_xproc_result_scope_file_before_bytes(void);
+int64_t mr_xproc_result_scope_file_after_bytes(void);
+int64_t mr_xproc_result_scope_swap_before_bytes(void);
+int64_t mr_xproc_result_scope_swap_after_bytes(void);
+/* The helper's own reason token, stable ASCII, e.g. "target_other_uid".
+ * Empty string when the helper produced no result block. */
+const char *mr_xproc_result_reason(void);
+/* The local refusal reason, for MR_XPROC_POLL_REFUSED_LOCAL. */
+int64_t mr_xproc_local_refusal(void);
+/* The same reason as a stable token, e.g. "not_installed". "none" means no
+ * local refusal was recorded, which must never accompany a refusal result. */
+const char *mr_xproc_local_refusal_name(void);
+
+/* Test-only: run the parser over a synthetic helper output and one exit code,
+ * so the classification of every reason string can be asserted without pkexec
+ * and without a kernel call. Returns the poll value and fills the fields.
+ * Compiled out of production builds: a GUI-reachable classify entry point would
+ * let a caller decide what the helper "said". */
+#ifdef MEMREDUCT_TESTING
+int64_t mr_xproc_test_classify(const char *stdout_text, int64_t exit_code);
+int mr_xproc_test_helper_protocol_matches(const char *path, uid_t owner, gid_t group);
+int mr_xproc_test_attach_child(pid_t child);
+#endif
+
+#endif /* MEMREDUCT_ASYNC_CROSSPROC_H */

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+
+  <!-- Mem Reduct Zamak: the only privileged surface.
+       One action, one fixed root-owned helper path, one fixed argument.
+       The GUI cannot pass a PID, a path, or a shell command through this
+       action: pkexec is invoked with a literal argv, and the helper rejects
+       anything but "pagecache".
+
+       Defaults are "no" everywhere on purpose: the shipped policy grants
+       nothing. An administrator who wants the one-shot page-cache action to
+       be usable without editing this file can allow the action id through a
+       polkit rules file (50-local.d style); the helper still enforces its
+       own fixed argument and root checks regardless of how it was reached.
+       There is deliberately no retain_authorization / require_active
+       annotation: every request must be authorized again. -->
+  <vendor>Mem Reduct Zamak</vendor>
+  <vendor_url>https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak</vendor_url>
+
+  <action id="io.github.milchstrasse_endless10.memreduct.zamak.pagecache">
+    <description>Drop the file page cache once (Mem Reduct Zamak)</description>
+    <description xml:lang="zh_CN">一次性清理文件页缓存（Mem Reduct Zamak）</description>
+    <message>Authentication is required to drop the file page cache.
+
+Dropping the cache discards cached file data. Programs will have to read it
+back from disk, which can be slower until the cache refills. There is no
+guarantee how much memory this returns, and it is a one-shot diagnostic
+action, not an optimisation.</message>
+    <message xml:lang="zh_CN">清理文件页缓存需要认证。
+
+清理会丢弃已缓存的文件数据，程序需要重新从磁盘读取，缓存回填前系统可能变慢。
+无法保证能释放多少内存。这是一次性诊断操作，不是日常优化手段。</message>
+    <icon_name>memreduct-zamak</icon_name>
+    <defaults>
+      <!-- Issue #13 M0: the previously shipped all-"no" defaults made every
+           request impossible, so the product could never perform the one
+           kernel write it exists to perform ("pkexec refused" is not a usable
+           program). The active local session may authorize this single
+           fixed action with an administrator password, every time. No
+           *_keep variant: approval is never reused. No allow_any or
+           allow_inactive: a remote or background session can never authorize
+           it. -->
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/memreduct-zamak-helper</annotate>
+  </action>
+
+</policyconfig>

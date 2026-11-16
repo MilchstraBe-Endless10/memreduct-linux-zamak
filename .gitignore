@@ -5,3 +5,14 @@ __pycache__/
 *.so
 .zam/
 .DS_Store
+
+# Build products and per-machine evidence must not be tracked. The candidate
+# binary, the acceptance logs and the local progress notes are reproducible or
+# machine-specific; keeping them in the tree shipped five ELF files into the
+# repository and made every diff unreadable.
+/artifacts/
+/deploy-backup/
+/progress/
+/probe/
+/issues/
+/acceptance-*.log
