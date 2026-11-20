@@ -85,8 +85,9 @@ app_pid="$!"
 # Startup forensics: if the GUI dies before its first marker, the log alone
 # is empty and the failure is undiagnosable. Sample the process three times
 # over the first second and record what it actually is doing.
-for sample in 1 2 3; do
-  sleep 0.3
+for sample in 1 2 3 4 5 6 7 8 9 10 20 30 45; do
+  # sleep 0.3 for the first three, then 1s steps for later samples
+  if [ "$sample" -le 3 ]; then sleep 0.3; else sleep 1; fi
   if kill -0 "$app_pid" 2>/dev/null; then
     printf 'startup sample %s: alive, state=%s threads=%s wchan=%s\n' \
       "$sample" \
@@ -98,6 +99,8 @@ for sample in 1 2 3; do
     break
   fi
 done
+printf 'client.log size at forensics end: %s bytes\n' "$(wc -c < "$artifact_dir/client.log" 2>/dev/null || echo 0)" | tee -a "$artifact_dir/startup-forensics.txt"
+head -c 4000 "$artifact_dir/client.log" 2>/dev/null | tee -a "$artifact_dir/startup-forensics-client-head.txt" >&2 || true
 if ! kill -0 "$app_pid" 2>/dev/null; then
   wait "$app_pid" 2>/dev/null
   printf 'app exited before any marker; exit status recorded above\n' >&2
