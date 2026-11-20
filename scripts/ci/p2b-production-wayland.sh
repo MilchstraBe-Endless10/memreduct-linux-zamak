@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -Eeuo pipefail
+PS4='+ $LINENO: '
+set -x
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 artifact_dir="${ARTIFACT_DIR:-$root/artifacts/p2b-wayland}"
 app="${1:-$artifact_dir/memreduct-zamak-ci-test}"

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -Eeuo pipefail
+PS4='+ $LINENO: '
+set -x
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 artifact_dir="${ARTIFACT_DIR:-$root/artifacts/p2b-x11}"
@@ -470,6 +472,8 @@ mock_authorizer="$runtime_dir/mock-authorizer"
 cat >"$mock_authorizer" <<'MOCK_AUTHORIZER'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+PS4='+ $LINENO: '
+set -x
 [[ "$#" == 2 && "$1" == /usr/libexec/memreduct-zamak-helper && "$2" == pagecache ]] || exit 127
 [[ -f "$MEMREDUCT_CI_MOCK_STAGE_FILE" && ! -L "$MEMREDUCT_CI_MOCK_STAGE_FILE" ]] || exit 127
 [[ "$(stat -c '%a' "$MEMREDUCT_CI_MOCK_STAGE_FILE")" == 600 ]] || exit 127
