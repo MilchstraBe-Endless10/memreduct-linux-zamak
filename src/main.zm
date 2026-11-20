@@ -3092,6 +3092,8 @@ fn test_font_policy_name_reports_only_a_confirmed_result():
 
 fn main():
     let test_mode = mr_runtime_mode() != 0
+    if test_mode:
+        mr_runtime_emit("CI_PRODUCTION_ENTRY")
     let deep_scope_ack_init = 0
     let preferences_status = mr_preferences_load()
     let mut initial_zh = false
