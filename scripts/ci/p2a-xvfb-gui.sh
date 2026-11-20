@@ -245,7 +245,11 @@ convert "$artifact_dir/05-probe-en-locale.png" -crop '288x42+24+50' +repage \
   "$artifact_dir/locale-en-layout-roi.png"
 xdotool mousemove --sync --window "$window_id" 278 22 click 1
 wait_for_marker 'CI_STATE locale=zh'
-sleep 0.2
+# Readiness, not a sleep: the switch marker says the state variable flipped,
+# this marker says a frame drawn with that locale has been presented. The
+# screenshot must follow the second, or the ROI compares two English frames
+# and reads as zero difference.
+wait_for_marker 'CI_LOCALE_FRAME zh presented'
 check_geometry 336 348 312.0x324.0 "$artifact_dir/window-zh.txt"
 import -window "$window_id" "$artifact_dir/06-probe-zh-locale.png"
 convert "$artifact_dir/06-probe-zh-locale.png" -crop '288x42+24+50' +repage \
@@ -254,7 +258,7 @@ assert_pixel_delta "$artifact_dir/locale-en-layout-roi.png" "$artifact_dir/local
   "$artifact_dir/locale-layout-pixel-diff.txt"
 xdotool key --clearmodifiers F2
 wait_for_marker 'CI_STATE locale=en'
-sleep 0.2
+wait_for_marker 'CI_LOCALE_FRAME en presented'
 check_geometry 336 348 312.0x324.0 "$artifact_dir/window-en-restored.txt"
 import -window "$window_id" "$artifact_dir/07-probe-en-restored.png"
 convert "$artifact_dir/07-probe-en-restored.png" -crop '288x42+24+50' +repage \

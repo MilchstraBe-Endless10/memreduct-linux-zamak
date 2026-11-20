@@ -4,20 +4,26 @@
 
 状态含义：NATIVE=Linux 上实现原生相同动作；EQUIVALENT=语义受限的 Linux 等价；UNSUPPORTED=没有安全/准确的 Linux 等价；NOT_IMPLEMENTED=可评估但项目当前未实现。状态描述当前 Linux 项目，不代表上游 Windows 功能状态。
 
+P2C-4R1 的历史验收基线是 PR #7 HEAD `556a727c100aad4af1a25c48c10513c4dd42c5c7`，生产 UI checkpoint `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`，图形测试/采集/比较源码 checkpoint `37d07453d60c4d1046f5aad6577c9425c271180a`。该阶段隔离 Xvfb/XTEST 覆盖四个主菜单、双语文案、View 语言子菜单、Escape/方向键/Enter、菜单分隔槽、勾选及快捷键显示；深色截图分别记录 GTK Adwaita:light 与应用 Canvas 暗色调色板，不更改桌面主题。历史 P2C run `40456081269` 3/3、P2B run `40456081264` 2/2、PR build `40456081238` 与 push build `40456075786` 均成功；对应 artifacts 与 digest 见 [P2C-4 报告](P2C-4_FONT_THEME_MENU_REPORT.md)。P2B 重复五页设置 step 按条件跳过，由同 SHA P2C Xvfb job 覆盖；当时 artifacts 核验 Windows PNG 81/81、visual 83/83、Linux PNG 44/44、dark 155/155。184/184 几何、36/36 raster、10/10 导航、102/102 树线 PASS；2/2 中间滚动为 compare-only，不作完整几何 PASS。四个独立 Windows 3.5.2 进程的 20/20 页面语义状态通过，未复现简中混合亮暗；深色 changed-pixel 5.4004%–12.6625%，全页 1:1 仍 NOT PASS。Weston 13 Headless/Pixman 客户端生命周期退出码 0，但保留 GDK seat critical、未广播 wl_seat 与 SIGTERM teardown layer BUG；Wayland 输入 NOT RUN，诊断根因未证实。12 项中文来源差异继续 `DECISION_REQUIRED`。
+
+当前远端 PR #7 为 OPEN / Draft、Base=`main`、HEAD=`019a7f1e0755570c2c3a0b1202a6c764540f14e2`；该 SHA 的 main-base Build/P2A/P2B/P2C 共 8/8 Jobs PASS。2026-10-28 本地未推送修正仍在独立候选工作树，尚无对应 GitHub CI。该候选的真实 Wayland 有界截图日志显示 GTK scale factor 1、主窗 client 337×369 / Canvas 325×357、设置窗 client 558×335；`GDK_SCALE=1` 与 `2` 均产生同一 GTK factor 和尺寸。该发现没有证明 compositor 外框尺寸，也不替代物理鼠标/键盘验收。
+
+2026-10-28 R6 本地候选在主窗首次显示时不再绘制虚假的 `File` 键盘焦点框；Tab 首次导航仍将焦点移至 File，方向键/Enter 从无焦点状态仍能打开 File。新增 Zamak 回归断言并通过 `zam test` 41/41。官方 Windows 与 Linux 主窗截图均为 337×369、语言 English、亮色、第三组被选中；原始像素差异 20.943604% 仅作参考，因为内存读数是动态的、System working set 与清理按钮状态受 Linux 安全/功能边界限制，且 GTK/Pango 字体栅格不同。完整 Windows/Linux 1:1 仍 NOT PASS。R6 证据目录及 SHA-256 在 `docs/P2B-1_PRODUCTION_UI_REPORT.md` 的 R6 addendum 和 `memory/SHORT_TERM.md` 中记录。R6 代码尚未推送，故无对应 GitHub CI。
+
 ## 1. 主窗口、菜单、快捷键
 
 | Resource ID | 窗口 / 控件类型 | 上游文本 English / 简体中文 | 触发及 3.5.2 处理 | Linux 映射 / 权限 | 状态 | 验证 |
 |---|---|---|---|---|---|---|
-| IDD_MAIN=100；IDM_MAIN=100；IDS_FILE=3 | 主菜单根项 File | File / 文件 | 点击后显示下级菜单；DlgProc | GTK/Canvas 菜单；无权限 | NOT_IMPLEMENTED | M-MENU-01 |
-| IDM_MAIN=100；IDS_VIEW=86 | 主菜单根项 View | View / 视图 | 点击后显示下级菜单；DlgProc | GTK/Canvas 菜单；无权限 | NOT_IMPLEMENTED | M-MENU-01 |
-| IDM_MAIN=100；IDS_SETTINGS=4 | 主菜单根项 Settings | Settings / 设置 | 点击后显示下级菜单；DlgProc | GTK/Canvas 菜单；无权限 | NOT_IMPLEMENTED | M-MENU-01 |
-| IDM_MAIN=100；IDS_HELP=7 | 主菜单根项 Help | Help / 帮助 | 点击后显示下级菜单；DlgProc | GTK/Canvas 菜单；无权限 | NOT_IMPLEMENTED | M-MENU-01 |
-| IDM_SETTINGS=155 | File 命令 | Settings… / 设置… | WM_COMMAND→_r_settings_createwindow；F2 加速 | 打开五页设置；无权限 | NOT_IMPLEMENTED | M-MENU-02、K-01 |
-| IDM_EXIT=156 | File 命令 | Exit / 退出 | WM_COMMAND 结束应用 | 正常退出；无权限 | NOT_IMPLEMENTED | M-MENU-02 |
+| IDD_MAIN=100；IDM_MAIN=100；IDS_FILE=3 | 主菜单根项 File | File / 文件 | 点击后显示下级菜单；DlgProc | Canvas 内绘制并命中；English/简体中文；无权限 | NATIVE | M-MENU-01 |
+| IDM_MAIN=100；IDS_VIEW=86 | 主菜单根项 View | View / 视图 | 点击后显示下级菜单；DlgProc | Canvas 内绘制并命中；English/简体中文；无权限 | NATIVE | M-MENU-01 |
+| IDM_MAIN=100；IDS_SETTINGS=4 | 主菜单根项 Settings | Settings / 设置 | 点击后显示下级菜单；DlgProc | Canvas 内绘制并命中；English/简体中文；无权限 | NATIVE | M-MENU-01 |
+| IDM_MAIN=100；IDS_HELP=7 | 主菜单根项 Help | Help / 帮助 | 点击后显示下级菜单；DlgProc | Canvas 内绘制并命中；English/简体中文；无权限 | NATIVE | M-MENU-01 |
+| IDM_SETTINGS=155 | File 命令 | Settings… / 设置… | WM_COMMAND→_r_settings_createwindow；F2 加速 | 打开五页设置；无权限 | NATIVE | M-MENU-02、K-01 |
+| IDM_EXIT=156 | File 命令 | Exit / 退出 | WM_COMMAND 结束应用 | 正常退出；无权限 | NATIVE | M-MENU-02 |
 | IDM_ALWAYSONTOP_CHK=157 | View 勾选项 | Always on top / 窗口始终置顶 | WM_COMMAND 写设置并切换窗口置顶状态 | GTK keep-above 可能受 Wayland compositor 限制；无权限 | NOT_IMPLEMENTED | M-MENU-03 |
-| IDM_USEDARKTHEME=159 | View 勾选项 | Use dark theme / 夜间模式 | 写主题设置并重绘 | 仅切换原版对应浅/暗样式；无权限 | NOT_IMPLEMENTED | M-MENU-03、SHOT-01 |
+| IDM_USEDARKTHEME=159 | View 勾选项 | Use dark theme / 夜间模式 | 写主题设置并重绘 | 切换应用 Canvas 浅/暗调色板并在 View 显示勾选；当前只对本次会话有效；无权限 | NATIVE | M-MENU-03、SHOT-01 |
 | IDM_REDUCTCONFIRMATION_CHK=161 | View 勾选项 | Confirm memory cleaning start / 在内存清理前手动确认 | 改 IsShowReductConfirmation | Linux 清理前确认；无权限 | NOT_IMPLEMENTED | M-CLEAN-01 |
-| IDX_LANGUAGE=1000 起 | View 子菜单 | Language (Language) / 语言…… (Language)；动态 locale 名称 | DlgProc 动态列 locale；WM_COMMAND→locale apply | 项目必须双语运行时切换且完整覆盖菜单、五页、对话框和通知；无权限 | NOT_IMPLEMENTED | M-LANG-01 |
+| IDX_LANGUAGE=1000 起 | View 子菜单 | Language (Language) / 语言…… (Language)；动态 locale 名称 | DlgProc 动态列 locale；WM_COMMAND→locale apply | English/简体中文运行时切换；动态名称与勾选状态可见；仅会话状态，不保存；无权限 | NATIVE | M-LANG-01 |
 | IDM_LOADONSTARTUP_CHK=158 | Settings 勾选项 | Load on system startup / 开机自启 | WM_COMMAND→autorun helper | 只可考虑用户级 XDG Autostart；不装 root 服务 | NOT_IMPLEMENTED | M-SET-01 |
 | IDM_STARTMINIMIZED_CHK=160 | Settings 勾选项 | Start minimized / 最小化启动（不显示窗口） | 改启动可见状态 | 桌面启动器与托盘能力相关；无权限 | NOT_IMPLEMENTED | M-SET-01 |
 | IDM_SKIPUACWARNING_CHK=162 | Settings 勾选项 | Skip “User Account Control” prompt warning / 跳过“用户账户控制（UAC）”提示 | Windows UAC 专用选项 | 不得映射成跳过 Polkit；无权限 | UNSUPPORTED | M-SET-02 |
@@ -28,9 +34,10 @@
 | IDS_DONATE=11 | About 对话框资源/链接文案 | Give thanks! / 捐赠...... | 3.5.2 的 About 命令调用共享 helper _r_show_aboutmessage；IDS_DONATE 文案存在于资源表，但其运行时使用、可见位置和链接目标须由 release 截图/实机确认 | 保留独立项目身份与上游署名；不代表 Linux 项目募捐/跳转行为已实现；无权限 | NOT_IMPLEMENTED | M-HELP-02、WIN-SHOT-ABOUT |
 | IDA_MAIN=1 | 主窗口加速键 | F1→About；F2→Settings；Alt+F4→Show/Hide | resource.rc ACCELERATORS | 本地快捷键可在窗口焦点内映射；Wayland 不授予全局热键；无权限 | NOT_IMPLEMENTED | K-01 |
 | IDA_MAIN 未列出 | 主窗口 Enter/Escape | 3.5.2 固定资源未显式列入 IDA_MAIN；所核文件无显式应用级绑定 | 不把 Win32 对话框默认行为臆测成应用处理器 | 必须通过 Windows release 实机确定；无权限 | NOT_IMPLEMENTED | K-02 |
-| IDD_MAIN=100；IDC_LISTVIEW=102；IDS_GROUP_1=18；IDS_ITEM_1..3=21..23 | 主窗口物理内存行 | Physical memory / 物理内存；Usage / 已用；Available / 空闲；Total available / 总计 | _app_timercallback 更新 owner-draw 列表 | P1 已读取 MemTotal/MemAvailable；使用量为 total−available。指标 EQUIVALENT，但原版 3×3 列表布局仍未实现；无权限 | EQUIVALENT | M-METRIC-01、M-MAIN-01 |
-| IDD_MAIN=100；IDC_LISTVIEW=102；IDS_GROUP_2=19；IDS_ITEM_1..3=21..23 | 主窗口 Swap 行 | Pagefile / 虚拟内存；Usage / 已用；Available / 空闲；Total available / 总计 | _app_timercallback 更新 owner-draw 列表 | P1 读取 SwapTotal/SwapFree；这是 Swap 类比而非 Windows Pagefile；原版行布局未实现；无权限 | EQUIVALENT | M-METRIC-01、M-MAIN-01 |
-| IDD_MAIN=100；IDC_LISTVIEW=102；IDS_GROUP_3=20；IDS_ITEM_1..3=21..23 | 主窗口系统工作集行 | System working set / 系统工作集；Usage / 已用；Available / 空闲；Total available / 总计 | 3.5.2 将 system_cache 作为该组数据源；owner-draw 列表周期刷新 | Linux 没有可验证的全系统等价指标。P1 的 Cached+SReclaimable 是单独标注的缓存估计，不可冒充；无权限 | UNSUPPORTED | M-METRIC-02、M-MAIN-01 |
+| IDD_MAIN=100；IDC_LISTVIEW=102；IDS_GROUP_1=18；IDS_ITEM_1..3=21..23 | 主窗口物理内存行 | Physical memory / 物理内存；Usage / 已用；Available / 空闲；Total available / 总计 | _app_timercallback 更新 owner-draw 列表 | P2B Canvas 已实现三组纵向布局；`/proc/meminfo` 读取 MemTotal/MemAvailable，Usage=Total−Available；百分比和容量随采样刷新。真实 Wayland Canvas 为 325×357，主窗 client 为 337×369；Windows 与 GTK 主窗仍无状态/外框对齐的 1:1 验收；无权限 | EQUIVALENT | M-METRIC-01、M-MAIN-01 |
+| IDD_MAIN=100；IDC_LISTVIEW=102；IDS_GROUP_2=19；IDS_ITEM_1..3=21..23 | 主窗口 Swap 行 | Pagefile / 虚拟内存；Usage / 已用；Available / 空闲；Total available / 总计 | _app_timercallback 更新 owner-draw 列表 | P2B Canvas 显示 `Pagefile / Swap`（English）或 `交换空间`（简中）；来源为 SwapTotal/SwapFree，不等同 Windows Pagefile；主窗像素几何仍待校准；无权限 | EQUIVALENT | M-METRIC-01、M-MAIN-01 |
+| IDD_MAIN=100；IDC_LISTVIEW=102；IDS_GROUP_3=20；IDS_ITEM_1..3=21..23 | 主窗口系统工作集行 | System working set / 系统工作集；Usage / 已用；Available / 空闲；Total available / 总计 | 3.5.2 将 system_cache 作为该组数据源；owner-draw 列表周期刷新 | Linux 没有可验证的全系统等价指标；P2B 保留原组标题并显示 em dash。`Cached+SReclaimable` 不冒充工作集；无权限 | UNSUPPORTED | M-METRIC-02、M-MAIN-01 |
+| IDC_LISTVIEW 的三组 header/disclosure | 默认三组展开；点击分组箭头折叠/展开 | 2026-10-28 本地修正增加三个 Canvas disclosure 箭头及状态切换；折叠组隐藏三项并压缩后续组位置。Zamak 几何单测 PASS；Xvfb 点击脚本已覆盖折叠与恢复，但本机缺 Xvfb/Openbox，更新后的 GUI 脚本尚无 GitHub CI 结果；Windows 折叠态间距仍未语义配对 | CANDIDATE / CI PENDING | M-MAIN-01 |
 | IDC_CLEAN=103 | 主窗口 split button | Clean memory / 清理内存 | 主区清理当前 mask；BCN_DROPDOWN 分派下拉；_app_memoryclean | 当前 P1 helper 的 drop_caches 枚举不是八个 Windows 区域的等价实现；特权操作需一次显式授权 | NOT_IMPLEMENTED | M-CLEAN-01、M-CLEAN-02 |
 | IDM_CLEAN_WORKINGSET=183；设置列表 IDC_REGIONS=124 第0行 | 清理选项 | Working set / 上游 3.5.2 无简体中文；Linux 建议“工作集” | _app_memoryclean→MemoryEmptyWorkingSets；WM_COMMAND | Linux 无全系统 1:1 working-set trim；不调用 drop_caches 代替；需特权的候选动作不可用 | UNSUPPORTED | M-CLEAN-03 |
 | IDM_CLEAN_SYSTEMFILECACHE=184；IDC_REGIONS 第1行 | 清理选项 | System file cache / 上游无简中；建议“系统文件缓存” | _app_memoryclean→SystemFileCacheInformationEx | drop_caches 是广义页缓存驱逐，不等价；不暗接；特权 | UNSUPPORTED | M-CLEAN-03 |
@@ -45,21 +52,21 @@
 
 | Resource ID | 窗口 / 控件类型 | 上游文本 English / 简体中文 | 触发及 3.5.2 处理 | Linux 映射 / 权限 | 状态 | 验证 |
 |---|---|---|---|---|---|---|
-| IDD_SETTINGS_GENERAL=101；IDD_SETTINGS_MEMORY=102；IDD_SETTINGS_APPEARANCE=103；IDD_SETTINGS_TRAY=104；IDD_SETTINGS_ADVANCED=105；IDC_NAV=104 | 左侧页面导航 | General / 常规；Memory cleaning / 内存清理；Appearance / 外观；Tray icon / 托盘图标；Advanced / 高级 | 共用 settings shell；页面切换发 RM_INITIALIZE | 五个独立页面；无权限 | NOT_IMPLEMENTED | S-NAV-01 |
-| IDC_RESET=105；IDS_RESET=82；IDS_QUESTION_RESET=83 | 设置壳 Reset 按钮与确认框 | Reset / 重置；Are you really sure you want to reset all application settings? / 确定要将所有设置恢复默认吗？ | settings framework 处理 Reset；先二次确认，取消不保存，确认恢复全部默认值 | 统一恢复 Linux 设置；无权限 | NOT_IMPLEMENTED | S-RESET-01 |
-| IDC_CLOSE=106；IDS_CLOSE=28 | 设置壳 Close 按钮 | Close / 关闭 | settings framework 关闭设置窗口 | 关闭窗口；持久化时机需按 Linux实现验证；无权限 | NOT_IMPLEMENTED | S-CLOSE-01 |
-| IDC_TITLE_1=107、IDC_TITLE_2=108、IDC_TITLE_3=109、IDC_TITLE_4=110、IDC_TITLE_5=111、IDC_TITLE_6=112、IDC_TITLE_7=113、IDC_TITLE_8=114、IDC_TITLE_9=115；IDS_TITLE_1..9=29..37；IDS_TITLE_ADVANCED=85 | 设置页分组标题 | General configuration / 选项；Language / 语言；Memory regions to be cleaned / 要清理的内存区域；Memory management / 自动管理内存；Hotkeys (global) / 快捷键（通用）；Style / 个性化；Color indication / 颜色指示；Mouse control / 鼠标控制；Balloon tips / 气泡提示（Windows 通知）；Advanced / 高级 | SettingsProc RM_LOCALIZE 设置标题和冒号 | 保留各页分组密度与顺序；无权限 | NOT_IMPLEMENTED | S-GEOM-01、S-TEXT-01 |
+| IDD_SETTINGS_GENERAL=101；IDD_SETTINGS_MEMORY=102；IDD_SETTINGS_APPEARANCE=103；IDD_SETTINGS_TRAY=104；IDD_SETTINGS_ADVANCED=105；IDC_NAV=104 | 左侧页面导航 | General / 常规；Memory cleaning / 内存清理；Appearance / 外观；Tray icon / 托盘图标；Advanced / 高级 | 共用 settings shell；页面切换发 RM_INITIALIZE | Zamak Canvas 独立设置顶层，五个子页可通过鼠标和方向键切换；无权限 | EQUIVALENT | S-NAV-01 |
+| IDC_RESET=105；IDS_RESET=82；IDS_QUESTION_RESET=83 | 设置壳 Reset 按钮与确认框 | Reset / 重置；Are you really sure you want to reset all application settings? / 确定要将所有设置恢复默认吗？ | settings framework 处理 Reset；先二次确认，取消不保存，确认恢复全部默认值 | 显示原版确认流程；没有持久化配置，确认/取消均不改状态或系统；无权限 | EQUIVALENT | S-RESET-01 |
+| IDC_CLOSE=106；IDS_CLOSE=28 | 设置壳 Close 按钮与窗口关闭 | Close / 关闭 | settings framework 关闭设置窗口 | 关闭独立设置顶层并返回主窗口；Escape 与窗口管理器关闭请求也有处理；无权限 | EQUIVALENT | S-CLOSE-01 |
+| IDC_TITLE_1=107、IDC_TITLE_2=108、IDC_TITLE_3=109、IDC_TITLE_4=110、IDC_TITLE_5=111、IDC_TITLE_6=112、IDC_TITLE_7=113、IDC_TITLE_8=114、IDC_TITLE_9=115；IDS_TITLE_1..9=29..37；IDS_TITLE_ADVANCED=85 | 设置页分组标题 | General configuration / 选项；Language / 语言；Memory regions to be cleaned / 要清理的内存区域；Memory management / 自动管理内存；Hotkeys (global) / 快捷键（通用）；Style / 个性化；Color indication / 颜色指示；Mouse control / 鼠标控制；Balloon tips / 气泡提示（Windows 通知）；Advanced / 高级 | SettingsProc RM_LOCALIZE 设置标题和冒号 | Canvas 按各官方子页顺序保留字段分组；几何换算仍为 PROVISIONAL；无权限 | EQUIVALENT | S-GEOM-01、S-TEXT-01 |
 | IDC_ALWAYSONTOP_CHK=116；IDS_ALWAYSONTOP_CHK=38 | General 复选框 | Always on top / 窗口始终置顶 | SettingsProc 状态加载、WM_COMMAND 更新 | GTK keep-above 可能被 Wayland 拒绝；无权限 | NOT_IMPLEMENTED | S-GEN-01 |
 | IDC_LOADONSTARTUP_CHK=117；IDS_LOADONSTARTUP_CHK=39 | General 复选框 | Load on system startup / 开机自启 | autorun helper | 仅用户级 XDG Autostart 可作为候选；无 root 服务 | NOT_IMPLEMENTED | S-GEN-01 |
 | IDC_STARTMINIMIZED_CHK=118；IDS_STARTMINIMIZED_CHK=40 | General 复选框 | Start minimized / 最小化启动（不显示窗口） | 持久化启动状态 | 启动器/托盘依赖；无权限 | NOT_IMPLEMENTED | S-GEN-01 |
 | IDC_REDUCTCONFIRMATION_CHK=120；IDS_REDUCTCONFIRMATION_CHK=41 | General 复选框 | Confirm memory cleaning start / 在内存清理前手动确认 | 更新 IsShowReductConfirmation | 在安全动作前显示确认；无权限 | NOT_IMPLEMENTED | S-GEN-01 |
 | IDC_SKIPUACWARNING_CHK=119；IDS_SKIPUACWARNING_CHK=42 | General 复选框 | Skip “User Account Control” prompt warning / 跳过“用户账户控制（UAC）”提示 | Windows UAC helper，仅特定权限下启用 | 不提供跳过 Polkit 的替代开关 | UNSUPPORTED | S-GEN-02 |
 | IDC_CHECKUPDATES_CHK=121；IDS_CHECKUPDATES_CHK=43 | General 复选框 | Periodically check for updates (recommended) / 自动检查更新（推荐） | 更新服务状态切换 | Linux 更新渠道待签名/来源评审；无权限 | NOT_IMPLEMENTED | S-GEN-03 |
-| IDC_LANGUAGE_HINT=122；IDC_LANGUAGE=123；IDS_LANGUAGE_HINT=44 | General 语言控件 | Select language: / 选择语言：；选项来自上游 locale 清单 | _r_locale_enum；运行时重新本地化全部窗口 | 强制完整 English + 简体中文切换；无权限 | NOT_IMPLEMENTED | M-LANG-01 |
-| IDC_REGIONS=124，第0–7行 | Memory 区域勾选列表 | 八个区域名称见第1节；3.5.2 main.h 写死英文，中文列均无上游译文 | SettingsProc RM_INITIALIZE 初始化列表；WM_NOTIFY 修改 ReductMask2 | 只允许把确有 Linux 等价语义的独立功能接入；Windows-only 项显示不可用及解释 | NOT_IMPLEMENTED | S-MEM-01 |
+| IDC_LANGUAGE_HINT=122；IDC_LANGUAGE=123；IDS_LANGUAGE_HINT=44 | General 语言控件 | Select language: / 选择语言：；选项来自上游 locale 清单 | _r_locale_enum；运行时重新本地化全部窗口 | 设置窗可在 English 与简体中文之间即时切换；不写入持久化配置；无权限 | EQUIVALENT | M-LANG-01 |
+| IDC_REGIONS=124，第0–7行 | Memory 区域勾选列表 | 八个区域名称见第1节；3.5.2 main.h 写死英文，中文列均无上游译文 | SettingsProc RM_INITIALIZE 初始化列表；WM_NOTIFY 修改 ReductMask2 | 八项均保留原版顺序并禁用；点击只说明 Linux 能力限制，不修改配置或触发清理 | UNSUPPORTED | S-MEM-01 |
 | IDC_AUTOREDUCTENABLE_CHK=125；IDC_AUTOREDUCTVALUE_CTRL=126；IDC_AUTOREDUCTVALUE=127；IDS_AUTOREDUCTENABLE_CHK=51 | Memory 阈值复选框/数值框/微调器 | Clean when above: (%) / 占用达阈值时清理（%）；范围1–99，默认90，开关默认关 | _app_timercallback 达阈值时自动清理；3.5.2 无冷却，后续源码才加30秒冷却 | P1 用户态策略原型存在但 P2 安全验收前不得提供自动特权调用 | NOT_IMPLEMENTED | S-MEM-02 |
 | IDC_AUTOREDUCTINTERVALENABLE_CHK=128；IDC_AUTOREDUCTINTERVALVALUE_CTRL=129；IDC_AUTOREDUCTINTERVALVALUE=130；IDS_AUTOREDUCTINTERVALENABLE_CHK=52 | Memory 定时复选框/数值框/微调器 | Clean every: (min.) / 每隔指定时间清理（分钟）；范围1–1440，默认30，开关默认关 | _app_timercallback 检查 StatisticLastReduct | Linux 自动请求/冷却尚未独立审查；不启用 | NOT_IMPLEMENTED | S-MEM-03 |
-| IDC_HOTKEY_CLEAN_CHK=131；IDC_HOTKEY_CLEAN=132；IDS_HOTKEY_CLEAN_CHK=53 | Memory 全局热键复选框/热键控件 | Clean memory: / 清理内存：；默认 Ctrl+F1，开关默认关 | _app_hotkeyinit / WM_HOTKEY，仅在 Windows elevation 状态注册 | Wayland portal/compositor 专属绑定；不得声称全局注册 | NOT_IMPLEMENTED | K-03 |
+| IDC_HOTKEY_CLEAN_CHK=131；IDC_HOTKEY_CLEAN=132；IDS_HOTKEY_CLEAN_CHK=53 | Memory 全局热键复选框/热键控件 | Clean memory: / 清理内存：；默认 Ctrl+F1，开关默认关 | _app_hotkeyinit / WM_HOTKEY，仅在 Windows elevation 状态注册 | Wayland portal/compositor 专属绑定；不得声称全局注册 | NOT_IMPLEMENTED | K-03; isolated Windows v3.5.2 native capture, `HKM_GETHOTKEY` → `Ctrl+F1` (run 40319586672) |
 | IDC_TRAYUSETRANSPARENCY_CHK=133；IDS_TRAYUSETRANSPARENCY_CHK=54 | Appearance 复选框 | Use transparent background / 使用透明背景（不显示颜色提示） | SettingsProc 写 TrayUseTransparency | 仅影响托盘图标；Linux SNI 图标绘制待实现 | NOT_IMPLEMENTED | S-APP-01 |
 | IDC_TRAYSHOWBORDER_CHK=134；IDS_TRAYSHOWBORDER_CHK=55 | Appearance 复选框 | Show border / 显示边框 | 更新托盘绘制状态 | 同上 | NOT_IMPLEMENTED | S-APP-01 |
 | IDC_TRAYROUNDCORNERS_CHK=135；IDS_TRAYROUNDCORNERS_CHK=56 | Appearance 复选框 | Round corners / 圆角模式 | 更新托盘绘制状态 | 同上 | NOT_IMPLEMENTED | S-APP-01 |
@@ -126,3 +133,70 @@
 ## 6. 资源符号覆盖审计
 
 已按官方 tag 的 src/resource.h 与 src/resource.rc 复核矩阵：资源头定义 54 个 IDC（含通用 IDC_STATIC=-1）、38 个 IDM 命令、1 个 IDA 加速表和 6 个 IDD 窗口。每个可操作 IDC/IDM/IDA 项均在表格中逐项或按连续控件组明确列出；IDC_STATIC 是多个静态控件共用的占位 ID，不代表一个独立操作。六个窗口 ID 已分别关联主窗与五页设置。资源头另有 88 个 IDS 宏，其中 ID 45–50 的 6 个宏没有 RC 字符串、简中语言键或代码引用；活动 STRINGTABLE 的 82 个文案见基准清单。此项是静态资源符号覆盖检查，不等于 Windows 可执行程序运行时截图验收。
+
+## 7. Windows v3.5.2 只读默认状态快照
+
+这些默认值来自固定 3.5.2 源码，并与隔离 Windows Native 设置页截图交叉核对。Linux 当前 UI 仅呈现该默认快照；它不读取 Windows 注册表、不代表 Linux 用户已保存的偏好，也不会启用对应操作。除 English/简体中文会话语言选择和设置壳动作外，配置控件继续保持禁用。
+
+| 页面 / 资源 ID | Native 默认显示 | 当前 Linux 表现 | 操作状态 |
+|---|---|---|---|
+| General `IDC_REDUCTCONFIRMATION_CHK=120`, `IDC_CHECKUPDATES_CHK=121` | 勾选；其余页面复选框不勾选 | 勾选状态以灰色只读快照显示 | `NOT_IMPLEMENTED`；点击只解释限制 |
+| Memory cleaning `IDC_REGIONS=124` | 行 0、1、4、5、6、7 勾选；行 2、3 不勾选 | 八行按上游默认展示，列表滚动位置不更改默认值 | `UNSUPPORTED`；不映射到 `drop_caches` |
+| Memory cleaning `IDC_AUTOREDUCTENABLE_CHK=125`, `IDC_AUTOREDUCTINTERVALENABLE_CHK=128`, `IDC_HOTKEY_CLEAN_CHK=131` | 均不勾选 | 未勾选、禁用 | `NOT_IMPLEMENTED` |
+| Appearance `IDC_TRAYCHANGEBG_CHK=136` | 勾选；其他外观复选框不勾选 | 勾选状态只读；`IDC_COLORS=140` 预览 `#FFFFFF`, `#008040`, `#FF8040`, `#EC1C24` | `NOT_IMPLEMENTED`；不编辑/保存托盘颜色 |
+| Tray icon `IDC_NOTIFICATIONSOUND_CHK=151`, `IDC_SHOW_CLEAN_RESULT_CHK=152` | 均勾选 | 勾选状态以灰色只读快照显示 | `NOT_IMPLEMENTED`；不启用通知或声音 |
+| Advanced `IDC_ALLOWSTANDBYLISTCLEANUP_CHK=153`, `IDC_LOGRESULTS_CHK=154` | 均不勾选 | 未勾选、禁用 | 清理选项 `UNSUPPORTED`；日志 `NOT_IMPLEMENTED` |
+
+默认值截图不宣称为 Linux 已保存配置。对应资源矩形、像素叠加、差异图与 2 px 判断以 [P2C-1 设置报告](P2C-1_SETTINGS_UI_REPORT.md) 中精确 Actions head 的证据为准；不同 CI runs 生成的截图不得混用。
+
+简体中文原版显示与 Linux 当前翻译不同的内容包括 8 个内存清理区域、2 个 Advanced 标签、仍显示英文的 `Single click:`，以及语言下拉的 `Chinese (Simplified)` / `简体中文` 名称差异。它们按资源 ID 记录于 [P2C-3 上游简中显示差异矩阵](P2C-3_SOURCE_LANGUAGE_MATRIX.md)，作为内容差异而非字体误差；产品决定前保留独立简体中文界面。
+
+P2C-2 renderer verification at source head `20c8fbc8fc80c481965fecbde17aa507eb7247fe` confirms the page surface has no added child-dialog frame, resource-defined GroupBoxes remain, four Appearance swatches match the source defaults in both languages, and source-default checkmarks remain disabled/read-only. Disabled-option feedback does not alter saved state or trigger a system action. For `IDC_NAV=104`, the five native selected-row fills use `#D9D9D9`, selection bounds are measured separately per locale, and the tree guide uses native `#6D6D6D` pixels; the current Windows/Linux comparison passes all 10 selection bounds with 0 px delta and all 102 sampled guide pixels. Exact-head screenshots, SHA-256 manifest, overlays, heatmaps, and CI artifact IDs are indexed in [P2C-1/P2C-2 settings evidence](P2C-1_SETTINGS_UI_REPORT.md). The overall geometry comparison is 172 PASS within 2 px, 0 FAIL, with 12 intermediate memory-list scroll rows marked `NOT_COMPARABLE_NATIVE_STATE`; whole-image changed-pixel results still differ and do not establish pixel equivalence.
+
+Exact-head calibration at source `06be74b740e8906e64d837d8ac77e0255bea1081` samples the shared GroupBox light-theme edge at client `(156,20)`: Windows and Linux are both RGB `(220,220,220)` in English and Simplified Chinese. Windows/Linux comparison run `40290615170` passes all 12 sampled raster checks and all 8 appearance swatches. Its geometry table has 172 PASS within 2 px, 0 FAIL, and 12 Linux intermediate-scroll rows marked `NOT_COMPARABLE_NATIVE_STATE`. This does not establish pixel equivalence; text/font raster differences remain visible. Exact screenshots, SHA-256 values, overlays, heatmaps, logs, and artifact IDs are indexed in [P2C-1/P2C-2 settings evidence](P2C-1_SETTINGS_UI_REPORT.md).
+
+## 12. P3A 无特权偏好持久化（提案，未实现）
+
+P3A-pre 仅规划 `language` (`en` / `zh-CN`) 与应用 `theme` (`light` / `dark`) 两项用户偏好；建议默认 `zh-CN + light`。配置路径、`schema=1` 格式、XDG fallback、no-follow/0600 原子写入、失败降级、Reset 事务、未知字段和多实例规则见 [ADR-0004 草案](ADR/0004-user-preferences-persistence.md)。Zamak 0.2.0 的 `std/fs` 文档未列出足以保障权限、符号链接拒绝、锁与 fsync 的接口，因此草案建议只增加无特权的窄 C 文件存储桥接。
+
+**当前实现状态仍未持久化。** 当前进程内语言/主题切换不等于设置保存；P3A 未审查、未实现。P3A 配置不得包含或启用自动清理、内存区域、helper 命令、Polkit、Swap/ZRAM 等功能。Reset 事务与四种偏好组合测试仅在设计草案中，不能记作已验收行为。
+
+## 13. P2C-R8 资源驱动设置控件状态（2026-10-30，本地源码候选）
+
+| 控件 / 资源 | 生产渲染与可操作状态 | 功能边界 | 验证情况 |
+|---|---|---|---|
+| GroupBox `Button/BS_GROUPBOX`（如 107–115） | 使用资源 DLU rect、标题宽度和 Win32 风格的一像素描边；静态，不接受 pointer hit 或键盘焦点 | 不表示分组内容可用；标题和描边仍受 Pango/GDI 栅格差异影响 | rect/state 的 Zamak 单测 PASS；历史 English/Light General ROI 改善；当前 ComboBox 箭头源码之后未取得新截图 |
+| AutoCheckbox `Button/BS_AUTOCHECKBOX`（如 116–121、133–137） | renderer 区分 disabled/normal/hover/pressed/focus/checked；焦点范围依随 caption | 所有未实现的生产设置保持 disabled、只读、不保存；CI allowlist 只允许两个进程内预览值，不改变产品默认值 | Zamak 状态与键盘/鼠标转换测试 PASS；CI 预览 PNG 不代表生产 enabled 状态；无新 XTEST 运行 |
+| Language ComboBox `IDC_LANGUAGE=123` | 支持 mouse open/select、keyboard focus、Up/Down、Home/End、PageUp/PageDown、Enter/Space、F4、Alt+Up/Down、Tab/Shift+Tab、Escape | 只切换当前进程 UI 语言；P3A 持久化仍未实现 | Zamak 交互状态测试 PASS；当前生产画面没有新的 Xvfb/Hyprland 截图 |
+| Tray action ComboBox `IDC_TRAYACTIONSC=148` / `IDC_TRAYACTIONMC=150` | 展示 disabled 状态，不开放伪造的可操作菜单 | Tray service/action 未实现 | Disabled state 的 Zamak 单测 PASS；无运行时图形验收 |
+
+本地 R8 源码提交 `3c41879d7589472fd64b7f8563268d60bc0b99bb`；没有对应 GitHub CI。Xvfb 与 Weston 当前缺少二进制；活动 Hyprland 未操作。现有 95/120 文本度量差异、12 项简中来源决策和整页 1:1 `NOT PASS` 状态不变。
+
+## 9. P2C-3 原生视觉差异采集补充
+
+- 固定基准仍为 v3.5.2 tag `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。英文 `IDC_REGIONS=124` 后缀按固定源码保持 `win8.1+` / `win10+`；简中差异见 [P2C-3 来源语言矩阵](P2C-3_SOURCE_LANGUAGE_MATRIX.md)。
+- Windows 侧从 `WM_GETFONT`/`LOGFONT`、GDI `TEXTMETRIC`/文本范围、`LVM_GETITEMTEXTW`、Win32 控件文本与 ComboBox 当前项读取实际值；Linux 生产 Canvas 导出 Pango/字体回退和布局度量。字体、文本、几何及控件绘制分开记录。Windows 的 `GetTextFaceW` 仍报告逻辑别名 `MS Shell Dlg 2`，不能将该值当作已证实的物理字体文件。
+- 源码 `b4b5de5` 的 exact-source 截图配对已将 `IDC_REGIONS` 顶部/中间/底部 EN/zh-CN 资源 ID 行纳入比较：184/184 控件/行几何 PASS，最大绝对分量偏差 1.5 px。文字墨迹框偏差单独归类；简中原版未翻译差异不算几何误差。
+- 主菜单、清理区域弹出菜单、尝试托盘上下文菜单及来源命令暗色主题截图由隔离 Windows runner 采集。真实清理确认/结果对话框若必须执行内存清理才能出现，保持 `BLOCKED`，不触发动作。
+- 当前配对基准来自 Windows run `40312777621` artifact `12645980196` 与同源码 Xvfb run `40312777567` artifact `12645029581`；逐页变化率、字体宽度差、原生中文显示和截图状态见 [P2C-3 视觉报告](P2C-3_VISUAL_FIDELITY_REPORT.md)。P2C-3 候选按钮光栅/文字墨迹修正仍待新 HEAD CI 核验；全页 changed-pixel 比例只作前后比较，不构成 1:1 验收。
+
+## 10. P2C-4 字体、暗色控件与菜单证据
+
+- 固定基准仍为 Windows Mem Reduct v.3.5.2 / `2f5c55d15f69a2c88859e036b16c6f4c971e1968`；P2C exact-head run `40373093546`、生产 Xvfb run `40373092535`、build/safety run `40373092652` 均关联提交 `6502342489e1e0a6dfc1877f826f89cab1ed0a9b`。
+- 暗色主题包含五页 × English/简体中文十组 Windows/Linux 558×335 配对；全部有原始截图、并排、overlay、difference、heatmap 和 SHA。changed-pixel 比例：General `10.2327% / 51.6086%`、Memory cleaning `12.6625% / 73.2932%`、Appearance `11.6311% / 54.3027%`、Tray icon `11.2534% / 54.6584%`、Advanced `5.9434% / 46.0889%`（English / 简中）。十项均为 `CAPTURE_AND_COMPARE_PASS; PIXEL_IDENTITY_NOT_PASS`。Linux 是应用 Canvas 暗色配色，GTK 主题仍固定 `Adwaita:light`；简中差异率也包含原版来源文本与 Linux 完整本地化的差异，不能解释成字体问题。
+- 本轮隔离 Liberation Sans 候选测试：English 66 个同源控件样本 64 改善、1 退化、1 不变；简中 54 个样本 12 改善、12 退化、30 不变。candidate 英文全页差异只改善 0.0578–0.4093 个百分点，简中基本不变或轻微回退；未改变生产字体、字号或窗口几何，未把 Windows 专有字体打包。GDI 仍报告逻辑 alias `MS Shell Dlg 2`，物理字体文件身份未证实；Pango 默认匹配 DejaVu Sans / Noto Sans CJK SC。
+- 同 head 对照回归：Win32 资源矩形 `184/184 PASS`，最大分量偏差 `1.5 px`；导航当前选中区域 `10/10 PASS`；树状点线像素 `102/102 PASS`；离散控件栅格 `36/36 PASS`。这几类局部验收不表示全页像素一致；总体暗色变化率仍超过像素相等目标。
+- XTEST 实际展开 Linux File / View / Settings / Help 英中菜单及 View 语言子菜单，执行键盘导航、Enter/Escape、分隔槽跳过和安全的 clean dropdown 外观测试；清理菜单项保持禁用。Windows runner 只采集到四个英文主菜单；tray menu 未被 UI Automation 暴露，清理 popup 没有安全展开路径，确认/结果弹窗需要真实清理才能打开，均保持 `BLOCKED`。
+- 当前截图 artifact 和哈希清单在 [P2C-4 报告](P2C-4_FONT_THEME_MENU_REPORT.md) 索引；`12` 项简中来源差异仍 `DECISION_REQUIRED`，不擅自替换 Linux 当前完整中文翻译。没有执行清理、Polkit、Swap/ZRAM、root GUI 或活动桌面操作。
+- 历史 exact-head 回归（40405594197、40416882722、40422156194）保留各自 run 的截图和 metrics，不与当前 artifacts 混用；各版本均保持几何/局部栅格阈值，整页像素 1:1 未通过。
+- 当前 exact-head evidence `4f84fb9a9e247a5987a11cd435e5da4b05f78a53`：P2C `40425954672` 3/3、P2B `40425954460` 2/2、PR build `40425954317`、push build `40425944842` PASS，PR checks 7/7。五页双语亮/暗截图实际采集；文本度量 132 项中 9 项同源文本宽高差≤2 px、111 项仍不同、12 项为来源/语言差异。具体 artifact digest、SHA manifests、字体结果与限制见 [P2C-4 报告](P2C-4_FONT_THEME_MENU_REPORT.md)。
+
+## 11. P2C-4R1 深色主题与切换顺序复验
+
+- Windows 原版固定为 v.3.5.2 / tag SHA `2f5c55d15f69a2c88859e036b16c6f4c971e1968`。在相互独立进程中执行 English→Dark→Settings、简中→Dark→Settings、Dark→简中→Settings、English→Dark→简中→English；每个实验均采集 General、Memory cleaning、Appearance、Tray icon、Advanced 五页。
+- 20/20 页面均验证应用暗色菜单 checked、语言正确、导航选中项与实际页面资源 ID 相符。A/D 英文截图逐页 SHA 相同，B/C 简中截图逐页 SHA 相同，十组状态顺序图像差异为 0。典型深色背景：设置页/导航/`IDC_REGIONS` 为 `#171717`，Reset/Close 为 `#272727`。未在有效新实验中复现简中导航或地区列表留亮色的混合主题。
+- 每个独立进程均通过原生 `WM_CLOSE` 关闭 Settings 后再次调用 `IDM_SETTINGS`；4/4 重开成功，导航文本与可见页面资源 ID 一致，语言组合框与预期语言一致，View 的暗色菜单仍 checked。
+- 旧简中截图曾出现导航 Advanced、内容 General；新独立进程的页面资源与导航对应。旧图不再作为有效语义配对；采集链哪一环造成错配尚无证据，原因标记 **UNCONFIRMED**，不能归因于原版缺陷。
+- R1 changed-pixel 比例（EN / 简中）：General `10.2327% / 9.1002%`；Memory cleaning `12.6625% / 12.4014%`；Appearance `11.6311% / 11.0057%`；Tray icon `11.2534% / 10.2744%`；Advanced `5.9434% / 5.4004%`。这是语义状态有效的比较数据，不是像素验收 PASS。旧报告中的不匹配截图差异率保留为历史数据，不与 R1 指标混用。
+- 初始语言 ID 修复 head ff5794f 的 P2C run 40443810060 曾 3/3 PASS。后续源码/采集 evidence head 7369db05f9d3e02c6e973f455922ee783b6b16cf 与文档 head c84771063e6b349828e012463222b82bc57dd479 的历史结果继续保留。最新 exact-head `37d07453d60c4d1046f5aad6577c9425c271180a` 的 P2C/P2B/PR build/push build runs 40454514318 / 40454514305 / 40454514283 / 40454508196 全部 PASS；artifact digest、PNG/source 清单及逐页 SHA 见 P2C-4R1 报告。P2B 重复设置页步骤条件跳过，由同 head P2C Xvfb job 完整运行；Wayland 仅生命周期 PASS，不代表输入 PASS。生产 UI 与 558×335、184 项几何、导航、树线、栅格和滚动基准均未改；12 项中文来源差异仍为 DECISION_REQUIRED。
+- Linux 深色模式由应用 Canvas palette 绘制；GTK runner 仍为 `Adwaita:light`。Windows/Linux 全页 1:1 仍 `NOT PASS`，Win32/GTK 原生控件 raster、字体与抗锯齿差异独立记录。

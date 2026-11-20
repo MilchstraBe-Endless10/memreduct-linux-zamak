@@ -16,4 +16,10 @@ mkdir -p build
 cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
    -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
    -o build/memreduct-zamak-helper native/memreduct_helper.c
+# The cross-process helper is a separate binary with a separate Polkit action.
+# It is never linked into the GUI, never installed over the page-cache helper,
+# and never built with MEMREDUCT_TESTING here.
+cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+   -fstack-protector-strong -D_FORTIFY_SOURCE=2 \
+   -o build/memreduct-zamak-crossproc-helper native/crossproc_helper.c
 echo 'Build successful. Run: sudo bash scripts/install-arch.sh'

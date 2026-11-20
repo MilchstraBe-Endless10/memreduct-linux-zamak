@@ -15,6 +15,13 @@ struct Probe:
     focus: f64
     status: string
     draw_logged: bool
+    # Test hook: which locale the last completed frame used, and whether that
+    # frame has been announced. The CI script waits for the announce before
+    # screenshotting, so it captures the locale's pixels and not a frame the
+    # compositor has not yet presented. Test-only: the production probe never
+    # ships, and nothing outside tests/gui reads this marker.
+    frame_locale_zh: bool
+    frame_locale_announced: bool
     elapsed_ms: i64
 
 fn button_geometry(w: f64, h: f64) -> ui.Rect:
@@ -151,6 +158,15 @@ fn draw(s: &mut Probe, p: &ui.Painter):
             p.text(12.0, 238.0, "Menu selection: preview A", &gray, size=9.0)
     p.line(12.0, 188.0, s.w - 12.0, 188.0, &line)
     p.text(12.0, button_geometry(s.w, s.h).y - 20.0, s.status, &gray, size=9.0)
+    if s.frame_locale_zh != s.zh:
+        s.frame_locale_zh = s.zh
+        s.frame_locale_announced = false
+    if not s.frame_locale_announced:
+        s.frame_locale_announced = true
+        if s.zh:
+            println("CI_LOCALE_FRAME zh presented")
+        else:
+            println("CI_LOCALE_FRAME en presented")
 
     let b = button(s)
     p.fill_rect(&b, &button_bg)
@@ -413,7 +429,8 @@ fn main():
         canvas: canvas, w: 336.0, h: 348.0, zh: false,
         menu: false, split_menu: false, main_on: false, option_b: false,
         hover: 0.0, pressed: 0.0, focus: 0.0, status: "Idle; simulated UI only",
-        draw_logged: false, elapsed_ms: 0
+        draw_logged: false, elapsed_ms: 0,
+        frame_locale_zh: false, frame_locale_announced: false,
     )
     app.run(window, state)
     println("CI_APP_RETURNED")

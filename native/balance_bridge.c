@@ -1,0 +1,2156 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Scalar bridge for the balanced-clean presentation helpers.
+ */
+#define _GNU_SOURCE
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+#include <pwd.h>
+#include <sys/types.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+#include "balance_bridge.h"
+#include "balance_exec.h"
+#include "balance_gui.h"
+#include <inttypes.h>
+#include <time.h>
+#include <unistd.h>
+#include "balance_plan.h"
+#include "balance_reclaim.h"
+#include "balance_snapshot.h"
+
+struct plan_state {
+    int valid;
+    int64_t state;
+    int64_t action;
+    uint64_t request_bytes;
+    int32_t evidence;
+};
+
+struct result_state {
+    int valid;
+    int64_t status;
+    int64_t stop_reason;
+    uint64_t requested_bytes;
+    uint64_t accepted_bytes;
+    uint32_t batches_accepted;
+    uint32_t batches_rejected;
+    int64_t available_delta_bytes;
+};
+
+static struct plan_state plan;
+static struct result_state result;
+
+int64_t mr_bal_bridge_entry(int64_t built_in, int64_t gate_enabled,
+                            int64_t helper_ready, int64_t busy,
+                            int64_t no_target)
+{
+    struct mr_bal_gui_availability a;
+    memset(&a, 0, sizeof(a));
+    a.built_in = built_in != 0;
+    a.gate_enabled = gate_enabled != 0;
+    a.helper_ready = helper_ready != 0;
+    a.busy = busy != 0;
+    a.no_target = no_target != 0;
+    return mr_bal_gui_entry(&a);
+}
+
+int64_t mr_bal_bridge_plan_set(int64_t state, int64_t action,
+                               uint64_t request_bytes,
+                               int64_t have_pressure_evidence)
+{
+    memset(&plan, 0, sizeof(plan));
+    if (state < 0 || state > 5) return 0;
+    if (action < 0 || action > 2) return 0;
+    if (action == 0 && request_bytes != 0) return 0;
+    plan.valid = 1;
+    plan.state = state;
+    plan.action = action;
+    plan.request_bytes = request_bytes;
+    plan.evidence = have_pressure_evidence != 0;
+    return 1;
+}
+
+int64_t mr_bal_bridge_result_set(int64_t status, int64_t stop_reason,
+                                 uint64_t requested_bytes,
+                                 uint64_t accepted_bytes,
+                                 uint32_t batches_accepted,
+                                 uint32_t batches_rejected,
+                                 int64_t available_delta_bytes)
+{
+    memset(&result, 0, sizeof(result));
+    if (status < 0 || status > 5) return 0;
+    if (accepted_bytes > requested_bytes) return 0;
+    result.valid = 1;
+    result.status = status;
+    result.stop_reason = stop_reason;
+    result.requested_bytes = requested_bytes;
+    result.accepted_bytes = accepted_bytes;
+    result.batches_accepted = batches_accepted;
+    result.batches_rejected = batches_rejected;
+    result.available_delta_bytes = available_delta_bytes;
+    return 1;
+}
+
+const char *mr_bal_bridge_plan_action(int64_t zh)
+{
+    if (!plan.valid) return "";
+    return mr_bal_gui_plan_line(MR_BAL_LINE_ACTION, zh != 0, plan.state,
+                                plan.action, plan.request_bytes, plan.evidence);
+}
+
+const char *mr_bal_bridge_plan_why(int64_t zh)
+{
+    if (!plan.valid) return "";
+    return mr_bal_gui_plan_line(MR_BAL_LINE_WHY, zh != 0, plan.state,
+                                plan.action, plan.request_bytes, plan.evidence);
+}
+
+const char *mr_bal_bridge_plan_budget(int64_t zh)
+{
+    if (!plan.valid) return "";
+    return mr_bal_gui_plan_line(MR_BAL_LINE_BUDGET, zh != 0, plan.state,
+                                plan.action, plan.request_bytes, plan.evidence);
+}
+
+const char *mr_bal_bridge_plan_skips(int64_t zh)
+{
+    if (!plan.valid) return "";
+    return mr_bal_gui_plan_line(MR_BAL_LINE_SKIPS, zh != 0, plan.state,
+                                plan.action, plan.request_bytes, plan.evidence);
+}
+
+const char *mr_bal_bridge_result_headline(int64_t zh)
+{
+    if (!result.valid) return "";
+    return mr_bal_gui_result_line(MR_BAL_RESULT_HEADLINE, zh != 0, result.status,
+                                  result.stop_reason, result.requested_bytes,
+                                  result.accepted_bytes, result.batches_accepted,
+                                  result.batches_rejected, result.available_delta_bytes);
+}
+
+const char *mr_bal_bridge_result_counters(int64_t zh)
+{
+    if (!result.valid) return "";
+    return mr_bal_gui_result_line(MR_BAL_RESULT_COUNTERS, zh != 0, result.status,
+                                  result.stop_reason, result.requested_bytes,
+                                  result.accepted_bytes, result.batches_accepted,
+                                  result.batches_rejected, result.available_delta_bytes);
+}
+
+const char *mr_bal_bridge_result_stop(int64_t zh)
+{
+    if (!result.valid) return "";
+    return mr_bal_gui_result_line(MR_BAL_RESULT_STOP, zh != 0, result.status,
+                                  result.stop_reason, result.requested_bytes,
+                                  result.accepted_bytes, result.batches_accepted,
+                                  result.batches_rejected, result.available_delta_bytes);
+}
+
+const char *mr_bal_bridge_result_observed(int64_t zh)
+{
+    if (!result.valid) return "";
+    return mr_bal_gui_result_line(MR_BAL_RESULT_OBSERVED, zh != 0, result.status,
+                                  result.stop_reason, result.requested_bytes,
+                                  result.accepted_bytes, result.batches_accepted,
+                                  result.batches_rejected, result.available_delta_bytes);
+}
+
+int64_t mr_bal_bridge_result_meaningful(void)
+{
+    if (!result.valid) return 0;
+    return mr_bal_gui_result_is_meaningful(result.status, result.accepted_bytes);
+}
+
+/* ---- execute path ---------------------------------------------------- */
+
+static char scope_root[512];
+
+/* Test-only override for the app-scope root. G-04 found the session path had
+ * no injectable seam and therefore no test; the per-app path had exactly the
+ * same gap, and a policy that only ever ran against the live cgroup could not
+ * be checked for the refusal branches at all. NULL restores discovery. This is
+ * never set by production code: the shipped binary has no call site. */
+static const char *scope_root_override;
+
+/* The override is COPIED, not borrowed. A caller that passes a temporary
+ * buffer (a Python bytes object, a stack array) would otherwise leave this
+ * pointing at freed memory, and the next scan would read whatever moved in.
+ * The session-root seam has the same shape and the same hazard. */
+static char scope_root_override_buf[512];
+
+int mr_bal_bridge_test_set_scope_root(const char *dir)
+{
+    if (dir == NULL) {
+        scope_root_override = NULL;
+        scope_root_override_buf[0] = '\0';
+        return 1;
+    }
+    snprintf(scope_root_override_buf, sizeof(scope_root_override_buf), "%s", dir);
+    scope_root_override = scope_root_override_buf;
+    return 1;
+}
+
+/* Derive the app-scope root for the calling user. Read from the kernel, not
+ * from the environment: an environment variable would let a caller point the
+ * reclaim at another user's slice. */
+const char *mr_bal_bridge_scope_root(void)
+{
+    if (scope_root_override != NULL) {
+        snprintf(scope_root, sizeof(scope_root), "%s", scope_root_override);
+        return scope_root;
+    }
+    scope_root[0] = '\0';
+    FILE *fh = fopen("/proc/self/cgroup", "r");
+    if (fh == NULL) return scope_root;
+    char line[1024];
+    char path[512] = "";
+    while (fgets(line, sizeof(line), fh) != NULL) {
+        /* cgroup v2: "0::<path>" */
+        if (strncmp(line, "0::", 3) == 0) {
+            size_t length = strlen(line + 3);
+            while (length > 0 && (line[3 + length - 1] == '\n' || line[3 + length - 1] == '\r'))
+                length--;
+            if (length < sizeof(path)) {
+                memcpy(path, line + 3, length);
+                path[length] = '\0';
+            }
+            break;
+        }
+    }
+    (void)fclose(fh);
+    if (path[0] != '/') return scope_root;
+    /* The calling process is usually in a leaf scope (a dsh-subprocess or an
+     * app scope), not in app.slice itself. Trim back to the first "/app.slice"
+     * component: that component can only appear once in a session path, so
+     * this finds the right ancestor without counting levels. */
+    const char *marker = "/app.slice";
+    size_t marker_length = strlen(marker);
+    const char *found = NULL;
+    for (const char *cursor = path; *cursor != '\0'; cursor++) {
+        if (strncmp(cursor, marker, marker_length) == 0) {
+            /* Only accept it as a whole component: followed by '/' or end. */
+            char after = cursor[marker_length];
+            if (after == '\0' || after == '/') found = cursor;
+        }
+    }
+    if (found == NULL) {
+        /* Fallback: not inside app.slice (e.g. launched bare from a session
+         * scope). The picker still needs the user's app.slice, so derive it
+         * from the session root + the fixed component name rather than
+         * returning empty and showing a picker with zero rows. */
+        const char *session = mr_bal_exec_session_root();
+        if (session[0] != '/') return scope_root;
+        snprintf(scope_root, sizeof(scope_root), "%s/app.slice", session);
+        return scope_root;
+    }
+    size_t root_length = (size_t)(found - path) + marker_length;
+    /* /proc/self/cgroup reports the path relative to the cgroup mount point;
+     * the filesystem calls need it rooted there. */
+    const char *mount = "/sys/fs/cgroup";
+    size_t mount_length = strlen(mount);
+    if (mount_length + root_length < sizeof(scope_root)) {
+        memcpy(scope_root, mount, mount_length);
+        memcpy(scope_root + mount_length, path, root_length);
+        scope_root[mount_length + root_length] = '\0';
+    }
+    return scope_root;
+}
+
+static int scanned_count;
+
+int64_t mr_bal_bridge_scan_scopes(void)
+{
+    const char *root = mr_bal_bridge_scope_root();
+    scanned_count = 0;
+    if (root[0] == '\0') return 0;
+    /* The flat buffer must hold every name plus its NUL. */
+    static char names[64 * MR_BAL_SCOPE_NAME_MAX];
+    memset(names, 0, sizeof(names));
+    int64_t count = mr_bal_exec_list_scopes(root, (uint32_t)getuid(),
+                                           names, (uint32_t)sizeof(names));
+    if (count < 0) return 0;
+    scanned_count = (int)count;
+    return count;
+}
+
+const char *mr_bal_bridge_scope_name(int64_t index)
+{
+    return mr_bal_exec_scope_name(index);
+}
+
+const char *mr_bal_bridge_scope_label(int64_t index)
+{
+    return mr_bal_exec_app_label(mr_bal_exec_scope_name(index));
+}
+
+/* Reads the three counters a picker row shows. Separate from the executor so
+ * the panel never opens memory.reclaim just to display a number. */
+int mr_bal_bridge_scope_view(int64_t index, struct mr_bal_scope_view *out)
+{
+    if (out == NULL) return -1;
+    memset(out, 0, sizeof(*out));
+    out->file_bytes = -1;
+    out->anon_bytes = -1;
+    out->current_bytes = -1;
+    if (index < 0 || index >= scanned_count) return -1;
+
+    int64_t file = mr_bal_bridge_scope_file_bytes(index);
+    out->file_bytes = file;
+
+    const char *root = mr_bal_bridge_scope_root();
+    if (root[0] == '\0') return -1;
+    int fd = mr_bal_exec_open_scope(root, mr_bal_exec_scope_name(index));
+    if (fd < 0) return -1;
+
+    int stat_fd = openat(fd, "memory.stat", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (stat_fd >= 0) {
+        char text[4096];
+        ssize_t got = read(stat_fd, text, sizeof(text) - 1);
+        (void)close(stat_fd);
+        if (got > 0) {
+            text[got] = '\0';
+            for (char *line = text; *line != '\0';) {
+                char *line_end = strchr(line, '\n');
+                if (line_end == NULL) line_end = line + strlen(line);
+                if (strncmp(line, "anon ", 5) == 0) {
+                    uint64_t value = 0;
+                    int digits = 0;
+                    for (char *p = line + 5; *p >= '0' && *p <= '9'; p++) {
+                        value = value * 10u + (uint64_t)(*p - '0');
+                        digits++;
+                    }
+                    if (digits > 0) out->anon_bytes = (int64_t)value;
+                }
+                if (*line_end == '\0') break;
+                line = line_end + 1;
+            }
+        }
+    }
+    int current_fd = openat(fd, "memory.current", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (current_fd >= 0) {
+        char text[64];
+        ssize_t got = read(current_fd, text, sizeof(text) - 1);
+        (void)close(current_fd);
+        if (got > 0) {
+            text[got] = '\0';
+            uint64_t value = 0;
+            int digits = 0;
+            for (char *p = text; *p >= '0' && *p <= '9'; p++) {
+                value = value * 10u + (uint64_t)(*p - '0');
+                digits++;
+            }
+            if (digits > 0) out->current_bytes = (int64_t)value;
+        }
+    }
+    (void)close(fd);
+    /* Eligible means there is something a file-first run could actually take.
+     * A scope with no file pages is listed but cannot be chosen, which is the
+     * difference between "nothing here" and "not allowed". */
+    out->eligible = out->file_bytes > 0 ? 1 : 0;
+    return 0;
+}
+
+static struct mr_bal_scope_view last_view;
+static int last_view_valid;
+
+int64_t mr_bal_bridge_scope_refresh(int64_t index)
+{
+    /* Clear before filling: a failed refresh must not leave the previous
+     * scope's numbers readable, because the picker would then draw one
+     * application's counters next to another application's name. */
+    memset(&last_view, 0, sizeof(last_view));
+    last_view.file_bytes = -1;
+    last_view.anon_bytes = -1;
+    last_view.current_bytes = -1;
+    last_view.eligible = 0;
+    last_view_valid = mr_bal_bridge_scope_view(index, &last_view) == 0;
+    return last_view_valid ? 1 : 0;
+}
+
+int64_t mr_bal_bridge_scope_anon_bytes(void)
+{
+    return last_view_valid ? last_view.anon_bytes : -1;
+}
+
+int64_t mr_bal_bridge_scope_current_bytes(void)
+{
+    return last_view_valid ? last_view.current_bytes : -1;
+}
+
+int64_t mr_bal_bridge_scope_eligible(void)
+{
+    return last_view_valid ? last_view.eligible : 0;
+}
+
+int64_t mr_bal_bridge_scope_file_bytes(int64_t index)
+{
+    if (index < 0 || index >= scanned_count) return -1;
+    const char *root = mr_bal_bridge_scope_root();
+    if (root[0] == '\0') return -1;
+    int fd = mr_bal_exec_open_scope(root, mr_bal_exec_scope_name(index));
+    if (fd < 0) return -1;
+    int stat_fd = openat(fd, "memory.stat", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    (void)close(fd);
+    if (stat_fd < 0) return -1;
+    char text[4096];
+    ssize_t got = read(stat_fd, text, sizeof(text) - 1);
+    (void)close(stat_fd);
+    if (got <= 0) return -1;
+    text[got] = '\0';
+    for (char *line = text; *line != '\0';) {
+        char *line_end = strchr(line, '\n');
+        if (line_end == NULL) line_end = line + strlen(line);
+        if (strncmp(line, "file ", 5) == 0) {
+            uint64_t value = 0;
+            int digits = 0;
+            for (char *p = line + 5; *p >= '0' && *p <= '9'; p++) {
+                value = value * 10u + (uint64_t)(*p - '0');
+                digits++;
+            }
+            return digits > 0 ? (int64_t)value : -1;
+        }
+        if (*line_end == '\0') break;
+        line = line_end + 1;
+    }
+    return -1;
+}
+
+/* Cap the machine-wide budget by what the chosen scope can actually give.
+ *
+ * The planner reasons about the whole machine, which is right for deciding
+ * whether to act at all. But the request is written into ONE scope, so a
+ * machine-wide budget can ask a small scope for more than it holds: measured
+ * on this host, a plan of 425 MiB against a scope holding 73 KiB of file pages.
+ * The scope's own file counter is the only honest ceiling. */
+static uint64_t scope_bounded_budget(int64_t index, uint64_t budget_bytes)
+{
+    int64_t scope_file = mr_bal_bridge_scope_file_bytes(index);
+    if (scope_file <= 0) return 0;
+    return (uint64_t)scope_file < budget_bytes ? (uint64_t)scope_file : budget_bytes;
+}
+
+int64_t mr_bal_bridge_run(int64_t index, uint64_t budget_bytes,
+                          uint64_t batch_bytes, uint32_t max_batches,
+                          uint32_t psi_stop_centi)
+{
+    /* Publish an empty result first: a refused run must not leave the previous
+     * run's numbers on screen for the GUI to present as this one's. */
+    (void)mr_bal_bridge_result_set(MR_BAL_EXEC_STOPPED, MR_BAL_EXEC_STOP_ERROR,
+                                   0, 0, 0, 0, 0);
+    /* A zero budget means "do not act". Without this the batch default of
+     * 32 MiB was clamped down to 0 and the run proceeded to the executor,
+     * which then refused for a different reason — a refusal that happened to
+     * be correct for the wrong cause. */
+    if (budget_bytes == 0) return 0;
+    if (index < 0 || index >= scanned_count) return 0;
+    const char *root = mr_bal_bridge_scope_root();
+    if (root[0] == '\0') return 0;
+    const char *name = mr_bal_exec_scope_name(index);
+    if (name == NULL || name[0] == '\0') return 0;
+
+    budget_bytes = scope_bounded_budget(index, budget_bytes);
+    if (budget_bytes == 0) {
+        (void)mr_bal_bridge_result_set(MR_BAL_EXEC_STOPPED, MR_BAL_EXEC_STOP_NO_COLD_PAGES,
+                                       0, 0, 0, 0, 0);
+        return 1;
+    }
+
+    int scope_fd = mr_bal_exec_open_scope(root, name);
+    if (scope_fd < 0) return 0;
+
+    struct mr_bal_exec_config config;
+    memset(&config, 0, sizeof(config));
+    config.budget_bytes = budget_bytes;
+    config.batch_bytes = batch_bytes == 0 ? 32ull * 1024 * 1024 : batch_bytes;
+    if (config.batch_bytes > config.budget_bytes) config.batch_bytes = config.budget_bytes;
+    config.max_batches = max_batches == 0 ? 16u : max_batches;
+    config.psi_stop_centi = psi_stop_centi;
+    config.expected_uid = (uint32_t)getuid();
+
+    struct mr_bal_exec_result result;
+    if (mr_bal_exec_run(scope_fd, &config, &result) != 0) {
+        (void)close(scope_fd);
+        return 0;
+    }
+    (void)close(scope_fd);
+
+    int64_t available_delta = 0;
+    /* Reuse the existing reader rather than a second parser. */
+    (void)mr_bal_bridge_result_set(result.status, result.stop_reason,
+                                   result.requested_bytes,
+                                   result.accepted_bytes + result.observed_on_reject_bytes,
+                                   result.batches_accepted, result.batches_rejected,
+                                   available_delta);
+    return 1;
+}
+
+/* ---- plan probe ------------------------------------------------------ */
+
+/* One planner instance, owned here, so a probe and a run share cooldown and
+ * hysteresis instead of each call starting fresh and running back to back. */
+static struct mr_bal_planner planner;
+static int planner_ready;
+static struct mr_bal_plan published_plan;
+static int plan_valid;
+
+int64_t mr_bal_bridge_plan_probe(void)
+{
+    struct mr_bal_snapshot snapshot;
+    if (mr_bal_snapshot_read("/proc", "/sys", &snapshot) != 0) return 0;
+    if (!planner_ready) {
+        mr_bal_planner_init(&planner);
+        planner_ready = 1;
+    }
+    struct mr_bal_config config;
+    mr_bal_config_default(&config);
+
+    /* A second sample a short distance away is what makes PSI a rate instead
+     * of a 10-second average; without it the planner uses the kernel's own
+     * average and says so through the evidence flag below. */
+    struct mr_bal_delta delta;
+    struct mr_bal_snapshot after;
+    int have_delta = 0;
+    if (mr_bal_snapshot_read("/proc", "/sys", &after) == 0) {
+        uint64_t before_us = snapshot.psi_some_total_us;
+        uint64_t after_us = after.psi_some_total_us;
+        /* Two back-to-back reads measure nothing; a delta needs elapsed time,
+         * which this synchronous call does not have. Report no delta and let
+         * the planner fall back to avg10, which is honest about its window. */
+        (void)before_us;
+        (void)after_us;
+        (void)delta;
+    }
+
+    uint64_t now_ms = 0;
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
+        now_ms = (uint64_t)ts.tv_sec * 1000ull + (uint64_t)(ts.tv_nsec / 1000000);
+
+    if (mr_bal_plan_build(&config, &planner, &snapshot, have_delta ? &delta : NULL,
+                          now_ms, &published_plan) != 0) {
+        plan_valid = 0;
+        return 0;
+    }
+    plan_valid = 1;
+    /* Evidence means "the planner had what it needed to classify", not "there
+     * is pressure". A healthy machine is a valid answer with no action. */
+    return published_plan.state == MR_BAL_STATE_UNKNOWN ? 0 : 1;
+}
+
+int64_t mr_bal_bridge_plan_state_code(void)
+{
+    return plan_valid ? published_plan.state : MR_BAL_STATE_UNKNOWN;
+}
+
+int64_t mr_bal_bridge_plan_action_code(void)
+{
+    return plan_valid ? published_plan.action : MR_BAL_ACTION_NONE;
+}
+
+int64_t mr_bal_bridge_plan_request_bytes(void)
+{
+    return plan_valid ? (int64_t)published_plan.request_bytes : 0;
+}
+
+/* ---- session target ------------------------------------------------------ */
+
+int64_t mr_bal_bridge_session_available(void)
+{
+    const char *root = mr_bal_exec_session_root();
+    return root[0] == '/' ? 1 : 0;
+}
+
+/* A directory the tests can substitute for the live cgroup. NULL means
+ * "ask the executor". Kept as a pointer to caller-owned storage so this file
+ * allocates nothing on a path that runs during reclaim. */
+static const char *session_root_override = NULL;
+
+int mr_bal_bridge_test_set_session_root(const char *dir)
+{
+    session_root_override = dir;
+    return 0;
+}
+
+const char *mr_bal_bridge_test_session_root(void)
+{
+    return session_root_override ? session_root_override
+                                 : mr_bal_exec_session_root();
+}
+
+const char *mr_bal_bridge_session_root(void)
+{
+    return mr_bal_bridge_test_session_root();
+}
+
+int64_t mr_bal_bridge_session_file_bytes(void)
+{
+    const char *root = mr_bal_exec_session_root();
+    if (root[0] != '/') return -1;
+    int fd = mr_bal_exec_open_session(root);
+    if (fd < 0) return -1;
+    int64_t bytes = mr_bal_exec_session_file_bytes(fd);
+    (void)close(fd);
+    return bytes;
+}
+
+/* Reclaim across the whole user session.
+ *
+ * The budget is clamped to the session's own file pages, because asking for
+ * more than the cgroup holds is the EAGAIN case measured on this host: the
+ * kernel accepts the request and gives back whatever it could, which reads as
+ * a failed run when it is really the ceiling. */
+int64_t mr_bal_bridge_session_run(uint64_t budget_bytes)
+{
+    /* One root resolver for both the session sweep and the S4 batch loop:
+     * when a test pins the session root, the sweep must follow it, exactly
+     * like S4 does, instead of silently walking the host cgroup. With no
+     * override this returns the same discovered root as before. */
+    const char *root = mr_bal_bridge_test_session_root();
+    if (root[0] != '/') return 0;
+    int fd = mr_bal_exec_open_session(root);
+    if (fd < 0) return 0;
+    uint32_t uid = (uint32_t)getuid();
+    /* MR_BAL_EXEC_OK is 0, not 1: comparing against 1 here refused every
+     * session run while the executor was working correctly. */
+    int64_t probe = mr_bal_exec_session_probe(fd, uid);
+    if (probe != MR_BAL_EXEC_OK) {
+        (void)close(fd);
+        return 0;
+    }
+    int64_t file_bytes = mr_bal_exec_session_file_bytes(fd);
+    if (file_bytes <= 0) {
+        (void)close(fd);
+        (void)mr_bal_bridge_result_set(MR_BAL_EXEC_STOPPED, MR_BAL_EXEC_STOP_NO_COLD_PAGES,
+                                       0, 0, 0, 0, 0);
+        return 1;
+    }
+    /* The budget is the session's own file pages, always.
+     *
+     * A caller-supplied budget was tried and is wrong here: the planner reasons
+     * about the whole machine and proposed 512 MiB while the session held
+     * 2354 MiB, so the run stopped at 512 MiB for no reason the user could see.
+     * The only honest ceiling is what the cgroup actually holds, and asking for
+     * more than that is the EAGAIN case measured on this host. budget_bytes is
+     * therefore ignored; it stays in the signature so callers that pass a plan
+     * value keep compiling, and so the mistake is visible here rather than
+     * silently reintroduced. */
+    uint64_t budget = (uint64_t)file_bytes;
+    (void)budget_bytes;
+
+    struct mr_bal_run_config config;
+    mr_bal_run_config_for_budget(budget, &config);
+    struct mr_bal_exec_result exec;
+    int ran = mr_bal_exec_run_on_fd(fd, &config, &exec) == 0;
+    (void)close(fd);
+    if (!ran) return 0;
+
+    /* Report the measured change, not the kernel's acknowledgement. Writing
+     * 2G to a cgroup holding 1.7 GiB of file pages returns success and reclaims
+     * 442 MiB; calling that "accepted 2G" would be the fake-success failure
+     * this project keeps guarding against. */
+    uint64_t requested = exec.requested_bytes;
+    uint64_t actually_gone = 0;
+    if (exec.scope_file_before >= 0 && exec.scope_file_after >= 0 &&
+        exec.scope_file_before > exec.scope_file_after) {
+        actually_gone = (uint64_t)(exec.scope_file_before - exec.scope_file_after);
+    }
+    uint64_t accepted = exec.accepted_bytes < actually_gone ? exec.accepted_bytes : actually_gone;
+    /* The status reported here is the executor's own verdict, never a value
+     * chosen to look better: a run that reclaimed nothing is STOPPED, not
+     * PARTIAL. */
+    int64_t status = exec.status == MR_BAL_EXEC_OK ? MR_BAL_EXEC_OK
+                   : (exec.batches_accepted > 0 ? MR_BAL_EXEC_PARTIAL : MR_BAL_EXEC_REFUSED);
+    return mr_bal_bridge_result_set(status, exec.stop_reason, requested, accepted,
+                                    exec.batches_accepted, exec.batches_rejected,
+                                    0) == 1 ? 1 : 0;
+}
+
+int64_t mr_bal_bridge_result_status_code(void)
+{
+    return result.valid ? result.status : MR_BAL_EXEC_BAD_REQUEST;
+}
+
+int64_t mr_bal_bridge_result_stop_code(void)
+{
+    return result.valid ? result.stop_reason : MR_BAL_EXEC_STOP_NONE;
+}
+
+int64_t mr_bal_bridge_result_requested_value(void)
+{
+    return result.valid ? (int64_t)result.requested_bytes : 0;
+}
+
+int64_t mr_bal_bridge_result_accepted_value(void)
+{
+    return result.valid ? (int64_t)result.accepted_bytes : 0;
+}
+
+const char *mr_bal_bridge_state_name(int64_t state)
+{
+    switch (state) {
+    case 0: return "unknown";
+    case 1: return "healthy";
+    case 2: return "healthy_cache";
+    case 3: return "cold_file";
+    case 4: return "anon_pressure";
+    case 5: return "thrashing";
+    default: return "invalid";
+    }
+}
+
+const char *mr_bal_bridge_action_name(int64_t action)
+{
+    switch (action) {
+    case 0: return "none";
+    case 1: return "file_first";
+    case 2: return "anon_pageout";
+    default: return "invalid";
+    }
+}
+
+int64_t mr_mem_available_bytes(void)
+{
+    FILE *fh = fopen("/proc/meminfo", "r");
+    if (fh == NULL) return -1;
+    char line[256];
+    int64_t value = -1;
+    while (fgets(line, sizeof(line), fh) != NULL) {
+        if (strncmp(line, "MemAvailable:", 13) == 0) {
+            value = (int64_t)strtoll(line + 13, NULL, 10) * 1024;
+            break;
+        }
+    }
+    (void)fclose(fh);
+    return value;
+}
+
+/* ---- deep clean pipeline (S1-S4) -----------------------------------------
+ *
+ * Every stage of the deep clean is asynchronous: the GUI callback only starts
+ * the work and records the baseline the user will be judged against, and the
+ * 1 Hz tick polls for the result. Nothing here may block a GTK callback, and a
+ * second start while a run is alive is refused instead of opening a second
+ * pipeline.
+ *
+ * Three separate numbers are recorded, never one standing in for another:
+ *   - whole round: MemAvailable at the click minus MemAvailable at the end.
+ *     The baseline is captured by deep_start(), i.e. at click time, not after
+ *     the earlier stages have already moved memory. A baseline taken late
+ *     would silently report only the last stage as "the whole run".
+ *   - per stage: each stage's own positive delta and wall time, measured
+ *     against its own entry, so S1-S3 growing the number cannot be presented
+ *     as S4's achievement.
+ *   - kernel: pgsteal in the session cgroup, which is what the kernel says it
+ *     reclaimed. It is read once at start and once at the end; it is not
+ *     available on every kernel, so callers must be able to say "unreadable"
+ *     rather than print a zero.
+ *
+ * Stop reasons are four distinct values. "Stopped" alone hid the difference
+ * between the machine objecting, the user objecting, telemetry missing, and a
+ * real error, and those need different wording and different follow-up.
+ */
+/* Stage and stop-reason values live in balance_bridge.h. */
+
+static struct {
+    int started;
+    int running;
+    volatile int cancel;
+    int64_t stop_reason;
+    int stage_ran[MR_DEEP_STAGE_COUNT];    /* S1 is reported by the GUI layer */
+    int stage_ok[MR_DEEP_STAGE_COUNT];
+    int64_t stage_positive[MR_DEEP_STAGE_COUNT];
+    int64_t stage_elapsed_ms[MR_DEEP_STAGE_COUNT];
+    int64_t baseline_avail;
+    int64_t end_avail;
+    int64_t kernel_before;
+    int64_t kernel_after;
+    int64_t batches_completed;
+    /* EAGAIN is not an error: the kernel refused this one request because it
+     * was larger than what the cgroup could give back, and it may still have
+     * reclaimed part of it. Counting it separately is what lets the GUI say
+     * "partially reclaimed" instead of "failed". -1 means never observed. */
+    int64_t eagain_batches;
+} mr_deep;
+
+static pthread_t mr_deep_thread;
+
+/* PSI some-rate avg10 for the whole machine, or -1 when it cannot be read.
+ * Used both as the guard baseline and as a liveness probe: a guard that cannot
+ * read its own telemetry must refuse to run rather than run unguarded. */
+/* Test-only guard telemetry pins: >= 0 means "the guard sees this", -1 means
+ * "read the host". The suite itself generates real PSI and swap-out activity,
+ * which is machine state, not behaviour under test — a guard fed pinned
+ * telemetry decides on the fixture, so a clean run stays clean on any host. */
+static double deep_psi_override = -1.0;
+static int64_t deep_swap_delta_override = -1;
+
+static double mr_pressure_psi_some_avg10(void)
+{
+    if (deep_psi_override >= 0.0) return deep_psi_override;
+    FILE *f = fopen("/proc/pressure/memory", "r");
+    if (f == NULL) return -1.0;
+    char line[128];
+    double v = -1.0;
+    while (fgets(line, sizeof(line), f) != NULL) {
+        if (strncmp(line, "some ", 5) == 0) {
+            const char *p = strstr(line, "avg10=");
+            if (p != NULL) v = atof(p + 6);
+            break;
+        }
+    }
+    (void)fclose(f);
+    return v;
+}
+
+/* System swap-out pages written since the previous call, from pswpout.
+ *
+ * pswpout is a whole-machine counter and it counts pages written to ZRAM as
+ * well as pages written to disk, so the number this returns is a system
+ * swap-out page count (ZRAM + disk), never a disk-paging count. It is used
+ * only as a "the machine is degrading right now" rate signal. -1 when
+ * /proc/vmstat does not provide the counter. */
+static int64_t mr_pressure_swap_delta(void)
+{
+    if (deep_swap_delta_override >= 0) return deep_swap_delta_override;
+    static int64_t last = -1;
+    FILE *f = fopen("/proc/vmstat", "r");
+    if (f == NULL) return -1;
+    char key[32];
+    long long val = 0;
+    int64_t cur = -1;
+    while (fscanf(f, "%31s %lld", key, &val) == 2) {
+        if (strcmp(key, "pswpout") == 0) { cur = (int64_t)val; break; }
+    }
+    (void)fclose(f);
+    if (cur < 0) return -1;
+    if (last < 0) { last = cur; return 0; }
+    int64_t d = cur - last;
+    last = cur;
+    return d;
+}
+
+/* 0 readable, 1 /proc/pressure/memory unusable, 2 /proc/vmstat unusable. */
+static int mr_deep_telemetry_ready(void)
+{
+    if (deep_psi_override >= 0.0 && deep_swap_delta_override >= 0) return 0;
+    if (mr_pressure_psi_some_avg10() < 0.0) return 1;
+    FILE *f = fopen("/proc/vmstat", "r");
+    if (f == NULL) return 2;
+    char key[32];
+    long long val = 0;
+    int found = 0;
+    while (fscanf(f, "%31s %lld", key, &val) == 2) {
+        if (strcmp(key, "pswpout") == 0) { found = 1; break; }
+    }
+    (void)fclose(f);
+    return found ? 0 : 2;
+}
+
+/* Kernel-reported reclaim for the caller's own session cgroup: the pgsteal
+ * counter the kernel maintains there. -1 when the counter is not readable,
+ * which the UI must show as unknown rather than as zero reclaimed. */
+static int64_t mr_deep_read_pgsteal(void)
+{
+    const char *root = mr_bal_exec_session_root();
+    if (root[0] != '/') return -1;
+    char path[600];
+    if ((size_t)snprintf(path, sizeof(path), "%s/memory.stat", root) >= sizeof(path)) return -1;
+    FILE *f = fopen(path, "r");
+    if (f == NULL) return -1;
+    char key[64];
+    long long val = 0;
+    int64_t out = -1;
+    while (fscanf(f, "%63s %lld", key, &val) == 2) {
+        if (strcmp(key, "pgsteal") == 0) { out = (int64_t)val; break; }
+    }
+    (void)fclose(f);
+    return out;
+}
+
+static int64_t mr_deep_now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+/* One stage of the session file-page sweep. The stage keeps its own entry
+ * reading so its delta is its own, and re-checks the caller's cancel flag
+ * before the (single, already batched) request is issued. */
+static void mr_deep_stage_session(int which)
+{
+    mr_deep.stage_ran[which] = 1;
+    int64_t started = mr_deep_now_ms();
+    int64_t before = mr_mem_available_bytes();
+    if (before < 0) {
+        mr_deep.stop_reason = MR_DEEP_STOP_ERROR;
+        mr_deep.stage_elapsed_ms[which] = mr_deep_now_ms() - started;
+        return;
+    }
+    if (mr_deep.cancel) {
+        mr_deep.stop_reason = MR_DEEP_STOP_USER_CANCEL;
+        mr_deep.stage_elapsed_ms[which] = mr_deep_now_ms() - started;
+        return;
+    }
+    int telemetry = mr_deep_telemetry_ready();
+    if (telemetry != 0) {
+        mr_deep.stop_reason = MR_DEEP_STOP_PSI_UNREADABLE;
+        mr_deep.stage_elapsed_ms[which] = mr_deep_now_ms() - started;
+        return;
+    }
+    int64_t ran = mr_bal_bridge_session_run(0);
+    int64_t after = mr_mem_available_bytes();
+    if (after >= 0 && after > before) mr_deep.stage_positive[which] = after - before;
+    mr_deep.stage_ok[which] = ran == 1 ? 1 : 0;
+    if (ran != 1 && mr_deep.stop_reason == MR_DEEP_STOP_NONE)
+        mr_deep.stop_reason = MR_DEEP_STOP_ERROR;
+    mr_deep.stage_elapsed_ms[which] = mr_deep_now_ms() - started;
+}
+
+/* S4: batched pressure sweep. Every stop condition is checked BEFORE a batch,
+ * so a cancel or a guard that fires mid-run cannot be followed by one more
+ * write. */
+static void mr_deep_stage_pressure(void)
+{
+    const int which = MR_DEEP_STAGE_S4;
+    mr_deep.stage_ran[which] = 1;
+    int64_t started = mr_deep_now_ms();
+
+    const char *root = mr_bal_bridge_test_session_root();
+    if (root[0] != '/') {
+        mr_deep.stop_reason = MR_DEEP_STOP_ERROR;
+        mr_deep.stage_elapsed_ms[which] = mr_deep_now_ms() - started;
+        return;
+    }
+    char path[512];
+    if ((size_t)snprintf(path, sizeof(path), "%s/memory.reclaim", root) >= sizeof(path)) {
+        mr_deep.stop_reason = MR_DEEP_STOP_ERROR;
+        mr_deep.stage_elapsed_ms[which] = mr_deep_now_ms() - started;
+        return;
+    }
+
+    const uint64_t batch = 512ull * 1024ull * 1024ull;
+    const int max_rounds = 8;
+    const double psi_growth_limit = 8.0;  /* avg10 points over baseline */
+
+    if (mr_deep_telemetry_ready() != 0) {
+        /* No PSI or no pswpout: the guard cannot run, so the stage must not. */
+        mr_deep.stop_reason = MR_DEEP_STOP_PSI_UNREADABLE;
+        mr_deep.stage_elapsed_ms[which] = mr_deep_now_ms() - started;
+        return;
+    }
+    double psi_base = mr_pressure_psi_some_avg10();
+    struct timespec rate_start;
+    clock_gettime(CLOCK_MONOTONIC, &rate_start);
+    (void)mr_pressure_swap_delta();       /* zero the rate window */
+
+    int64_t before = mr_mem_available_bytes();
+    if (before < 0) {
+        mr_deep.stop_reason = MR_DEEP_STOP_ERROR;
+        mr_deep.stage_elapsed_ms[which] = mr_deep_now_ms() - started;
+        return;
+    }
+    for (int r = 0; r < max_rounds; r++) {
+        /* Before EVERY batch: the user's cancel first, then telemetry, then
+         * the two guard limits. */
+        if (mr_deep.cancel) {
+            mr_deep.stop_reason = MR_DEEP_STOP_USER_CANCEL;
+            break;
+        }
+        if (mr_deep_telemetry_ready() != 0) {
+            mr_deep.stop_reason = MR_DEEP_STOP_PSI_UNREADABLE;
+            break;
+        }
+        double psi_now = mr_pressure_psi_some_avg10();
+        if (psi_base >= 0.0 && psi_now > psi_base + psi_growth_limit) {
+            mr_deep.stop_reason = MR_DEEP_STOP_SWAP_RATE;
+            break;
+        }
+        {
+            struct timespec rate_now;
+            clock_gettime(CLOCK_MONOTONIC, &rate_now);
+            double rate_dt = (double)(rate_now.tv_sec - rate_start.tv_sec)
+                + (double)(rate_now.tv_nsec - rate_start.tv_nsec) / 1e9;
+            int64_t swap_pages = mr_pressure_swap_delta();
+            if (rate_dt > 0.2 && swap_pages >= 0
+                && (double)swap_pages / rate_dt > 20000.0) {
+                /* pswpout is a whole-machine counter and it includes pages
+                 * written to ZRAM, so this threshold is a system swap-out page
+                 * rate (ZRAM plus disk), not a disk-paging rate. It is still a
+                 * valid "the machine is under pressure" signal, which is all
+                 * the guard needs. */
+                mr_deep.stop_reason = MR_DEEP_STOP_SWAP_RATE;
+                break;
+            }
+        }
+
+        /* The batch goes through the shared write seam so a test can drive
+         * this loop without reclaiming anything on the host. fopen() here
+         * would have bypassed the hook entirely and made "the guard stopped
+         * submitting batches" unassertable without real pressure. */
+        int wfd = open(path, O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+        if (wfd < 0) {
+            mr_deep.stop_reason = MR_DEEP_STOP_ERROR;
+            break;
+        }
+        char batch_text[32];
+        int batch_len = snprintf(batch_text, sizeof(batch_text), "%" PRIu64, batch);
+        /* Clear first: the recorded errno carries the last failure anywhere in
+         * the tree, and an earlier probe's EAGAIN must not be attributed here. */
+        mr_bal_write_errno_clear();
+        ssize_t bwrote = mr_bal_write(wfd, batch_text, (size_t)batch_len);
+        /* Read the seam's own errno: a caller cannot reliably read its own
+         * across an FFI boundary, and classifying EAGAIN must not depend on
+         * that working. */
+        int werr = (bwrote == (ssize_t)batch_len) ? 0 : mr_bal_write_errno();
+        if (werr == 0 && bwrote != (ssize_t)batch_len) werr = EIO;
+        (void)close(wfd);
+        if (werr == EAGAIN) {
+            /* The kernel accepted the parameter list but refused to reclaim
+             * that many bytes. This is not a failure: it means "less than you
+             * asked for". Record it, keep the sample, and stop asking for that
+             * size — no new batch is submitted after this point. */
+            if (mr_deep.eagain_batches < 0) mr_deep.eagain_batches = 0;
+            mr_deep.eagain_batches++;
+            struct timespec settle_e = { .tv_sec = 1, .tv_nsec = 200000000 };
+            (void)nanosleep(&settle_e, NULL);
+            int64_t now_e = mr_mem_available_bytes();
+            if (now_e >= 0) {
+                if (now_e > before) mr_deep.stage_positive[which] += now_e - before;
+                before = now_e;
+            }
+            if (mr_deep.stop_reason == MR_DEEP_STOP_NONE)
+                mr_deep.stop_reason = MR_DEEP_STOP_PARTIAL;
+            break;
+        }
+        if (werr != 0) {
+            /* The write may still have reclaimed pages: sample the delta
+             * before leaving so this round is counted, not discarded. */
+            struct timespec settle2 = { .tv_sec = 1, .tv_nsec = 200000000 };
+            (void)nanosleep(&settle2, NULL);
+            int64_t now2 = mr_mem_available_bytes();
+            if (now2 >= 0) {
+                if (now2 > before) mr_deep.stage_positive[which] += now2 - before;
+                before = now2;
+            }
+            if (mr_deep.stop_reason == MR_DEEP_STOP_NONE)
+                mr_deep.stop_reason = MR_DEEP_STOP_ERROR;
+            break;
+        }
+        mr_deep.batches_completed = r + 1;
+
+        struct timespec settle = { .tv_sec = 1, .tv_nsec = 200000000 };
+        (void)nanosleep(&settle, NULL);
+
+        int64_t now = mr_mem_available_bytes();
+        if (now < 0) {
+            mr_deep.stop_reason = MR_DEEP_STOP_ERROR;
+            break;
+        }
+        if (now > before) mr_deep.stage_positive[which] += now - before;
+        before = now;
+    }
+
+    mr_deep.stage_ok[which] = mr_deep.batches_completed > 0 ? 1 : 0;
+    mr_deep.stage_elapsed_ms[which] = mr_deep_now_ms() - started;
+}
+
+static void *mr_deep_worker(void *arg)
+{
+    (void)arg;
+    mr_deep.kernel_before = mr_deep_read_pgsteal();
+
+    /* S1 (machine-wide page cache) is driven by the GUI because it goes
+     * through pkexec; this worker runs S2-S4. It stops issuing new stages as
+     * soon as a stop reason latched. */
+    mr_deep_stage_session(MR_DEEP_STAGE_S2);
+    if (mr_deep.stop_reason == MR_DEEP_STOP_NONE && !mr_deep.cancel)
+        mr_deep_stage_session(MR_DEEP_STAGE_S3);
+    if (mr_deep.stop_reason == MR_DEEP_STOP_NONE && !mr_deep.cancel)
+        mr_deep_stage_pressure();
+    else if (mr_deep.cancel && mr_deep.stop_reason == MR_DEEP_STOP_NONE)
+        mr_deep.stop_reason = MR_DEEP_STOP_USER_CANCEL;
+
+    mr_deep.kernel_after = mr_deep_read_pgsteal();
+    mr_deep.end_avail = mr_mem_available_bytes();
+    mr_deep.running = 0;
+    return NULL;
+}
+
+/* Start S2-S4 on a worker thread. The baseline is read HERE, synchronously, so
+ * it is the value at the moment the user clicked, not after S1 already moved
+ * memory. Returns 0 started, -1 thread creation failed, -2 already running. */
+int64_t mr_bal_bridge_deep_start(int64_t baseline_avail)
+{
+    if (mr_deep.running) return -2;
+    memset(&mr_deep, 0, sizeof(mr_deep));
+    mr_deep.eagain_batches = -1;  /* -1 = no observation yet, not "zero" */
+    mr_deep.started = 1;
+    mr_deep.baseline_avail = baseline_avail > 0 ? baseline_avail : mr_mem_available_bytes();
+    mr_deep.running = 1;
+    if (pthread_create(&mr_deep_thread, NULL, mr_deep_worker, NULL) != 0) {
+        mr_deep.running = 0;
+        return -1;
+    }
+    return 0;
+}
+
+int64_t mr_bal_bridge_deep_poll(void)
+{
+    if (!mr_deep.running) return mr_deep.started ? 1 : -1;
+    if (pthread_tryjoin_np(mr_deep_thread, NULL) != 0) return 0;
+    mr_deep.running = 0;
+    return 1;
+}
+
+/* Request cancellation. The worker observes it before the next batch, so this
+ * never interrupts a write already in the kernel, and no further batch is
+ * submitted afterwards. */
+int64_t mr_bal_bridge_deep_cancel(void)
+{
+    if (!mr_deep.running) return 0;
+    mr_deep.cancel = 1;
+    return 1;
+}
+
+int64_t mr_bal_bridge_deep_stop_reason(void) { return mr_deep.stop_reason; }
+int64_t mr_bal_bridge_deep_stage_ran(int64_t stage)
+{
+    if (stage < 0 || stage >= MR_DEEP_STAGE_COUNT) return -1;
+    return mr_deep.stage_ran[stage];
+}
+int64_t mr_bal_bridge_deep_stage_ok(int64_t stage)
+{
+    if (stage < 0 || stage >= MR_DEEP_STAGE_COUNT) return -1;
+    return mr_deep.stage_ok[stage];
+}
+int64_t mr_bal_bridge_deep_stage_positive(int64_t stage)
+{
+    if (stage < 0 || stage >= MR_DEEP_STAGE_COUNT) return -1;
+    return mr_deep.stage_positive[stage];
+}
+int64_t mr_bal_bridge_deep_stage_elapsed_ms(int64_t stage)
+{
+    if (stage < 0 || stage >= MR_DEEP_STAGE_COUNT) return -1;
+    return mr_deep.stage_elapsed_ms[stage];
+}
+int64_t mr_bal_bridge_deep_batches_completed(void) { return mr_deep.batches_completed; }
+int64_t mr_bal_bridge_deep_net_bytes(void)
+{
+    if (mr_deep.baseline_avail <= 0 || mr_deep.end_avail <= 0) return 0;
+    return mr_deep.end_avail - mr_deep.baseline_avail;
+}
+/* Kernel-reported reclaim inside the session cgroup over this run, or -1 when
+ * the kernel does not expose the counter. Never reported as zero. */
+int64_t mr_bal_bridge_deep_eagain_batches(void) { return mr_deep.eagain_batches; }
+
+void mr_bal_bridge_deep_reset(void)
+{
+    if (mr_deep.running) return;   /* never discard a live run's results */
+    memset(&mr_deep, 0, sizeof(mr_deep));
+    mr_deep.eagain_batches = -1;
+}
+
+int64_t mr_bal_bridge_deep_kernel_bytes(void)
+{
+    if (mr_deep.kernel_before < 0 || mr_deep.kernel_after < 0) return -1;
+    return mr_deep.kernel_after - mr_deep.kernel_before;
+}
+
+
+int64_t mr_bal_bridge_sleep_ms(int64_t ms)
+{
+    if (ms <= 0 || ms > 5000) return -1;
+    struct timespec ts = { .tv_sec = ms / 1000, .tv_nsec = (ms % 1000) * 1000000L };
+    return nanosleep(&ts, NULL) == 0 ? 0 : -1;
+}
+
+/* ---- conditional default policy (Issue #12, Q14 line B) ------------------
+ *
+ * This is the default action's brain. It replaces the two backups that used to
+ * make the button lie about its scope:
+ *
+ *   1. the global pkexec helper (drop_caches, machine-wide), reachable from the
+ *      default confirm path, and
+ *   2. mr_bal_bridge_session_run(), which ignored the caller's budget and
+ *      always reclaimed the WHOLE user session.
+ *
+ * Neither is reachable from here. This path acts only on app scopes the user
+ * explicitly enrolled, and only on their inactive file pages.
+ *
+ * Everything the policy reasons about is measured here and handed over as
+ * plain structs, so balance_policy.c stays pure and testable. The two digest
+ * helpers below are the whole of the I/O.
+ */
+#include "balance_policy.h"
+
+struct pol_enrolled {
+    int64_t scope_index;   /* index into the scanned scope list */
+    uint64_t cooldown_until_ms;
+    uint64_t refault_seen;
+};
+
+#define MR_POL_MAX_ENROLLED 32
+
+/* Why the last export failed. Kept beside the action record rather than inside
+ * it: the record describes the reclaim, this describes the bookkeeping, and
+ * merging them would make a failed file write look like a failed reclaim. */
+static char action_export_error[1024];
+
+static struct pol_enrolled policy_enrolled[MR_POL_MAX_ENROLLED];
+static int policy_enrolled_count;
+static struct mr_pol_config policy_config;
+static struct mr_pol_state policy_state;
+static struct mr_pol_decision policy_decision;
+static int policy_config_ready;
+static int policy_round_open;
+/* Whether the policy was actually asked for a decision this round. The action
+ * record needs it: "the policy said no" and "the policy was never reached" are
+ * different reasons and the GUI must not merge them. */
+static int policy_plan_called;
+
+/* Forward declaration: the action record lives at the end of this file, but the
+ * run loop retargets the record at the scope the policy actually chose, which
+ * is the only place that scope is known. */
+static void action_fill_target(const char *root, const char *name);
+static uint64_t policy_requested_total;
+static uint64_t policy_batches_issued;
+static int64_t policy_observed_bytes;
+static int64_t policy_clock_override = -1;
+static int64_t policy_psi_override = -1;
+static int64_t policy_dwell_override = -1;
+/* Test-only memory evidence override, same shape as the PSI one: -1 means
+ * "read the host", anything else is what the policy sees. The production
+ * binary never calls the setter, and mr_pol_begin's thresholds are unchanged
+ * — the fixture chooses values, the policy still decides with its own rules. */
+static int64_t policy_mem_total_override = -1;
+static int64_t policy_mem_available_override = -1;
+
+/* The scratch arrays a decision is computed from. Sized like the enrolled list
+ * so a fixture with many scopes still fits. */
+static struct mr_pol_scope policy_scopes[MR_POL_MAX_ENROLLED];
+
+static void policy_config_ensure(void)
+{
+    if (policy_config_ready) return;
+    mr_pol_config_default(&policy_config);
+    mr_pol_state_init(&policy_state);
+    policy_config_ready = 1;
+}
+
+void mr_bal_bridge_policy_enroll_clear(void)
+{
+    policy_enrolled_count = 0;
+    memset(policy_enrolled, 0, sizeof(policy_enrolled));
+}
+
+int64_t mr_bal_bridge_policy_enroll(int64_t index)
+{
+    if (index < 0 || index >= scanned_count) return 0;
+    if (policy_enrolled_count >= MR_POL_MAX_ENROLLED) return 0;
+    /* Read the scope now so a scope that vanished cannot be enrolled as if it
+     * were still there. The view doubles as the enrollment check. */
+    struct mr_bal_scope_view view;
+    if (mr_bal_bridge_scope_view(index, &view) != 0) return 0;
+    for (int i = 0; i < policy_enrolled_count; i++)
+        if (policy_enrolled[i].scope_index == index) return 1;
+    policy_enrolled[policy_enrolled_count].scope_index = index;
+    policy_enrolled[policy_enrolled_count].cooldown_until_ms = 0;
+    policy_enrolled[policy_enrolled_count].refault_seen = 0;
+    policy_enrolled_count++;
+    return 1;
+}
+
+int64_t mr_bal_bridge_policy_enrolled_count(void)
+{
+    return policy_enrolled_count;
+}
+
+static uint64_t policy_now_ms(void)
+{
+    if (policy_clock_override >= 0) return (uint64_t)policy_clock_override;
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+    return (uint64_t)ts.tv_sec * 1000u + (uint64_t)(ts.tv_nsec / 1000000);
+}
+
+/* Machine-wide PSI some-stall, hundredths of a percent, from the kernel's own
+ * avg10. The readers in balance_exec.c and balance_reclaim.c are file-static,
+ * so this file needs its own rather than reaching across a translation unit. */
+static uint32_t policy_read_psi_centi(void)
+{
+    if (policy_psi_override >= 0) return (uint32_t)policy_psi_override;
+    int fd = open("/proc/pressure/memory", O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return 0;
+    char text[256];
+    ssize_t got = read(fd, text, sizeof(text) - 1);
+    (void)close(fd);
+    if (got <= 0) return 0;
+    text[got] = '\0';
+    /* "some avg10=0.42 avg60=..." -> 42 centi. Missing field reads as 0, which
+     * the policy treats as "no pressure" and therefore as "do nothing". */
+    const char *at = strstr(text, "some ");
+    if (at == NULL) return 0;
+    at = strstr(at, "avg10=");
+    if (at == NULL) return 0;
+    at += 6;
+    uint32_t whole = 0;
+    while (*at >= '0' && *at <= '9') { whole = whole * 10u + (uint32_t)(*at - '0'); at++; }
+    uint32_t frac = 0;
+    if (*at == '.') {
+        at++;
+        uint32_t scale = 100;
+        while (*at >= '0' && *at <= '9' && scale > 0) {
+            frac += (uint32_t)(*at - '0') * scale;
+            scale /= 10;
+            at++;
+        }
+    }
+    uint64_t total = (uint64_t)whole * 100u + frac;
+    return total > UINT32_MAX ? UINT32_MAX : (uint32_t)total;
+}
+
+/* Fill one policy scope from the cgroup this bridge already knows how to read.
+ * Unreadable fields stay 0 and readable goes 0, which the policy treats as a
+ * refusal rather than as "probably fine". */
+static void policy_fill_scope(int64_t scope_index, struct mr_pol_scope *out)
+{
+    memset(out, 0, sizeof(*out));
+    out->enrolled = 1;
+    const char *root = mr_bal_bridge_scope_root();
+    if (root[0] == '\0') return;
+    const char *name = mr_bal_exec_scope_name(scope_index);
+    if (name == NULL || name[0] == '\0') return;
+    int fd = mr_bal_exec_open_scope(root, name);
+    if (fd < 0) return;
+    int stat_fd = openat(fd, "memory.stat", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    (void)close(fd);
+    if (stat_fd < 0) return;
+    char text[8192];
+    ssize_t got = read(stat_fd, text, sizeof(text) - 1);
+    (void)close(stat_fd);
+    if (got <= 0) return;
+    text[got] = '\0';
+
+    int saw_file = 0;
+    for (char *line = text; *line != '\0';) {
+        char *line_end = strchr(line, '\n');
+        if (line_end == NULL) line_end = line + strlen(line);
+        uint64_t value = 0;
+        int digits = 0;
+        const char *value_at = NULL;
+        if (strncmp(line, "anon ", 5) == 0) value_at = line + 5;
+        else if (strncmp(line, "file ", 5) == 0) value_at = line + 5;
+        else if (strncmp(line, "active_file ", 12) == 0) value_at = line + 12;
+        else if (strncmp(line, "inactive_file ", 14) == 0) value_at = line + 14;
+        if (value_at != NULL) {
+            for (const char *p = value_at; *p >= '0' && *p <= '9'; p++) {
+                value = value * 10u + (uint64_t)(*p - '0');
+                digits++;
+            }
+        }
+        if (digits > 0) {
+            if (strncmp(line, "anon ", 5) == 0) out->anon_bytes = value;
+            else if (strncmp(line, "file ", 5) == 0) { out->file_bytes = value; saw_file = 1; }
+            else if (strncmp(line, "active_file ", 12) == 0) out->active_file = value;
+            else if (strncmp(line, "inactive_file ", 14) == 0) out->inactive_file = value;
+        }
+        if (*line_end == '\0') break;
+        line = line_end + 1;
+    }
+    /* A file counter we could not read means we do not know the scope, and the
+     * policy must not guess. */
+    if (saw_file) out->readable = 1;
+}
+
+/* Cumulative refaults for a scope, from /proc/vmstat's file refault counter.
+ * Per-scope refault lives in the cgroup's memory.stat on newer kernels; when
+ * absent the counter stays 0, which the policy reads as "no history" rather
+ * than as "clean". */
+static uint64_t policy_read_scope_refault(int64_t scope_index, uint64_t last)
+{
+    const char *root = mr_bal_bridge_scope_root();
+    if (root[0] == '\0') return 0;
+    const char *name = mr_bal_exec_scope_name(scope_index);
+    if (name == NULL || name[0] == '\0') return 0;
+    int fd = mr_bal_exec_open_scope(root, name);
+    if (fd < 0) return 0;
+    int stat_fd = openat(fd, "memory.stat", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    (void)close(fd);
+    if (stat_fd < 0) return 0;
+    char text[8192];
+    ssize_t got = read(stat_fd, text, sizeof(text) - 1);
+    (void)close(stat_fd);
+    if (got <= 0) return last;
+    text[got] = '\0';
+    for (char *line = text; *line != '\0';) {
+        char *line_end = strchr(line, '\n');
+        if (line_end == NULL) line_end = line + strlen(line);
+        if (strncmp(line, "workingset_refault_file ", 24) == 0) {
+            uint64_t value = 0;
+            int digits = 0;
+            for (char *p = line + 24; *p >= '0' && *p <= '9'; p++) {
+                value = value * 10u + (uint64_t)(*p - '0');
+                digits++;
+            }
+            if (digits > 0) return value;
+        }
+        if (*line_end == '\0') break;
+        line = line_end + 1;
+    }
+    return last;
+}
+
+static uint64_t policy_read_mem_total(void)
+{
+    FILE *fh = fopen("/proc/meminfo", "r");
+    if (fh == NULL) return 0;
+    char line[256];
+    uint64_t value = 0;
+    while (fgets(line, sizeof(line), fh) != NULL) {
+        if (strncmp(line, "MemTotal:", 9) == 0) {
+            value = (uint64_t)strtoull(line + 9, NULL, 10) * 1024ull;
+            break;
+        }
+    }
+    (void)fclose(fh);
+    return value;
+}
+
+/* Build the evidence struct from the live machine, then let a fixture override
+ * the two fields that cannot be produced on demand (clock and pressure). */
+static void policy_fill_evidence(struct mr_pol_evidence *out)
+{
+    memset(out, 0, sizeof(*out));
+    out->now_ms = policy_now_ms();
+    out->mem_total = policy_mem_total_override >= 0
+        ? (uint64_t)policy_mem_total_override
+        : policy_read_mem_total();
+    int64_t avail = policy_mem_available_override >= 0
+        ? policy_mem_available_override
+        : mr_mem_available_bytes();
+    out->mem_available = avail > 0 ? (uint64_t)avail : 0;
+    out->psi_some_centi = policy_read_psi_centi();
+    if (policy_dwell_override >= 0) {
+        out->pressure_seen_ms = (uint64_t)policy_dwell_override;
+    } else {
+        /* The live dwell is the policy's own config: a caller that has no
+         * history reports it as satisfied so the first real sample counts.
+         * Reporting a made-up accumulation would be worse than this. */
+        out->pressure_seen_ms = policy_config.pressure_dwell_ms;
+    }
+    if (policy_state.last_run_ms != 0 && out->now_ms > policy_state.last_run_ms)
+        out->since_last_run_ms = out->now_ms - policy_state.last_run_ms;
+    else
+        out->since_last_run_ms = 0;
+}
+
+static int policy_collect_scopes(void)
+{
+    int count = 0;
+    for (int i = 0; i < policy_enrolled_count && count < MR_POL_MAX_ENROLLED; i++) {
+        struct mr_pol_scope scope;
+        policy_fill_scope(policy_enrolled[i].scope_index, &scope);
+        scope.cooldown_until_ms = policy_enrolled[i].cooldown_until_ms;
+        scope.refault_file = policy_enrolled[i].refault_seen =
+            policy_read_scope_refault(policy_enrolled[i].scope_index,
+                                      policy_enrolled[i].refault_seen);
+        policy_scopes[count] = scope;
+        count++;
+    }
+    return count;
+}
+
+/* The policy names a scope by its position in the enrolled array; the rest of
+ * the bridge names scopes by their position in the scanned list. Translate once
+ * here so no caller has to remember which is which. */
+static int64_t policy_enrolled_to_scanned(int64_t enrolled_index)
+{
+    if (enrolled_index < 0 || enrolled_index >= policy_enrolled_count) return -1;
+    return policy_enrolled[enrolled_index].scope_index;
+}
+
+static void policy_publish(const struct mr_pol_decision *decision)
+{
+    policy_decision = *decision;
+    policy_decision.scope_index = policy_enrolled_to_scanned(decision->scope_index);
+}
+
+int64_t mr_bal_bridge_policy_plan(void)
+{
+    policy_config_ensure();
+    policy_plan_called = 1;
+    mr_pol_state_init(&policy_state);
+    policy_requested_total = 0;
+    policy_batches_issued = 0;
+    policy_observed_bytes = 0;
+    policy_round_open = 1;
+
+    struct mr_pol_evidence evidence;
+    policy_fill_evidence(&evidence);
+    int count = policy_collect_scopes();
+    struct mr_pol_decision decision;
+    int rc = mr_pol_begin(&policy_config, &policy_state, &evidence,
+                          policy_scopes, (uint32_t)count, &decision);
+    policy_publish(&decision);
+    return rc ? 1 : 0;
+}
+
+int64_t mr_bal_bridge_policy_run_batch(void)
+{
+    if (!policy_round_open) return 0;
+    int64_t index = policy_decision.scope_index;
+    if (index < 0) return 0;
+    uint64_t request = policy_decision.request_bytes;
+    if (request == 0) return 0;
+
+    /* One batch, through the same executor the rest of this file uses. The
+     * executor already forces "swappiness=0" into the write, so a file-only
+     * request cannot silently take anonymous pages. */
+    struct mr_bal_exec_config config;
+    memset(&config, 0, sizeof(config));
+    config.budget_bytes = request;
+    config.batch_bytes = request;
+    config.max_batches = 1;
+    config.psi_stop_centi = policy_config.psi_worse_centi;
+    config.expected_uid = (uint32_t)getuid();
+
+    int ran = mr_bal_bridge_run(index, request, request, 1,
+                                policy_config.psi_worse_centi);
+    if (ran != 1) return 0;
+
+    /* The record must name the scope the write actually went to, which the
+     * policy chose here and not at begin() time. One scope per round by
+     * construction, so this is a retarget, not a list. */
+    {
+        const char *name = mr_bal_exec_scope_name(index);
+        if (name != NULL && name[0] != '\0')
+            action_fill_target(mr_bal_bridge_scope_root(), name);
+    }
+    policy_requested_total += request;
+    policy_batches_issued++;
+    policy_state.batches_issued = (uint32_t)policy_batches_issued;
+    policy_state.requested_this_round = policy_requested_total;
+
+    int64_t accepted = mr_bal_bridge_result_accepted_value();
+    if (accepted > 0) policy_observed_bytes += accepted;
+    return 1;
+}
+
+int64_t mr_bal_bridge_policy_continue(void)
+{
+    if (!policy_round_open) return 0;
+    struct mr_pol_evidence evidence;
+    policy_fill_evidence(&evidence);
+    /* Keep the round's start readings: a fresh fill would overwrite the very
+     * baseline the "did pressure get worse" test compares against. */
+    evidence.since_last_run_ms = 0;
+
+    int count = policy_collect_scopes();
+
+    /* Refault measured against the scope we just acted on. The delta is what
+     * this batch's own pages did after being dropped. */
+    uint64_t refaulted = 0;
+    int64_t acted = policy_decision.scope_index;
+    for (int i = 0; i < policy_enrolled_count; i++) {
+        if (policy_enrolled[i].scope_index != acted) continue;
+        uint64_t now = policy_read_scope_refault(acted, policy_enrolled[i].refault_seen);
+        if (now > policy_enrolled[i].refault_seen)
+            refaulted = now - policy_enrolled[i].refault_seen;
+        policy_enrolled[i].refault_seen = now;
+        break;
+    }
+
+    int64_t avail = mr_mem_available_bytes();
+    uint64_t avail_after = avail > 0 ? (uint64_t)avail : 0;
+    uint32_t psi_after = policy_read_psi_centi();
+
+    struct mr_pol_decision decision;
+    int rc = mr_pol_continue(&policy_config, &policy_state, &evidence,
+                             policy_scopes, (uint32_t)count, refaulted,
+                             avail_after, psi_after, &decision);
+
+    /* A scope that refaulted goes on cooldown, so the next round leaves the
+     * healthy cache it is rebuilding alone. */
+    if (refaulted > 0 && acted >= 0) {
+        uint64_t now = policy_now_ms();
+        for (int i = 0; i < policy_enrolled_count; i++) {
+            if (policy_enrolled[i].scope_index != acted) continue;
+            mr_pol_cool_scope(&policy_scopes[i], now, policy_config.cooldown_ms);
+            policy_enrolled[i].cooldown_until_ms = now + policy_config.cooldown_ms;
+            break;
+        }
+    }
+
+    policy_publish(&decision);
+    if (!rc) policy_round_open = 0;
+    return rc ? 1 : 0;
+}
+
+void mr_bal_bridge_policy_finish(void)
+{
+    policy_round_open = 0;
+    policy_state.running = 0;
+}
+
+int64_t mr_bal_bridge_policy_verdict(void) { return policy_decision.verdict; }
+int64_t mr_bal_bridge_policy_stop(void) { return policy_decision.stop; }
+int64_t mr_bal_bridge_policy_scope_index(void) { return policy_decision.scope_index; }
+int64_t mr_bal_bridge_policy_request_bytes(void) { return (int64_t)policy_decision.request_bytes; }
+int64_t mr_bal_bridge_policy_cold_file_bytes(void) { return (int64_t)policy_decision.cold_file_bytes; }
+int64_t mr_bal_bridge_policy_water_mark_bytes(void) { return (int64_t)policy_decision.water_mark_bytes; }
+int64_t mr_bal_bridge_policy_batches_issued(void) { return (int64_t)policy_batches_issued; }
+int64_t mr_bal_bridge_policy_requested_total(void) { return (int64_t)policy_requested_total; }
+int64_t mr_bal_bridge_policy_observed_bytes(void) { return policy_observed_bytes; }
+
+const char *mr_bal_bridge_policy_stop_name(void)
+{
+    return mr_pol_stop_name(policy_decision.stop);
+}
+
+const char *mr_bal_bridge_policy_verdict_name(void)
+{
+    return mr_pol_verdict_name(policy_decision.verdict);
+}
+
+const char *mr_bal_bridge_policy_anon_scope_label(void)
+{
+    if (policy_decision.verdict != MR_POL_VERDICT_ANON_BOUND) return "";
+    int64_t index = policy_decision.scope_index;
+    if (index < 0) return "";
+    return mr_bal_bridge_scope_label(index);
+}
+
+const char *mr_bal_bridge_policy_scope_reason(int64_t enrolled_index)
+{
+    if (enrolled_index < 0 || enrolled_index >= policy_enrolled_count) return "absent";
+    struct mr_pol_evidence evidence;
+    policy_fill_evidence(&evidence);
+    struct mr_pol_scope scope;
+    policy_fill_scope(policy_enrolled[enrolled_index].scope_index, &scope);
+    scope.cooldown_until_ms = policy_enrolled[enrolled_index].cooldown_until_ms;
+    return mr_pol_scope_skip_reason(&policy_config, &scope, &evidence);
+}
+
+void mr_bal_bridge_test_set_policy_clock(int64_t now_ms)
+{
+    policy_clock_override = now_ms < 0 ? -1 : now_ms;
+}
+
+void mr_bal_bridge_test_set_policy_pressure(int64_t psi_some_centi,
+                                            int64_t pressure_seen_ms)
+{
+    policy_psi_override = psi_some_centi < 0 ? -1 : psi_some_centi;
+    policy_dwell_override = pressure_seen_ms < 0 ? -1 : pressure_seen_ms;
+}
+
+void mr_bal_bridge_test_set_policy_memory(int64_t total_bytes,
+                                          int64_t available_bytes)
+{
+    policy_mem_total_override = total_bytes < 0 ? -1 : total_bytes;
+    policy_mem_available_override = available_bytes < 0 ? -1 : available_bytes;
+}
+
+void mr_bal_bridge_test_set_deep_telemetry(double psi_some_avg10,
+                                           int64_t swap_pages_per_call)
+{
+    deep_psi_override = psi_some_avg10 < 0.0 ? -1.0 : psi_some_avg10;
+    deep_swap_delta_override =
+        swap_pages_per_call < 0 ? -1 : swap_pages_per_call;
+}
+
+/* ---- action record (Q16 line A) ---------------------------------------
+ *
+ * What the user clicked, and what actually reached the kernel. Until this
+ * existed the balanced clean could only say "ran / did not run"; the write
+ * itself — the scope it went to, the exact text, the return value, the errno —
+ * was measured by the layers below and then discarded.
+ *
+ * The record is assembled here because this is the only place that knows all
+ * three halves at once: the enrolled scope set (plan), the chosen scope and its
+ * cgroup path (run), and the write the seam actually saw (balance_reclaim.c).
+ * Nothing is recomputed from memory: the write entries come from the seam's own
+ * bounded log, addressed by absolute index, so a write the seam did not see
+ * cannot appear in the record, and a write that happened cannot be missing.
+ *
+ * "Not observed" is a value, not a gap: a refusal upstream of the write leaves
+ * the write list empty, and reason names which refusal it was.
+ */
+#define MR_ACT_MAX_SCOPES 32
+#define MR_ACT_TARGET_MAX 640
+#define MR_ACT_REASON_MAX 48
+
+struct mr_act_record {
+    int64_t id;            /* monotonic request id; 0 = no request yet */
+    int valid;             /* 1 once a round has begun */
+    int32_t scope_count;   /* enrolled scopes confirmed for this request */
+    int64_t scope_index[MR_ACT_MAX_SCOPES];  /* position in the scanned list */
+    char scope_name[MR_ACT_MAX_SCOPES][MR_BAL_SCOPE_NAME_MAX];
+    char scope_label[MR_ACT_MAX_SCOPES][MR_BAL_SCOPE_NAME_MAX];
+    char target[MR_ACT_TARGET_MAX]; /* "/…/<scope>/memory.reclaim", "" = none */
+    long write_first;      /* inclusive absolute write-log index */
+    long write_last;       /* exclusive */
+    char reason[MR_ACT_REASON_MAX]; /* why nothing was written; "none" if written */
+    int reason_observed;   /* 0 = the reason is not known (never guessed) */
+    /* When the round began and when each write returned, both in CLOCK_MONOTONIC
+     * milliseconds. Monotonic, not wall clock: the point is to line a write up
+     * with a sample taken by an outside process, and a wall clock can step.
+     * 0 means "not observed" rather than "at time zero". */
+    uint64_t open_mono_ms;
+    /* Wall-clock start, for a human reading the file later. The monotonic value
+     * is what a comparison uses; this one only says "when was that". */
+    int64_t open_wall_unix;
+};
+
+static struct mr_act_record action;
+static int64_t action_next_id = 1;
+
+/* The path a write against this scope would take. Built here, not by a caller,
+ * and built the same way the executor builds it: root + scope + the control
+ * file name. An empty root or name yields "" rather than a misleading partial
+ * path. */
+static void action_fill_target(const char *root, const char *name)
+{
+    action.target[0] = '\0';
+    if (root == NULL || root[0] != '/' || name == NULL || name[0] == '\0') return;
+    size_t root_length = strlen(root);
+    size_t name_length = strlen(name);
+    const char *tail = "/memory.reclaim";
+    size_t tail_length = strlen(tail);
+    if (root_length + 1 + name_length + tail_length + 1 > sizeof(action.target)) return;
+    memcpy(action.target, root, root_length);
+    action.target[root_length] = '/';
+    memcpy(action.target + root_length + 1, name, name_length);
+    memcpy(action.target + root_length + 1 + name_length, tail, tail_length + 1);
+}
+
+/* Start a fresh request. Called before the policy is asked, so a request that
+ * the policy then refuses still has an id and an enrolled set to show. */
+int64_t mr_bal_bridge_action_begin(void)
+{
+    memset(&action, 0, sizeof(action));
+    action.id = action_next_id++;
+    action.valid = 1;
+    action.open_mono_ms = mr_bal_reclaim_mono_ms();
+    action.open_wall_unix = mr_bal_reclaim_wall_unix();
+    action.write_first = mr_bal_write_log_count();
+    action.write_last = action.write_first;
+    snprintf(action.reason, sizeof(action.reason), "%s", "not_recorded");
+    const char *root = mr_bal_bridge_scope_root();
+    for (int i = 0; i < policy_enrolled_count && i < MR_ACT_MAX_SCOPES; i++) {
+        int64_t index = policy_enrolled[i].scope_index;
+        const char *name = mr_bal_exec_scope_name(index);
+        if (name == NULL || name[0] == '\0') continue;
+        action.scope_index[action.scope_count] = index;
+        snprintf(action.scope_name[action.scope_count],
+                 sizeof(action.scope_name[action.scope_count]), "%s", name);
+        snprintf(action.scope_label[action.scope_count],
+                 sizeof(action.scope_label[action.scope_count]), "%s",
+                 mr_bal_exec_app_label(name));
+        action.scope_count++;
+    }
+    action_fill_target(root, action.scope_count > 0 ? action.scope_name[0] : NULL);
+    return action.id;
+}
+
+/* Record what the seam saw between the begin and now, plus the reason the
+ * round produced. Split from the accessors so both the written and the
+ * refused path go through one function: a round that wrote nothing still
+ * ends here and still names its reason. */
+void mr_bal_bridge_action_close(const char *reason)
+{
+    if (!action.valid) return;
+    action.write_last = mr_bal_write_log_count();
+    if (reason != NULL && reason[0] != '\0') {
+        snprintf(action.reason, sizeof(action.reason), "%.40s", reason);
+        action.reason_observed = 1;
+    } else if (action.write_last > action.write_first) {
+        snprintf(action.reason, sizeof(action.reason), "%s", "none");
+        action.reason_observed = 1;
+    }
+}
+
+/* Close the record, deriving the reason instead of taking one. The caller in
+ * the GUI cannot be trusted to name the refusal correctly - it would have to
+ * reproduce the branch order of the policy - so the reason is derived here from
+ * the state that actually decided:
+ *
+ *   no enrolled scope          -> no_scope        (nothing was ever a target)
+ *   policy never asked         -> not_run         (the round ended before it)
+ *   policy refused             -> policy:<stop>   (its own stable stop name)
+ *   wrote something            -> none            (nothing to explain)
+ *   no write, no policy refusal-> write_skipped   (a batch ran and wrote nothing)
+ *
+ * Every one of these is a fact observed here; none is inferred from a message.
+ */
+static void action_export_after_close(void);
+static void action_resolve_reason(void);
+
+void mr_bal_bridge_action_close_auto(void)
+{
+    if (!action.valid) return;
+    /* Decide the reason FIRST, then export once at the single exit. The first
+     * version exported on entry, so every refusal was written to disk as
+     * reason=not_observed - the file existed but said nothing useful, which is
+     * worse than not writing it. */
+    action_resolve_reason();
+    action_export_after_close();
+}
+/* 1 when a request has been recorded at all. */
+int64_t mr_bal_bridge_action_observed(void) { return action.valid ? 1 : 0; }
+/* The request id, or 0 when no request has begun. */
+int64_t mr_bal_bridge_action_id(void) { return action.id; }
+
+int64_t mr_bal_bridge_action_scope_count(void) { return action.scope_count; }
+/* Name / display label / scanned-list index of confirmed scope i. */
+const char *mr_bal_bridge_action_scope_name(int64_t i)
+{
+    if (i < 0 || i >= action.scope_count) return "";
+    return action.scope_name[i];
+}
+const char *mr_bal_bridge_action_scope_label(int64_t i)
+{
+    if (i < 0 || i >= action.scope_count) return "";
+    return action.scope_label[i];
+}
+int64_t mr_bal_bridge_action_scope_index(int64_t i)
+{
+    if (i < 0 || i >= action.scope_count) return -1;
+    return action.scope_index[i];
+}
+
+/* Absolute path the round wrote to (or would have written to), "" when the
+ * scope root could not be derived. A path here does not by itself mean a write
+ * happened: compare mr_bal_bridge_action_write_count(). */
+const char *mr_bal_bridge_action_target(void) { return action.target; }
+
+/* How many writes this request produced. 0 means nothing reached the seam. */
+int64_t mr_bal_bridge_action_write_count(void)
+{
+    long span = action.write_last - action.write_first;
+    return span > 0 ? (int64_t)span : 0;
+}
+/* Requested byte count of write i, or -1 when i is out of range. */
+int64_t mr_bal_bridge_action_write_bytes(int64_t i)
+{
+    if (i < 0 || i >= mr_bal_bridge_action_write_count()) return -1;
+    return (int64_t)mr_bal_write_log_length(action.write_first + i);
+}
+/* The exact text handed to the kernel for write i, or "". */
+const char *mr_bal_bridge_action_write_text(int64_t i)
+{
+    if (i < 0 || i >= mr_bal_bridge_action_write_count()) return "";
+    return mr_bal_write_log_text(action.write_first + i);
+}
+/* What the seam returned for write i: bytes written, or -1. */
+int64_t mr_bal_bridge_action_write_result(int64_t i)
+{
+    if (i < 0 || i >= mr_bal_bridge_action_write_count()) return -1;
+    return (int64_t)mr_bal_write_log_result(action.write_first + i);
+}
+/* errno recorded for write i, 0 when it was accepted. */
+int64_t mr_bal_bridge_action_write_errno(int64_t i)
+{
+    if (i < 0 || i >= mr_bal_bridge_action_write_count()) return 0;
+    return (int64_t)mr_bal_write_log_errno(action.write_first + i);
+}
+/* Stable class for write i ("accepted", "eagain", "einval", …). */
+const char *mr_bal_bridge_action_write_class(int64_t i)
+{
+    if (i < 0 || i >= mr_bal_bridge_action_write_count()) return "not_observed";
+    return mr_bal_write_log_class(action.write_first + i);
+}
+
+/* Why nothing was written, as a stable name. "not_observed" when the round has
+ * not been closed yet — never a guess. */
+const char *mr_bal_bridge_action_reason(void)
+{
+    if (!action.reason_observed) return "not_observed";
+    return action.reason;
+}
+/* 1 when a reason was actually recorded (as opposed to "not_observed"). */
+int64_t mr_bal_bridge_action_reason_known(void) { return action.reason_observed; }
+
+/* The copyable one-line form. One line by construction: every field is
+ * sanitised, so a pasted record cannot break a log or a shell paste. This is
+ * the string the footer shows and the user copies. */
+const char *mr_bal_bridge_action_export(void)
+{
+    static char line[4096];
+    size_t used = 0;
+    line[0] = '\0';
+    if (!action.valid) {
+        snprintf(line, sizeof(line), "%s", "MEMREDUCT-BALANCED not_observed");
+        return line;
+    }
+    used += (size_t)snprintf(line + used, sizeof(line) - used,
+                             "MEMREDUCT-BALANCED id=%lld",
+                             (long long)action.id);
+    used += (size_t)snprintf(line + used, sizeof(line) - used,
+                             " scopes=%lld", (long long)action.scope_count);
+    for (int i = 0; i < action.scope_count && used < sizeof(line) - 1; i++) {
+        used += (size_t)snprintf(line + used, sizeof(line) - used,
+                                 " scope[%lld]=%s#%lld",
+                                 (long long)i,
+                                 action.scope_name[i][0] ? action.scope_name[i] : "unreadable",
+                                 (long long)action.scope_index[i]);
+    }
+    if (used < sizeof(line) - 1)
+        used += (size_t)snprintf(line + used, sizeof(line) - used,
+                                 " target=%s",
+                                 action.target[0] ? action.target : "unavailable");
+    if (used < sizeof(line) - 1)
+        used += (size_t)snprintf(line + used, sizeof(line) - used,
+                                 " opened_mono_ms=%llu opened_wall=%lld",
+                                 (unsigned long long)action.open_mono_ms,
+                                 (long long)action.open_wall_unix);
+    long writes = action.write_last - action.write_first;
+    if (writes <= 0) writes = 0;
+    if (used < sizeof(line) - 1)
+        used += (size_t)snprintf(line + used, sizeof(line) - used,
+                                 " writes=%lld", (long long)writes);
+    for (long i = 0; i < writes && used < sizeof(line) - 1; i++) {
+        long index = action.write_first + i;
+        used += (size_t)snprintf(line + used, sizeof(line) - used,
+                                 " w[%ld]={bytes=%ld text=\"%s\" ret=%ld errno=%ld class=%s t_mono_ms=%llu}",
+                                 i,
+                                 mr_bal_write_log_length(index),
+                                 mr_bal_write_log_text(index),
+                                 mr_bal_write_log_result(index),
+                                 (long)mr_bal_write_log_errno(index),
+                                 mr_bal_write_log_class(index),
+                                 mr_bal_write_log_mono_ms(index));
+    }
+    if (used < sizeof(line) - 1)
+        used += (size_t)snprintf(line + used, sizeof(line) - used,
+                                 " reason=%s",
+                                 action.reason_observed ? action.reason : "not_observed");
+    return line;
+}
+
+/* Write the copyable line to a file and return its absolute path.
+ *
+ * The footer is drawn on a canvas: its text cannot be selected, so "copy that
+ * line" was not actually doable there. This writes the same bytes to
+ * $XDG_STATE_HOME/memreduct/balanced-last.txt (or $HOME/.local/state/...) with
+ * mode 0600 and returns the path, which the footer shows. One file, overwritten
+ * each round: the record is about the last click, and an appended log would
+ * grow without bound in a process that lives as long as the window.
+ *
+ * Returns "" when no home directory is known or the write failed; the caller
+ * shows the record itself either way, so a failure here costs the convenience,
+ * not the information.
+ */
+/* Writes the copyable line and returns the path, or "" when it could not be
+ * written. The failure is reported through mr_bal_bridge_action_export_error()
+ * rather than being swallowed: the previous version returned "" on every
+ * failure mode, so "no file" could not be told apart from "wrong directory" or
+ * "disk full" after the fact. */
+const char *mr_bal_bridge_action_export_path(void)
+{
+    static char path[512];
+    static char directory[480];
+    path[0] = '\0';
+    directory[0] = '\0';
+    action_export_error[0] = '\0';
+    const char *base = getenv("XDG_STATE_HOME");
+    if (base == NULL || base[0] != '/') {
+        const char *home = getenv("HOME");
+        if (home == NULL || home[0] != '/') {
+            snprintf(action_export_error, sizeof(action_export_error), "%s",
+                     "no XDG_STATE_HOME and no HOME");
+            return path;
+        }
+        if (snprintf(directory, sizeof(directory), "%s/.local/state/memreduct",
+                     home) >= (int)sizeof(directory)) {
+            snprintf(action_export_error, sizeof(action_export_error), "%s",
+                     "state directory path too long");
+            return path;
+        }
+    } else if (snprintf(directory, sizeof(directory), "%s/memreduct", base) >=
+               (int)sizeof(directory)) {
+        snprintf(action_export_error, sizeof(action_export_error), "%s",
+                 "state directory path too long");
+        return path;
+    }
+    /* mkdir -p on the two levels we own. EEXIST is the normal case; anything
+     * else is recorded, because a failed mkdir is exactly why the later open()
+     * would fail and the old code reported only the open(). */
+    char scratch[480];
+    snprintf(scratch, sizeof(scratch), "%s", directory);
+    for (char *cursor = scratch + 1; *cursor != '\0'; cursor++) {
+        if (*cursor != '/') continue;
+        *cursor = '\0';
+        if (mkdir(scratch, 0700) != 0 && errno != EEXIST) {
+            snprintf(action_export_error, sizeof(action_export_error),
+                     "mkdir %s: errno %d", scratch, errno);
+            return path;
+        }
+        *cursor = '/';
+    }
+    if (mkdir(scratch, 0700) != 0 && errno != EEXIST) {
+        snprintf(action_export_error, sizeof(action_export_error),
+                 "mkdir %s: errno %d", scratch, errno);
+        return path;
+    }
+
+    if (snprintf(path, sizeof(path), "%s/balanced-last.txt", directory) >=
+        (int)sizeof(path)) {
+        path[0] = '\0';
+        snprintf(action_export_error, sizeof(action_export_error), "%s",
+                 "file path too long");
+        return path;
+    }
+    const char *line = mr_bal_bridge_action_export();
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    if (fd < 0) {
+        snprintf(action_export_error, sizeof(action_export_error),
+                 "open %s: errno %d", path, errno);
+        path[0] = '\0';
+        return path;
+    }
+    size_t length = strlen(line);
+    size_t done = 0;
+    while (done < length) {
+        ssize_t wrote = write(fd, line + done, length - done);
+        if (wrote <= 0) break;
+        done += (size_t)wrote;
+    }
+    if (done < length || write(fd, "\n", 1) != 1) {
+        snprintf(action_export_error, sizeof(action_export_error),
+                 "write %s: errno %d after %zu of %zu bytes", path, errno,
+                 done, length);
+        (void)close(fd);
+        path[0] = '\0';
+        return path;
+    }
+    if (close(fd) != 0) {
+        snprintf(action_export_error, sizeof(action_export_error),
+                 "close %s: errno %d", path, errno);
+        path[0] = '\0';
+        return path;
+    }
+    return path;
+}
+
+/* Why the last export failed, or "" when it succeeded or was never tried. */
+unsigned long long mr_bal_bridge_action_open_mono_ms(void)
+{
+    return action.open_mono_ms;
+}
+
+long long mr_bal_bridge_action_open_wall_unix(void)
+{
+    return action.open_wall_unix;
+}
+
+unsigned long long mr_bal_bridge_action_write_mono_ms(long index)
+{
+    return mr_bal_write_log_mono_ms(index);
+}
+
+const char *mr_bal_bridge_action_export_error(void)
+{
+    return action_export_error;
+}
+
+
+/* Works out why the round ended. Separated from close_auto so the export runs
+ * after the reason is known, not before it. */
+static void action_resolve_reason(void)
+{
+    action.write_last = mr_bal_write_log_count();
+    if (action.write_last > action.write_first) {
+        snprintf(action.reason, sizeof(action.reason), "%s", "none");
+        action.reason_observed = 1;
+        return;
+    }
+    if (action.scope_count == 0) {
+        snprintf(action.reason, sizeof(action.reason), "%s", "no_scope");
+        action.reason_observed = 1;
+        return;
+    }
+    if (!policy_plan_called) {
+        snprintf(action.reason, sizeof(action.reason), "%s", "not_run");
+        action.reason_observed = 1;
+        return;
+    }
+    int64_t verdict = policy_decision.verdict;
+    int64_t stop = policy_decision.stop;
+    if (verdict == MR_POL_VERDICT_RECLAIM && stop == MR_POL_STOP_NONE) {
+        /* The policy said yes and yet the seam saw nothing: the batch was
+         * entered and produced no write, which is a different fault from a
+         * refusal and must not be reported as one. */
+        snprintf(action.reason, sizeof(action.reason), "%s", "write_skipped");
+        action.reason_observed = 1;
+        return;
+    }
+    snprintf(action.reason, sizeof(action.reason), "policy:%s",
+             mr_pol_stop_name(stop));
+    action.reason_observed = 1;
+}
+
+/* Close-time export. Runs before the reason branches so that even a refusal
+ * leaves a file; a refused click is the case users most want to read back. */
+static void action_export_after_close(void)
+{
+    (void)mr_bal_bridge_action_export_path();
+}
+
+/* Human-readable summary of the same fields, for the footer. Localised at this
+ * depth because the two sentences have to agree with the numbers in a way a
+ * template assembled in Zamak would not. Never NULL. */
+const char *mr_bal_bridge_action_summary(int64_t zh)
+{
+    static char text[512];
+    if (!action.valid) {
+        snprintf(text, sizeof(text), "%s",
+                 zh != 0 ? "均衡清理：本次没有记录（未发起请求）。"
+                         : "Balanced clean: nothing recorded; no request was started.");
+        return text;
+    }
+    long writes = action.write_last - action.write_first;
+    if (writes <= 0) {
+        snprintf(text, sizeof(text),
+                 zh != 0 ? "请求 ID %lld：未写入任何内容（%s）。目标 %s。"
+                         : "Request %lld: nothing was written (%s). Target %s.",
+                 (long long)action.id,
+                 action.reason_observed ? action.reason : "not_observed",
+                 action.target[0] ? action.target : "unavailable");
+        return text;
+    }
+    long index = action.write_last - 1;
+    if (zh != 0) {
+        snprintf(text, sizeof(text),
+                 "请求 ID %lld：向 %s 写入 %ld 字节「%s」；内核返回 %ld（errno=%ld，%s）。",
+                 (long long)action.id,
+                 action.scope_count > 0 ? action.scope_name[0] : "?",
+                 mr_bal_write_log_length(index),
+                 mr_bal_write_log_text(index),
+                 mr_bal_write_log_result(index),
+                 (long)mr_bal_write_log_errno(index),
+                 mr_bal_write_log_class(index));
+    } else {
+        snprintf(text, sizeof(text),
+                 "Request %lld: wrote %ld bytes \"%s\" to %s; kernel returned %ld (errno=%ld, %s).",
+                 (long long)action.id,
+                 mr_bal_write_log_length(index),
+                 mr_bal_write_log_text(index),
+                 action.scope_count > 0 ? action.scope_name[0] : "?",
+                 mr_bal_write_log_result(index),
+                 (long)mr_bal_write_log_errno(index),
+                 mr_bal_write_log_class(index));
+    }
+    return text;
+}

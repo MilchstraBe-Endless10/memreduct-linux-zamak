@@ -1,6 +1,6 @@
 # Mem Reduct Linux — Zamak Native (unofficial)
 
-> **Status: architecture/prototype; Zamak executable and real Arch/Hyprland GUI are NOT YET VERIFIED.** Do not install a privileged service as a production app yet. This is **not** an official Henry++ release.
+> **Status (2026-11-06):** The owner has reported a successful M0 page-cache operation and one controlled M1.2 `MADV_PAGEOUT` against a project-created 1 MiB child mapping (256/256 resident pages observed before and 0/256 after; the child survived with intact data). These observations do **not** measure net RAM freed or verify a daily application. A previous M1.3 attempt operated a PID different from the one authorized and is a failed target-integrity result. The local r5 candidate offers per-operation 256 MiB, 512 MiB, or 1 GiB ceilings for either one-process `MADV_PAGEOUT` or an exact user application cgroup v2 `memory.reclaim` request. It derives limits from live RSS or cgroup anon+file charges, refuses unsupported/mismatched scopes, and records before/after observations without calling them bytes freed. The matching protocol-v3 GUI and Crossproc helper are installed on one Arch host, but no real large-app reclaim has been run; fixture tests and isolated GUI simulation do not establish that a real application will release the requested amount. Full-page Windows 3.5.2 pixel identity remains **NOT PASS**. This is **not** an official Henry++ release.
 
 A free open-source, native desktop Linux memory utility inspired by [Mem Reduct](https://github.com/henrypp/memreduct). The project aims to offer a genuine one-click reclaim action and later controlled RAM compression features on **Arch Linux / Omarchy + Hyprland (Wayland)**, without Docker, a web panel, or a Python UI runtime.
 
@@ -14,47 +14,54 @@ A free open-source, native desktop Linux memory utility inspired by [Mem Reduct]
 - [Three-tier project memory](memory/LONG_TERM.md): LONG / MEDIUM / SHORT
 - [GitHub setup](docs/GITHUB_BOOTSTRAP.md) and Codex prompts in [`prompts/`](prompts/)
 
-## What the existing prototype actually contains
+## Current implementation and limits
 
 | Included | Not included / unverified |
 |---|---|
-| Zamak GTK3 Chinese GUI source (not compiled here) | Stable GUI binary, Hyprland validation, tray integration |
-| `/proc/meminfo` sampling and policy logic | Arbitrary process memory compression / RSS trimming |
-| Three manual `drop_caches` modes via root-owned fixed helper | Safe unattended privileged daemon |
-| Async `pkexec` invocation via a narrow C bridge | ZRAM configuration and rollback |
-| C security/integration tests run in isolation | Proof of improvements to application performance |
+| Zamak 0.2.0 GTK3 production GUI, built by the pinned CI and local build script | Release packaging and installation validation |
+| `/proc/meminfo` sampling; stale values are cleared when sampling fails | Full-page Windows 3.5.2 pixel identity; this remains NOT PASS |
+| English/Simplified Chinese menus, five settings pages, and saved language/theme preferences | Tray service, automatic cleaning, ZRAM management |
+| Xvfb/XTEST production interaction and private Weston client lifecycle checks | Real Wayland keyboard/mouse input is not covered by Weston CI |
+| Local r5 candidate: same-user process picker, immutable target identity, 256/512 MiB or 1 GiB ceiling, one-process PAGEOUT or exact app-scope cgroup v2 reclaim | Installed on one Arch host; large real-app reclaim and Hyprland end-to-end flow are not yet verified |
+| Strict `/proc/meminfo` parser; isolated helper/bridge tests using fixtures and a fake authorization launcher | Current candidate install/rollback on a host, everyday-app Polkit flow, net RAM reclaimed, and reclaim performance |
 
-**Important:** The kernel warns that `drop_caches` is mainly for testing/debugging and may cause expensive cache refills; it is not a reliable way to speed up Linux. The preferred roadmap is to add an explicitly approved ZRAM path rather than repeating global cache eviction. Cache operation does **not** kill processes, but may affect I/O latency.
+The default GUI build keeps the privileged page-cache and cross-process gates disabled; the unprivileged self-target action is separate. `m0+m1-candidate` is a local engineering build profile with both gates enabled and no CI/test hooks. It can invoke the fixed page-cache helper and Crossproc helper if those are installed, so treat it as a real-action binary. Its automated GUI simulation uses fixed mock processes; prior real Wayland candidate-selection evidence did not execute a helper or syscall. Never run the GUI as root.
 
 ## Verification before building
 
 ```bash
 python3 scripts/verify_project.py
 python3 -m unittest discover -s tests -v
-for f in scripts/*.sh; do bash -n "$f"; done
+for f in scripts/*.sh scripts/ci/*.sh; do bash -n "$f"; done
 ```
 
-## Build on Arch / Omarchy (pending native acceptance)
+## Build and try the GUI without installation
+
+Use an ordinary user account in a graphical session. The build needs Zamak 0.2.0, a C compiler, GTK 3 development files, and `pkg-config`; install normal development dependencies using your distribution's package manager if they are missing. The production UI uses the system's normal GTK font resolution. Liberation Sans is tested only as an isolated Latin font candidate; it is not the production default because the bilingual comparison did not justify trading CJK rendering for Latin width matches. The application does not bundle Windows fonts, and CJK glyphs continue to use the system fallback. The build also compiles the helper for CI/package verification, but the trial command does not install or execute it.
 
 ```bash
-sudo pacman -S --needed gcc gtk3 pkgconf polkit git
 npm install -g @veyralux/zamak@0.2.0
 zam --version
-bash scripts/build-arch.sh
+python3 scripts/verify_project.py
+python3 -m unittest discover -s tests -v
+for f in scripts/*.sh scripts/ci/*.sh; do bash -n "$f"; done
+zam check .
+zam test .
+bash scripts/ci/build-production-gui.sh
+GDK_BACKEND=wayland ./artifacts/p2b/memreduct-zamak-production
 ```
 
-This builds as a normal user. A working Polkit authentication agent is needed on Hyprland for privileged actions. **Do not run the GUI as root.** Installation of the helper changes a system path and is only permitted on a host the user authorizes:
+The launcher above uses the current Wayland session and runs as the current user. This trial is for UI and read-only memory sampling only. Close the window normally. Do not click any future or experimental cleaning action.
 
-```bash
-sudo bash scripts/install-arch.sh
-memreduct-zamak
-```
+The ordinary unprivileged smoke build does not need installation. To build the M0+M1 candidate, first run `bash scripts/build-arch.sh` to build both fixed helpers, then run `ARTIFACT_DIR=/absolute/output/path bash scripts/ci/build-production-crossproc-gui.sh m0+m1-candidate`. This candidate offers 256 MiB by default, 512 MiB, or 1 GiB per operation, capped again by the selected process's eligible mappings/RSS or its exact app scope's anon+file charge. Whole-scope mode writes once to that application's cgroup v2 `memory.reclaim` control and affects every process currently in that scope; it is unavailable if the helper cannot prove the scope or its membership. The requested ceiling is not a promise of reclaimed RAM. The build uses a profile-specific gate and marker; the installer rejects ordinary production binaries even if they contain the two individual gate symbols. Check it without system writes with `bash scripts/install-arch.sh --check-m0-m1-candidate /absolute/path/memreduct-zamak-production-m0-m1-candidate`.
 
-Cleanup/uninstall script: `sudo bash scripts/uninstall-arch.sh`. Actual install/uninstall has not been tested on a clean Arch VM.
+Installation is deliberately a separate owner decision. The explicit command is `sudo bash scripts/install-arch.sh --m0-m1-candidate /absolute/path/memreduct-zamak-production-m0-m1-candidate`. It may replace these eight destinations: `/usr/bin/memreduct-zamak`, `/usr/libexec/memreduct-zamak-helper`, `/usr/libexec/memreduct-zamak-crossproc-helper`, `/usr/share/applications/memreduct-zamak.desktop`, `/usr/share/licenses/memreduct-zamak/LICENSE`, `/usr/share/doc/memreduct-zamak/THIRD-PARTY-NOTICES.md`, and the two `io.github.milchstrasse_endless10.memreduct.zamak*.policy` files under `/usr/share/polkit-1/actions/`. Before installation, back up every existing destination and record which paths did not previously exist. To roll back, run `sudo bash scripts/uninstall-arch.sh`, then restore the backed-up files with their original owners and modes; remove only newly introduced files that were absent before installation. Keep the backup until the restored installation has been checked. The build and preflight do not write to system paths. Do not use the candidate for real reclaim until target-selection, Polkit, and installation review are complete; Swap/ZRAM writes remain out of scope.
+
+The Windows comparison baseline is Mem Reduct v3.5.2. Current CI records 184/184 settings-control geometry checks and separate text/raster comparisons, but full-page pixel identity is still NOT PASS. A local main-window visual pair was captured; its Linux capture is the GTK client surface, while the Windows reference includes native frame/titlebar, so it is not a pixel-aligned pair or a 1:1 result. A real Hyprland run must be reported separately from Xvfb/Weston results.
 
 ## Public GitHub repository
 
-Not published as of 2026-10-25. On the account `MilchstraBe-Endless10`, run `bash scripts/publish-github.sh` after checking the file tree; the command creates a PUBLIC repo with explicit confirmation and verifies the remote SHA. See [details](docs/GITHUB_BOOTSTRAP.md). The GitHub connector available in this chat has no new-repository action; **do not assume the URL exists before bootstrap succeeds**.
+The public repository is [MilchstraBe-Endless10/memreduct-linux-zamak](https://github.com/MilchstraBe-Endless10/memreduct-linux-zamak). PR #7 contains the settings UI and remains Draft until its review and integration gates are complete.
 
 ## License and attribution
 
