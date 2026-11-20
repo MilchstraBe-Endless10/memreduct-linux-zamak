@@ -59,6 +59,11 @@ grep -q 'async_privileged_production.c' "$artifact_dir/production-zam.toml"
 grep -q 'gui_window_prod.c' "$artifact_dir/production-zam.toml"
 ! grep -q 'gui_test.c' "$artifact_dir/production-zam.toml"
 cd "$work"
+# The compiler caches objects by a key that can miss content changes on a
+# cold runner; point it at a per-run cache directory so every object is
+# built from the checked-out sources, not from a stale global cache.
+export ZAMAK_CACHE_DIR="$RUNNER_TEMP/zamak-cache"
+mkdir -p "$ZAMAK_CACHE_DIR"
 zam build . 2>&1 | tee "$artifact_dir/production-zam-build.log"
 production_binary_rel="$(sed -n 's/^OUTPUT //p' "$artifact_dir/production-zam-build.log" | tail -n 1)"
 [[ -n "$production_binary_rel" && -x "$production_binary_rel" ]] || {
