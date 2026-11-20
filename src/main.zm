@@ -3093,6 +3093,9 @@ fn test_font_policy_name_reports_only_a_confirmed_result():
 fn main():
     let test_mode = mr_runtime_mode() != 0
     if test_mode:
+        # write(2) directly: if this marker is missing while the process is
+        # alive, the program has not reached main() at all, and the loader or
+        # a library constructor is the suspect - no glib buffering involved.
         mr_runtime_emit("CI_PRODUCTION_ENTRY")
     let deep_scope_ack_init = 0
     let preferences_status = mr_preferences_load()

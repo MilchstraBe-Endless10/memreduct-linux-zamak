@@ -574,7 +574,10 @@ class TestCiMarkerOutputPath(unittest.TestCase):
             capture_output=True, text=True, env=loud_env, check=True,
         )
         self.assertEqual(loud.stdout, '')
-        self.assertEqual(loud.stderr, 'CI_PRODUCTION_START\n')
+        # The library constructor fires the loader marker before main();
+        # ordering is loader marker, then the emitter's own line.
+        self.assertEqual(loud.stderr,
+                         'CI_LOADER_REACHED\nCI_PRODUCTION_START\n')
 
 
 class TestProductionGtkWindowBridge(unittest.TestCase):
