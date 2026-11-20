@@ -88,7 +88,15 @@ for _ in {1..50}; do
 done
 [[ "$wm_ready" == true ]] || { cat "$artifact_dir/openbox.log" >&2; exit 1; }
 
-MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 MEMREDUCT_CI_SAMPLE_FAILURE_TRIGGER_FILE="$sample_failure_trigger" MEMREDUCT_CI_CAPTURE=1 stdbuf -oL "$app" \
+# strace is installed with the other CI dependencies; a hang inside GTK shows
+# up as the last syscall the process is blocked in, captured to the artifact.
+STRACE_WRAPPED=""
+if command -v strace >/dev/null 2>&1; then
+  STRACE_WRAPPED="strace -f -qq -e trace=network,openat,futex,poll,ppoll,writev,write -o $artifact_dir/client.strace"
+  printf 'strace attached\n'
+fi
+MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 MEMREDUCT_CI_SAMPLE_FAILURE_TRIGGER_FILE="$sample_failure_trigger" MEMREDUCT_CI_CAPTURE=1 \
+  stdbuf -oL $STRACE_WRAPPED "$app" \
   >"$artifact_dir/client.log" 2>&1 &
 app_pid="$!"
 # Startup forensics: if the GUI dies before its first marker, the log alone
