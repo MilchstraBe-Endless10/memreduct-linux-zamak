@@ -675,3 +675,15 @@ void mr_runtime_emit(const char *line)
     fputc('\n', stderr);
     fflush(stderr);
 }
+
+/* Loader-stage marker: written by a library constructor, before main() runs.
+ * If this line is absent while the process is alive, the dynamic loader or a
+ * static initializer is stuck, and no amount of waiting for main() helps. */
+__attribute__((constructor)) static void mr_ci_loader_marker(void) {
+    if (getenv("MEMREDUCT_CI") == NULL) {
+        return;
+    }
+    const char *line = "CI_LOADER_REACHED\n";
+    ssize_t rc = write(2, line, strlen(line));
+    (void)rc;
+}
