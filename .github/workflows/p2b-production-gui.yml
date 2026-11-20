@@ -53,7 +53,7 @@ jobs:
             "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
             "ImageOS=${ImageOS:-unknown}" \
             "ImageVersion=${ImageVersion:-unknown}" \
-            bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox fonts-noto-cjk fonts-dejavu
+            bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 xvfb xdotool x11-utils x11-xserver-utils imagemagick openbox dbus-x11 fonts-noto-cjk fonts-dejavu
       - name: Install pinned Zamak 0.2.0
         run: npm install --global @veyralux/zamak@0.2.0
       - name: Build and verify production executable
@@ -105,7 +105,7 @@ jobs:
             "APT_DIAGNOSTICS_DIR=$APT_DIAGNOSTICS_DIR" \
             "ImageOS=${ImageOS:-unknown}" \
             "ImageVersion=${ImageVersion:-unknown}" \
-            bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 weston wayland-utils fonts-noto-cjk fonts-dejavu
+            bash scripts/ci/apt-diagnostics.sh install build-essential libgtk-3-dev pkg-config python3 weston wayland-utils dbus-x11 fonts-noto-cjk fonts-dejavu
       - name: Install pinned Zamak 0.2.0
         run: npm install --global @veyralux/zamak@0.2.0
       - name: Build and verify production executable
