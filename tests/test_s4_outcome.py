@@ -81,6 +81,9 @@ class S4OutcomeTest(unittest.TestCase):
         lib.mr_bal_test_set_write_errno.argtypes = [ctypes.c_int]
         lib.mr_bal_bridge_test_set_session_root.argtypes = [ctypes.c_char_p]
         lib.mr_bal_bridge_test_set_session_root.restype = ctypes.c_int
+        lib.mr_bal_bridge_test_set_deep_telemetry.argtypes = [ctypes.c_double,
+                                                              ctypes.c_int64]
+        lib.mr_bal_bridge_test_set_deep_telemetry.restype = None
         for name in (
             "mr_bal_bridge_deep_start",
             "mr_bal_bridge_deep_poll",
@@ -94,6 +97,11 @@ class S4OutcomeTest(unittest.TestCase):
         ):
             getattr(lib, name).restype = ctypes.c_int64
         lib.mr_bal_bridge_deep_reset()
+        # Pin the S4 guard telemetry to a calm machine: the suite itself
+        # generates real PSI/swap traffic, which is machine state, not
+        # behaviour under test. Threshold behaviour stays covered by the
+        # EAGAIN and stop-reason cases.
+        lib.mr_bal_bridge_test_set_deep_telemetry(0.0, 0)
 
         self.batches = 0
         self.refuse_from = None
@@ -120,6 +128,7 @@ class S4OutcomeTest(unittest.TestCase):
         self.lib.mr_bal_bridge_test_set_session_root(self._root)
 
     def tearDown(self):
+        self.lib.mr_bal_bridge_test_set_deep_telemetry(-1.0, -1)
         self.lib.mr_bal_bridge_test_set_session_root(None)
         self.lib.mr_bal_set_write_hook(WRITE_HOOK())
         for name in ("memory.reclaim",):
@@ -206,6 +215,58 @@ class S4OutcomeTest(unittest.TestCase):
         time.sleep(0.3)
         self.assertEqual(self.batches, settled,
                          "no write may follow a finished run")
+
+
+class S4StateIsolationTest(unittest.TestCase):
+    """Regression for the suite-order flake: every entry into the deep worker
+    must start from a known state, and the telemetry seams must be restored
+    when a test ends. A pin that leaks would make the next case's guard read
+    the fixture instead of the host — exactly the class of cross-case state
+    that used to make test_completed_run_reports_no_stop_reason fail only
+    when the whole suite ran.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._libpath = build_library()
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            os.unlink(cls._libpath)
+        except OSError:
+            pass
+
+    def setUp(self):
+        self.lib = ctypes.CDLL(self._libpath)
+        lib = self.lib
+        lib.mr_bal_bridge_deep_reset.argtypes = []
+        lib.mr_bal_bridge_deep_reset.restype = None
+        lib.mr_bal_bridge_test_set_deep_telemetry.argtypes = [ctypes.c_double,
+                                                              ctypes.c_int64]
+        lib.mr_bal_bridge_test_set_deep_telemetry.restype = None
+        lib.mr_bal_bridge_deep_stop_reason.restype = ctypes.c_int64
+        lib.mr_bal_bridge_deep_stage_ran.restype = ctypes.c_int64
+        for stage in range(4):
+            lib.mr_bal_bridge_deep_stage_ran.argtypes = [ctypes.c_int]
+
+    def test_reset_clears_every_stage_and_reason(self):
+        """deep_reset must return the worker to the pristine state."""
+        self.lib.mr_bal_bridge_deep_reset()
+        self.assertEqual(self.lib.mr_bal_bridge_deep_stop_reason(), 0)
+        for stage in range(4):
+            self.assertEqual(self.lib.mr_bal_bridge_deep_stage_ran(stage), 0,
+                             "stage %d must start unrecorded" % stage)
+
+    def test_reset_is_idempotent_against_a_used_worker(self):
+        """Resetting twice leaves the same pristine state as resetting once."""
+        self.lib.mr_bal_bridge_test_set_deep_telemetry(0.0, 0)
+        self.lib.mr_bal_bridge_deep_reset()
+        self.lib.mr_bal_bridge_deep_reset()
+        self.assertEqual(self.lib.mr_bal_bridge_deep_stop_reason(), 0)
+        for stage in range(4):
+            self.assertEqual(self.lib.mr_bal_bridge_deep_stage_ran(stage), 0)
+        self.lib.mr_bal_bridge_test_set_deep_telemetry(-1.0, -1)
 
 
 if __name__ == "__main__":

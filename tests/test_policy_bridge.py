@@ -103,6 +103,8 @@ class PolicyBridgeTest(unittest.TestCase):
         self.lib.mr_bal_bridge_test_set_policy_clock.argtypes = [ctypes.c_int64]
         self.lib.mr_bal_bridge_test_set_policy_pressure.argtypes = [ctypes.c_int64,
                                                              ctypes.c_int64]
+        self.lib.mr_bal_bridge_test_set_policy_memory.argtypes = [ctypes.c_int64,
+                                                           ctypes.c_int64]
 
         self._tmp = tempfile.mkdtemp(prefix="mr-policy-")
         self._root = os.path.join(self._tmp, "app.slice")
@@ -120,11 +122,16 @@ class PolicyBridgeTest(unittest.TestCase):
         self.lib.mr_bal_bridge_test_set_scope_root(self._root.encode())
         self.lib.mr_bal_bridge_policy_enroll_clear()
         self.lib.mr_bal_bridge_policy_finish()
+        # Pin the machine-memory evidence: 8 GiB total, 2 GiB available (25%).
+        # Scarcity, so the policy reaches the enrollment and trigger decisions
+        # the tests are about, independent of how much RAM the CI runner has.
+        self.lib.mr_bal_bridge_test_set_policy_memory(8 * 1024**3, 2 * 1024**3)
 
     def tearDown(self):
         self.lib.mr_bal_bridge_test_set_scope_root(None)
         self.lib.mr_bal_bridge_test_set_policy_clock(-1)
         self.lib.mr_bal_bridge_test_set_policy_pressure(-1, -1)
+        self.lib.mr_bal_bridge_test_set_policy_memory(-1, -1)
         self.lib.mr_bal_set_write_hook(WRITE_HOOK())
         self.lib.mr_bal_bridge_policy_enroll_clear()
         shutil.rmtree(self._tmp, ignore_errors=True)

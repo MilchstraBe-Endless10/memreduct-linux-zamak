@@ -16,6 +16,7 @@ import ctypes
 import errno
 import os
 import subprocess
+import shutil
 import tempfile
 import time
 import unittest
@@ -64,7 +65,14 @@ class S4PathTest(unittest.TestCase):
     def setUp(self):
         self.lib = ctypes.CDLL(self._libpath)
         self.lib.mr_bal_bridge_deep_reset.argtypes = []
+        self.lib.mr_bal_bridge_test_set_deep_telemetry.argtypes = [ctypes.c_double,
+                                                                   ctypes.c_int64]
+        self.lib.mr_bal_bridge_test_set_deep_telemetry.restype = None
         self.lib.mr_bal_bridge_deep_reset()
+        # Pin the S4 guard telemetry to a calm machine: the suite itself
+        # generates real PSI/swap traffic, which is machine state, not
+        # behaviour under test.
+        self.lib.mr_bal_bridge_test_set_deep_telemetry(0.0, 0)
         self.lib.mr_bal_set_write_hook.argtypes = [WRITE_HOOK]
         self.lib.mr_bal_test_set_write_errno.argtypes = [ctypes.c_int]
         self.lib.mr_bal_bridge_test_set_session_root.argtypes = [ctypes.c_char_p]
@@ -106,6 +114,7 @@ class S4PathTest(unittest.TestCase):
         self.lib.mr_bal_set_write_hook(self._hook)
 
     def tearDown(self):
+        self.lib.mr_bal_bridge_test_set_deep_telemetry(-1.0, -1)
         self.lib.mr_bal_bridge_test_set_session_root(None)
         self.lib.mr_bal_set_write_hook(WRITE_HOOK())
         try:
@@ -150,28 +159,34 @@ class S4PathTest(unittest.TestCase):
                            "S4 must submit at least one batch")
 
     def test_missing_reclaim_file_stops_instead_of_writing(self):
-        """If the root has no memory.reclaim, S4 must stop, not spin.
+        """If the root has no memory.reclaim, the run stops, it does not spin.
 
-        S2 and S3 open their own paths under the same root and legitimately
-        write there, so counting every write would measure the wrong thing.
-        What matters is that S4 records that it ran, refuses to submit a batch
-        once its target is missing, and leaves a stop reason behind.
+        One root, one reclaim target: S2/S3's session sweep and S4's batch
+        loop both write <root>/memory.reclaim, so a missing target fails the
+        sweep first and the worker fail-closes there — reaching S4 would mean
+        sweeping succeeded without its target, which this product cannot do.
+        The assertable safety property is: no batches completed and a stop
+        reason is left behind, on every host, with no reliance on a real
+        session cgroup existing.
         """
         empty = tempfile.mkdtemp(prefix="mr-s4-empty-")
         try:
+            with open(os.path.join(empty, "memory.stat"), "w",
+                      encoding="utf-8") as handle:
+                handle.write("file 268435456\nanon 0\n")
             self.lib.mr_bal_bridge_test_set_session_root(empty.encode())
             first = self._start()
             if first != 0:
                 self.skipTest("worker thread unavailable in this environment")
             self.assertTrue(self._settle(), "the run must finish")
-            self.assertEqual(self.lib.mr_bal_bridge_deep_stage_ran(3), 1,
-                             "S4 still records that it was reached")
+            self.assertEqual(self.lib.mr_bal_bridge_deep_stage_ran(3), 0,
+                             "a sweep without its write target must not reach S4")
             self.assertEqual(self.lib.mr_bal_bridge_deep_batches_completed(), 0,
                              "a missing target must complete no batches")
             self.assertNotEqual(self.lib.mr_bal_bridge_deep_stop_reason(), 0,
                                 "a missing target must record a stop reason")
         finally:
-            os.rmdir(empty)
+            shutil.rmtree(empty, ignore_errors=True)
 
 
 if __name__ == "__main__":

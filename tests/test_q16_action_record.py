@@ -95,6 +95,9 @@ class ActionRecordTest(unittest.TestCase):
         lib.mr_bal_bridge_test_set_policy_pressure.argtypes = [ctypes.c_int64,
                                                                ctypes.c_int64]
         lib.mr_bal_bridge_test_set_policy_pressure.restype = None
+        lib.mr_bal_bridge_test_set_policy_memory.argtypes = [ctypes.c_int64,
+                                                             ctypes.c_int64]
+        lib.mr_bal_bridge_test_set_policy_memory.restype = None
         lib.mr_bal_bridge_test_set_policy_clock.argtypes = [ctypes.c_int64]
         lib.mr_bal_bridge_test_set_policy_clock.restype = None
         for name in ("policy_plan", "policy_run_batch", "policy_continue",
@@ -156,12 +159,16 @@ class ActionRecordTest(unittest.TestCase):
         self.lib.mr_bal_bridge_test_set_scope_root(self._root.encode())
         self.lib.mr_bal_bridge_policy_enroll_clear()
         self.lib.mr_bal_bridge_policy_finish()
+        # Pin memory evidence to scarcity (8 GiB total / 2 GiB available) so
+        # the policy reaches enrollment decisions regardless of host RAM.
+        self.lib.mr_bal_bridge_test_set_policy_memory(8 * 1024**3, 2 * 1024**3)
         self.lib.mr_bal_test_set_write_errno(0)
 
     def tearDown(self):
         self.lib.mr_bal_bridge_test_set_scope_root(None)
         self.lib.mr_bal_bridge_test_set_policy_clock(-1)
         self.lib.mr_bal_bridge_test_set_policy_pressure(-1, -1)
+        self.lib.mr_bal_bridge_test_set_policy_memory(-1, -1)
         self.lib.mr_bal_set_write_hook(WRITE_HOOK())
         self.lib.mr_bal_bridge_policy_enroll_clear()
         self.lib.mr_bal_bridge_policy_finish()
