@@ -250,6 +250,15 @@ void mr_bal_bridge_test_set_policy_clock(int64_t now_ms);
 void mr_bal_bridge_test_set_policy_pressure(int64_t psi_some_centi,
                                             int64_t pressure_seen_ms);
 
+/* Test-only: pin the memory evidence the policy reasons about. Passing -1
+ * restores the live reading. Production code never calls this. */
+void mr_bal_bridge_test_set_policy_memory(int64_t total_bytes,
+                                          int64_t available_bytes);
+
+/* Test-only: pin the S4 guard's telemetry. -1 restores the live reading. */
+void mr_bal_bridge_test_set_deep_telemetry(double psi_some_avg10,
+                                           int64_t swap_pages_per_call);
+
 /* ---- deep clean pipeline (S2-S4 on one worker) ---------------------------
  *
  * The deep clean is one asynchronous run, not a single pressure stage. The GUI

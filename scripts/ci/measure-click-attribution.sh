@@ -104,19 +104,13 @@ CSV="$RUN_DIR/samples.csv"
 CSV_KV="$RUN_DIR/samples.kv"
 
 # ---------------------------------------------------------------------------
-# Hard precondition checks — refuse early instead of writing a CSV full of
-# empty columns that later reads as "zero".
-# ---------------------------------------------------------------------------
-fail_missing() { printf 'missing required interface: %s\n' "$1" >&2; exit 4; }
-[[ -r /proc/meminfo ]]        || fail_missing /proc/meminfo
-[[ -r /proc/pressure/memory ]]|| fail_missing /proc/pressure/memory
-[[ -r /proc/vmstat ]]         || fail_missing /proc/vmstat
-[[ -r /proc/diskstats ]]      || fail_missing /proc/diskstats
-[[ -r "$SESSION_ROOT/memory.stat" ]] || fail_missing "$SESSION_ROOT/memory.stat"
-[[ -r "$SESSION_SLICE_DIR/memory.stat" ]] || fail_missing "$SESSION_SLICE_DIR/memory.stat"
-
-# ---------------------------------------------------------------------------
 # Clean-mode gate. Two independent opt-ins, no default command.
+#
+# This gate runs BEFORE the interface checks on purpose: the opt-ins are
+# answers the caller was asked for, and a refusal must name the missing
+# consent rather than an interface the caller cannot see. An environment
+# without the cgroup layout must not upgrade a refusal into an interface
+# error, and it must not mask a relative MR_CLEAN_CMD either.
 # ---------------------------------------------------------------------------
 CLEAN_CMD=""
 if [[ "$MODE" == "clean" ]]; then
@@ -135,6 +129,19 @@ if [[ "$MODE" == "clean" ]]; then
     fi
     CLEAN_CMD="$MR_CLEAN_CMD"
 fi
+
+# ---------------------------------------------------------------------------
+# Hard precondition checks — refuse early instead of writing a CSV full of
+# empty columns that later reads as "zero". Consented clean mode still has
+# to pass every one of these; moving the gate first never bypasses them.
+# ---------------------------------------------------------------------------
+fail_missing() { printf 'missing required interface: %s\n' "$1" >&2; exit 4; }
+[[ -r /proc/meminfo ]]        || fail_missing /proc/meminfo
+[[ -r /proc/pressure/memory ]]|| fail_missing /proc/pressure/memory
+[[ -r /proc/vmstat ]]         || fail_missing /proc/vmstat
+[[ -r /proc/diskstats ]]      || fail_missing /proc/diskstats
+[[ -r "$SESSION_ROOT/memory.stat" ]] || fail_missing "$SESSION_ROOT/memory.stat"
+[[ -r "$SESSION_SLICE_DIR/memory.stat" ]] || fail_missing "$SESSION_SLICE_DIR/memory.stat"
 
 # ---------------------------------------------------------------------------
 # Latency probe.

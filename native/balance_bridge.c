@@ -612,7 +612,11 @@ int64_t mr_bal_bridge_session_file_bytes(void)
  * a failed run when it is really the ceiling. */
 int64_t mr_bal_bridge_session_run(uint64_t budget_bytes)
 {
-    const char *root = mr_bal_exec_session_root();
+    /* One root resolver for both the session sweep and the S4 batch loop:
+     * when a test pins the session root, the sweep must follow it, exactly
+     * like S4 does, instead of silently walking the host cgroup. With no
+     * override this returns the same discovered root as before. */
+    const char *root = mr_bal_bridge_test_session_root();
     if (root[0] != '/') return 0;
     int fd = mr_bal_exec_open_session(root);
     if (fd < 0) return 0;
@@ -784,8 +788,16 @@ static pthread_t mr_deep_thread;
 /* PSI some-rate avg10 for the whole machine, or -1 when it cannot be read.
  * Used both as the guard baseline and as a liveness probe: a guard that cannot
  * read its own telemetry must refuse to run rather than run unguarded. */
+/* Test-only guard telemetry pins: >= 0 means "the guard sees this", -1 means
+ * "read the host". The suite itself generates real PSI and swap-out activity,
+ * which is machine state, not behaviour under test — a guard fed pinned
+ * telemetry decides on the fixture, so a clean run stays clean on any host. */
+static double deep_psi_override = -1.0;
+static int64_t deep_swap_delta_override = -1;
+
 static double mr_pressure_psi_some_avg10(void)
 {
+    if (deep_psi_override >= 0.0) return deep_psi_override;
     FILE *f = fopen("/proc/pressure/memory", "r");
     if (f == NULL) return -1.0;
     char line[128];
@@ -810,6 +822,7 @@ static double mr_pressure_psi_some_avg10(void)
  * /proc/vmstat does not provide the counter. */
 static int64_t mr_pressure_swap_delta(void)
 {
+    if (deep_swap_delta_override >= 0) return deep_swap_delta_override;
     static int64_t last = -1;
     FILE *f = fopen("/proc/vmstat", "r");
     if (f == NULL) return -1;
@@ -830,6 +843,7 @@ static int64_t mr_pressure_swap_delta(void)
 /* 0 readable, 1 /proc/pressure/memory unusable, 2 /proc/vmstat unusable. */
 static int mr_deep_telemetry_ready(void)
 {
+    if (deep_psi_override >= 0.0 && deep_swap_delta_override >= 0) return 0;
     if (mr_pressure_psi_some_avg10() < 0.0) return 1;
     FILE *f = fopen("/proc/vmstat", "r");
     if (f == NULL) return 2;
@@ -1216,6 +1230,12 @@ static int64_t policy_observed_bytes;
 static int64_t policy_clock_override = -1;
 static int64_t policy_psi_override = -1;
 static int64_t policy_dwell_override = -1;
+/* Test-only memory evidence override, same shape as the PSI one: -1 means
+ * "read the host", anything else is what the policy sees. The production
+ * binary never calls the setter, and mr_pol_begin's thresholds are unchanged
+ * — the fixture chooses values, the policy still decides with its own rules. */
+static int64_t policy_mem_total_override = -1;
+static int64_t policy_mem_available_override = -1;
 
 /* The scratch arrays a decision is computed from. Sized like the enrolled list
  * so a fixture with many scopes still fits. */
@@ -1414,8 +1434,12 @@ static void policy_fill_evidence(struct mr_pol_evidence *out)
 {
     memset(out, 0, sizeof(*out));
     out->now_ms = policy_now_ms();
-    out->mem_total = policy_read_mem_total();
-    int64_t avail = mr_mem_available_bytes();
+    out->mem_total = policy_mem_total_override >= 0
+        ? (uint64_t)policy_mem_total_override
+        : policy_read_mem_total();
+    int64_t avail = policy_mem_available_override >= 0
+        ? policy_mem_available_override
+        : mr_mem_available_bytes();
     out->mem_available = avail > 0 ? (uint64_t)avail : 0;
     out->psi_some_centi = policy_read_psi_centi();
     if (policy_dwell_override >= 0) {
@@ -1629,6 +1653,21 @@ void mr_bal_bridge_test_set_policy_pressure(int64_t psi_some_centi,
 {
     policy_psi_override = psi_some_centi < 0 ? -1 : psi_some_centi;
     policy_dwell_override = pressure_seen_ms < 0 ? -1 : pressure_seen_ms;
+}
+
+void mr_bal_bridge_test_set_policy_memory(int64_t total_bytes,
+                                          int64_t available_bytes)
+{
+    policy_mem_total_override = total_bytes < 0 ? -1 : total_bytes;
+    policy_mem_available_override = available_bytes < 0 ? -1 : available_bytes;
+}
+
+void mr_bal_bridge_test_set_deep_telemetry(double psi_some_avg10,
+                                           int64_t swap_pages_per_call)
+{
+    deep_psi_override = psi_some_avg10 < 0.0 ? -1.0 : psi_some_avg10;
+    deep_swap_delta_override =
+        swap_pages_per_call < 0 ? -1 : swap_pages_per_call;
 }
 
 /* ---- action record (Q16 line A) ---------------------------------------
