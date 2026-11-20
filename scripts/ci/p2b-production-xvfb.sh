@@ -69,6 +69,13 @@ xdpyinfo -queryExtensions | grep -E '(^|[[:space:]])XTEST([[:space:]]|$)' \
   | tee "$artifact_dir/xtest-extension.txt"
 printf 'Xft.dpi: 96\nXft.antialias: 1\nXft.hinting: 1\n' | xrdb -merge
 
+# GTK/glib can stall at startup when there is no session bus to connect to
+# (the process sits in a glib poll loop before main() runs its first line).
+# Start a private session bus and hand its address to the app explicitly.
+dbus_daemon --session --fork --print-address >"$artifact_dir/dbus-address.txt" 2>/dev/null \
+  && export DBUS_SESSION_BUS_ADDRESS="$(cat "$artifact_dir/dbus-address.txt")"
+printf 'DBUS_SESSION_BUS_ADDRESS=%s\n' "${DBUS_SESSION_BUS_ADDRESS:-unset}"
+
 openbox --sm-disable >"$artifact_dir/openbox.log" 2>&1 &
 wm_pid="$!"
 wm_ready=false
