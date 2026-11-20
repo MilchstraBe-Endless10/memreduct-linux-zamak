@@ -235,11 +235,6 @@ int64_t mr_pulse_restore_all(void) {
 
 #include <dirent.h>
 
-static const char *APP_SLICE = "/sys/fs/cgroup/user.slice";
-/* user-1000 is the uid the production build serves; the test build can
- * override the whole tree through MEMREDUCT_TEST_PROC_ROOT, so the slice
- * root is derived from the effective uid at call time. */
-
 static void slice_path(char *buf, size_t n) {
     unsigned long uid = (unsigned long)geteuid();
     snprintf(buf, n,
