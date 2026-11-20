@@ -230,3 +230,82 @@ int64_t mr_pulse_restore_all(void) {
     pthread_mutex_unlock(&mr_pulse_lock);
     return failures;
 }
+
+/* ---- Run over all delegated scopes in the caller's app.slice ---- */
+
+#include <dirent.h>
+
+static const char *APP_SLICE = "/sys/fs/cgroup/user.slice";
+/* user-1000 is the uid the production build serves; the test build can
+ * override the whole tree through MEMREDUCT_TEST_PROC_ROOT, so the slice
+ * root is derived from the effective uid at call time. */
+
+static void slice_path(char *buf, size_t n) {
+    unsigned long uid = (unsigned long)geteuid();
+    snprintf(buf, n,
+             "/sys/fs/cgroup/user.slice/user-%lu.slice/user@%lu.service/app.slice",
+             uid, uid);
+}
+
+int64_t mr_pulse_run_all(struct mr_pulse_run *out) {
+    if (out == NULL) return -1;
+    memset(out, 0, sizeof *out);
+    out->before_available = -1;
+    out->after_available = -1;
+
+    char slice[512];
+    slice_path(slice, sizeof slice);
+    DIR *dir = opendir(slice);
+    if (dir == NULL) return -2;
+
+    /* MemAvailable is read directly so the reported delta is what the user
+     * sees, not a cgroup-internal accounting artifact. */
+    {
+        FILE *f = fopen("/proc/meminfo", "r");
+        if (f != NULL) {
+            char line[256];
+            while (fgets(line, sizeof line, f) != NULL) {
+                if (strncmp(line, "MemAvailable:", 13) == 0) {
+                    out->before_available = atoll(line + 13) * 1024;
+                    break;
+                }
+            }
+            (void)fclose(f);
+        }
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncmp(entry->d_name, "app-", 4) != 0) continue;
+        char scope[1024];
+        snprintf(scope, sizeof scope, "%s/%s", slice, entry->d_name);
+        struct mr_pulse_result result;
+        int64_t rc = mr_pulse_scope(scope, 8000, &result);
+        if (rc == MR_PULSE_OK_NOTHING_TO_DO) continue;
+        if (rc < 0) { out->restore_failures++; continue; }
+        out->scopes_pulsed++;
+        if (result.restored) out->scopes_restored++; else out->restore_failures++;
+        if (result.aborted_by_psi) out->psi_aborts++;
+    }
+    (void)closedir(dir);
+
+    /* Final safety net: any pulse that somehow stayed pending is restored
+     * now. Rule 4: after this call every scope is back at its own high. */
+    int64_t failures = mr_pulse_restore_all();
+    if (failures > 0) out->restore_failures += failures;
+
+    {
+        FILE *f = fopen("/proc/meminfo", "r");
+        if (f != NULL) {
+            char line[256];
+            while (fgets(line, sizeof line, f) != NULL) {
+                if (strncmp(line, "MemAvailable:", 13) == 0) {
+                    out->after_available = atoll(line + 13) * 1024;
+                    break;
+                }
+            }
+            (void)fclose(f);
+        }
+    }
+    return 0;
+}

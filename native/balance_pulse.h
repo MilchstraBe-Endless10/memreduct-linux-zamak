@@ -31,3 +31,16 @@ int64_t mr_pulse_scope(const char *scope_path, int64_t pulse_ms,
 int64_t mr_pulse_restore_all(void);
 
 #endif
+
+/* Aggregated run over every delegated scope in the caller's app.slice.
+ * Results are per-scope; restore failures are never swallowed. */
+struct mr_pulse_run {
+    int64_t scopes_pulsed;
+    int64_t scopes_restored;
+    int64_t restore_failures;
+    int64_t psi_aborts;
+    int64_t before_available;
+    int64_t after_available;
+};
+
+int64_t mr_pulse_run_all(struct mr_pulse_run *out);
