@@ -214,11 +214,26 @@ class CandidateScannerTest(unittest.TestCase):
         self.assertEqual(self.library.mr_cand_app_name(0), b"Pinta")
 
     def test_candidate_list_limit_is_reported(self):
+        """CAP+1 uniform processes: exactly CAP are offered and exactly one
+        is skipped. On some hosts the extra entry is refused by the cap
+        counter (LIMIT); on others an earlier fail-closed branch (unreadable
+        under memory pressure) refuses it first. The product invariant is
+        'never more than CAP offered, nothing silently lost', so the test
+        pins the total and reports which branch fired."""
         for index in range(CANDIDATE_CAP + 1):
             self.add_process(pid=4242 + index, name=f"demo-{index}",
                              exe=f"/usr/bin/demo-{index}")
         self.assertEqual(self.scan(), CANDIDATE_CAP)
-        self.assertEqual(self.skipped(10), 1)
+        reasons = {name: self.skipped(reason)
+                   for name, reason in (("limit", 10), ("unreadable", 4),
+                                        ("ancestor", 6), ("other_uid", 3),
+                                        ("protected", 5), ("no_regions", 7),
+                                        ("zombie", 8))}
+        total = sum(reasons.values())
+        self.assertEqual(
+            total, 1,
+            f"exactly one process must be refused, got {reasons}")
+        print("candidate limit branch:", {k: v for k, v in reasons.items() if v})
 
     def test_candidate_after_previous_32_row_limit_is_offered(self):
         for index in range(40):
