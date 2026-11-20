@@ -82,6 +82,26 @@ done
 MEMREDUCT_CI=1 MEMREDUCT_CI_EXIT_MS=60000 MEMREDUCT_CI_SAMPLE_FAILURE_TRIGGER_FILE="$sample_failure_trigger" MEMREDUCT_CI_CAPTURE=1 stdbuf -oL "$app" \
   >"$artifact_dir/client.log" 2>&1 &
 app_pid="$!"
+# Startup forensics: if the GUI dies before its first marker, the log alone
+# is empty and the failure is undiagnosable. Sample the process three times
+# over the first second and record what it actually is doing.
+for sample in 1 2 3; do
+  sleep 0.3
+  if kill -0 "$app_pid" 2>/dev/null; then
+    printf 'startup sample %s: alive, state=%s threads=%s wchan=%s\n' \
+      "$sample" \
+      "$(awk '/^State:/{print $2}' "/proc/$app_pid/status" 2>/dev/null)" \
+      "$(awk '/^Threads:/{print $2}' "/proc/$app_pid/status" 2>/dev/null)" \
+      "$(cat "/proc/$app_pid/wchan" 2>/dev/null)" | tee -a "$artifact_dir/startup-forensics.txt"
+  else
+    printf 'startup sample %s: process exited early\n' "$sample" | tee -a "$artifact_dir/startup-forensics.txt"
+    break
+  fi
+done
+if ! kill -0 "$app_pid" 2>/dev/null; then
+  wait "$app_pid" 2>/dev/null
+  printf 'app exited before any marker; exit status recorded above\n' >&2
+fi
 window_id=""
 for _ in {1..100}; do
   window_id="$(xdotool search --onlyvisible --name '^Mem Reduct$' 2>/dev/null | head -n 1 || true)"
