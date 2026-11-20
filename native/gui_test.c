@@ -671,9 +671,14 @@ void mr_runtime_emit(const char *line)
     if (getenv("MEMREDUCT_CI") == NULL || line == NULL) {
         return;
     }
-    fputs(line, stderr);
-    fputc('\n', stderr);
-    fflush(stderr);
+    /* write(2) rather than fputs: glib can install its own stderr handling
+     * during gtk_init, and a runner with a cold dconf can stall that path
+     * for minutes. A raw write reaches the log the moment it happens. */
+    const char *nl = "\n";
+    size_t len = strlen(line);
+    ssize_t rc = write(2, line, len);
+    rc = write(2, nl, 1);
+    (void)rc;
 }
 
 /* Loader-stage marker: written by a library constructor, before main() runs.

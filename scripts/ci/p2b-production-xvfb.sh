@@ -115,7 +115,7 @@ if ! kill -0 "$app_pid" 2>/dev/null; then
   printf 'app exited before any marker; exit status recorded above\n' >&2
 fi
 window_id=""
-for _ in {1..600}; do
+for _ in {1..3000}; do
   window_id="$(xdotool search --onlyvisible --name '^Mem Reduct$' 2>/dev/null | head -n 1 || true)"
   [[ -n "$window_id" ]] && break
   kill -0 "$app_pid" 2>/dev/null || break
@@ -129,7 +129,7 @@ wait_for_marker() {
   # uninterruptible disk wait (state D, folio_wait_bit_common) for tens of
   # seconds when several heavy jobs land on the same host. Startup forensics
   # showed the process alive and blocked in I/O while this loop gave up at 6s.
-  for _ in {1..600}; do
+  for _ in {1..3000}; do
     grep -Fq -- "$marker" "$artifact_dir/client.log" && return 0
     kill -0 "$app_pid" 2>/dev/null || break
     sleep 0.1
